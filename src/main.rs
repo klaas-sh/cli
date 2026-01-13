@@ -1,0 +1,86 @@
+//! Remote access wrapper for Claude Code.
+//!
+//! Wraps Claude Code sessions and enables optional remote access
+//! via a web interface. By default, it works offline with zero network
+//! activity.
+//!
+//! # Usage
+//!
+//! ```bash
+//! # Start Claude Code with remote access wrapper
+//! nexo
+//!
+//! # Start with a prompt
+//! nexo -p "Review this codebase"
+//!
+//! # Pass through Claude Code flags
+//! nexo --model sonnet --allowedTools Read,Write
+//! ```
+//!
+//! # Commands (during session)
+//!
+//! - `/attach` - Connect for remote access
+//! - `/detach` - Disconnect from remote
+//! - `/status` - Show connection status
+//! - `/help` - Show available commands
+//! - `//` - Send literal `/` to Claude Code
+
+use clap::Parser;
+use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
+
+mod app;
+mod commands;
+mod config;
+mod error;
+mod interceptor;
+mod pty;
+mod terminal;
+mod types;
+
+/// CLI arguments.
+#[derive(Parser)]
+#[command(name = "nexo")]
+#[command(about = "Remote access wrapper for Claude Code")]
+#[command(version)]
+#[command(
+    long_about = "Wraps Claude Code sessions and enables optional remote access \
+    via a web interface. By default, it works offline with zero network activity.\n\n\
+    COMMANDS (type during session):\n  \
+    /attach  - Connect for remote access\n  \
+    /detach  - Disconnect from remote\n  \
+    /status  - Show connection status\n  \
+    /help    - Show available commands\n\n\
+    Type // to send a literal /"
+)]
+struct Cli {
+    /// Arguments to pass through to Claude Code.
+    /// All unrecognized arguments are forwarded.
+    #[arg(trailing_var_arg = true, allow_hyphen_values = true)]
+    claude_args: Vec<String>,
+}
+
+#[tokio::main]
+async fn main() -> anyhow::Result<()> {
+    // Initialize logging
+    // Only log to stderr so we don't interfere with PTY output
+    tracing_subscriber::registry()
+        .with(
+            tracing_subscriber::EnvFilter::try_from_default_env()
+                .unwrap_or_else(|_| "nexo=warn".into()),
+        )
+        .with(tracing_subscriber::fmt::layer().with_writer(std::io::stderr))
+        .init();
+
+    let cli = Cli::parse();
+
+    // Run the application
+    let exit_code = match app::run(cli.claude_args).await {
+        Ok(code) => code,
+        Err(e) => {
+            eprintln!("Error: {}", e);
+            1
+        }
+    };
+
+    std::process::exit(exit_code);
+}
