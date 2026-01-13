@@ -522,7 +522,7 @@ export class SessionHub implements DurableObject {
     if (this.cliSocket && this.cliSocket.readyState === WebSocket.OPEN) {
       // Check if CLI has timed out
       if (this.cliLastPong > 0 && now - this.cliLastPong > CONNECTION_TIMEOUT_MS) {
-        console.log('CLI connection timed out, closing socket');
+        // CLI connection timed out
         this.cliSocket.close(4001, 'Connection timeout');
         this.cliSocket = null;
 
@@ -547,7 +547,7 @@ export class SessionHub implements DurableObject {
 
         // Check if web client has timed out
         if (lastPong > 0 && now - lastPong > CONNECTION_TIMEOUT_MS) {
-          console.log('Web client connection timed out, closing socket');
+          // Web client connection timed out
           ws.close(4001, 'Connection timeout');
           this.webSockets.delete(ws);
           this.webLastPong.delete(ws);
