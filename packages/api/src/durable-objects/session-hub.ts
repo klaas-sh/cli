@@ -6,6 +6,7 @@
  * - Web client WebSocket connections (multiple viewers)
  * - Message routing between CLI and web clients
  * - Offline message queuing
+ * - Heartbeat ping/pong for connection health
  */
 
 import type {
@@ -21,23 +22,44 @@ const MAX_QUEUE_SIZE = 100;
 /** Maximum age of queued messages in milliseconds (5 minutes) */
 const MAX_QUEUE_AGE_MS = 5 * 60 * 1000;
 
+/** Heartbeat interval in milliseconds (30 seconds) */
+const HEARTBEAT_INTERVAL_MS = 30_000;
+
 interface QueuedMessage {
   message: ServerToCliMessage;
   timestamp: number;
 }
 
+/** Session metadata stored in Durable Object storage */
+interface SessionMetadata {
+  sessionId: string;
+  deviceId: string;
+  deviceName: string;
+  cwd: string;
+  status: 'attached' | 'detached';
+}
+
 /**
  * SessionHub Durable Object for managing WebSocket connections.
+ *
+ * Handles:
+ * - CLI connections: session_attach, output, session_detach, pong
+ * - Web connections: subscribe, prompt, resize, pong
+ * - Message routing between CLI and web clients
+ * - Connection health monitoring via heartbeat
  */
 export class SessionHub implements DurableObject {
   /** Durable Object state */
   private state: DurableObjectState;
 
-  /** CLI WebSocket connection (only one) */
+  /** CLI WebSocket connection (only one per session) */
   private cliSocket: WebSocket | null = null;
 
   /** Web client WebSocket connections (multiple viewers) */
   private webSockets: Set<WebSocket> = new Set();
+
+  /** Map of web socket to last pong timestamp */
+  private webLastPong: Map<WebSocket, number> = new Map();
 
   /** Message queue for when CLI is disconnected */
   private messageQueue: QueuedMessage[] = [];
@@ -45,20 +67,33 @@ export class SessionHub implements DurableObject {
   /** Session metadata */
   private sessionId: string | null = null;
 
+  /** Device ID for this session */
+  private deviceId: string | null = null;
+
+  /** Device name for this session */
+  private deviceName: string | null = null;
+
+  /** Current working directory */
+  private cwd: string | null = null;
+
   constructor(state: DurableObjectState) {
     this.state = state;
 
     // Restore state from storage
     this.state.blockConcurrencyWhile(async () => {
-      const stored = await this.state.storage.get<{
-        sessionId: string;
-        deviceId: string;
-        deviceName: string;
-        cwd: string;
-      }>('metadata');
+      const stored = await this.state.storage.get<SessionMetadata>('metadata');
 
       if (stored) {
         this.sessionId = stored.sessionId;
+        this.deviceId = stored.deviceId;
+        this.deviceName = stored.deviceName;
+        this.cwd = stored.cwd;
+      }
+
+      // Start heartbeat alarm if not already set
+      const alarm = await this.state.storage.getAlarm();
+      if (!alarm) {
+        await this.state.storage.setAlarm(Date.now() + HEARTBEAT_INTERVAL_MS);
       }
     });
   }
@@ -111,6 +146,7 @@ export class SessionHub implements DurableObject {
    */
   private handleWebConnect(socket: WebSocket): void {
     this.webSockets.add(socket);
+    this.webLastPong.set(socket, Date.now());
 
     // Send current session status to new client
     if (this.sessionId) {
@@ -120,6 +156,25 @@ export class SessionHub implements DurableObject {
         status: this.cliSocket ? 'attached' : 'detached',
       };
       socket.send(JSON.stringify(statusMsg));
+
+      // If we have session metadata, send it
+      if (this.deviceName && this.cwd) {
+        const sessionsUpdate: ServerToWebMessage = {
+          type: 'sessions_update',
+          sessions: [
+            {
+              session_id: this.sessionId,
+              device_id: this.deviceId || '',
+              device_name: this.deviceName,
+              status: this.cliSocket ? 'attached' : 'detached',
+              started_at: new Date().toISOString(),
+              attached_at: this.cliSocket ? new Date().toISOString() : null,
+              cwd: this.cwd,
+            },
+          ],
+        };
+        socket.send(JSON.stringify(sessionsUpdate));
+      }
     }
   }
 
@@ -150,30 +205,59 @@ export class SessionHub implements DurableObject {
 
   /**
    * Handle CLI messages.
+   *
+   * Message types:
+   * - session_attach: CLI attaching to session with metadata
+   * - output: Terminal output (base64 encoded)
+   * - session_detach: CLI detaching from session
+   * - pong: Heartbeat response
    */
   private async handleCliMessage(msg: CliToServerMessage): Promise<void> {
     switch (msg.type) {
-      case 'session_attach':
-        // Store session metadata
+      case 'session_attach': {
+        // Store session metadata in memory
         this.sessionId = msg.session_id;
+        this.deviceId = msg.device_id;
+        this.deviceName = msg.device_name;
+        this.cwd = msg.cwd;
 
-        await this.state.storage.put('metadata', {
+        // Persist metadata to storage
+        const metadata: SessionMetadata = {
           sessionId: msg.session_id,
           deviceId: msg.device_id,
           deviceName: msg.device_name,
           cwd: msg.cwd,
-        });
+          status: 'attached',
+        };
+        await this.state.storage.put('metadata', metadata);
 
-        // Notify web clients
+        // Notify all web clients of attachment
         this.broadcastToWeb({
           type: 'session_status',
           session_id: msg.session_id,
           status: 'attached',
         });
+
+        // Send full session update to web clients
+        this.broadcastToWeb({
+          type: 'sessions_update',
+          sessions: [
+            {
+              session_id: msg.session_id,
+              device_id: msg.device_id,
+              device_name: msg.device_name,
+              status: 'attached',
+              started_at: new Date().toISOString(),
+              attached_at: new Date().toISOString(),
+              cwd: msg.cwd,
+            },
+          ],
+        });
         break;
+      }
 
       case 'output':
-        // Forward terminal output to all web clients
+        // Forward terminal output (base64 encoded) to all web clients
         this.broadcastToWeb({
           type: 'output',
           session_id: msg.session_id,
@@ -182,7 +266,15 @@ export class SessionHub implements DurableObject {
         });
         break;
 
-      case 'session_detach':
+      case 'session_detach': {
+        // Update stored status
+        const currentMetadata =
+          await this.state.storage.get<SessionMetadata>('metadata');
+        if (currentMetadata) {
+          currentMetadata.status = 'detached';
+          await this.state.storage.put('metadata', currentMetadata);
+        }
+
         // Notify web clients
         this.broadcastToWeb({
           type: 'session_status',
@@ -190,9 +282,10 @@ export class SessionHub implements DurableObject {
           status: 'detached',
         });
         break;
+      }
 
       case 'pong':
-        // Heartbeat response, nothing to do
+        // Heartbeat response received, connection is healthy
         break;
     }
   }
