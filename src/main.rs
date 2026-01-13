@@ -47,6 +47,9 @@ struct Cli {
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
+    // Load environment variables from .env file (if present)
+    dotenvy::dotenv().ok();
+
     // Initialize logging
     // Only log to stderr so we don't interfere with PTY output
     tracing_subscriber::registry()

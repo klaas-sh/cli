@@ -118,8 +118,7 @@ impl ApiConfig {
     /// println!("WS URL: {}", config.ws_url);
     /// ```
     pub fn from_env() -> Self {
-        let api_url =
-            env::var("NEXO_API_URL").unwrap_or_else(|_| default_api_url().to_string());
+        let api_url = env::var("NEXO_API_URL").unwrap_or_else(|_| default_api_url().to_string());
 
         let ws_url = env::var("NEXO_WS_URL").unwrap_or_else(|_| derive_ws_url(&api_url));
 
