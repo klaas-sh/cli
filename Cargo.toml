@@ -50,3 +50,7 @@ tempfile = "3"
 lto = true
 codegen-units = 1
 strip = true
+
+# Allow dead code warnings - we have placeholder code for future features
+[lints.rust]
+dead_code = "allow"
