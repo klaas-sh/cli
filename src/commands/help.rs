@@ -1,23 +1,22 @@
-//! Implementation of the /help command.
+//! Implementation of the /nexo help command.
 
 use crate::error::Result;
 use crate::terminal::TerminalManager;
 
-/// Help text displayed by the /help command.
+/// Help text displayed by the /nexo help command.
 const HELP_TEXT: &str = r#"
-Commands:
-  /attach  - Connect this session for remote access
-  /detach  - Disconnect from remote (continue locally)
-  /status  - Show connection status
-  /help    - Show this help
+Nexo Wrapper Commands:
+  /nexo help    - Show this help
+  /nexo status  - Show session info and connection status
+  /nexo attach  - Connect this session for remote access
+  /nexo detach  - Disconnect from remote (continue locally)
 
-All other input is sent to Claude Code.
-Type // to send a literal /
+All other input (including Claude Code's /commands) passes through unchanged.
 "#;
 
-/// Executes the /help command.
+/// Executes the /nexo help command.
 ///
-/// Displays available commands and usage information.
+/// Displays available wrapper commands and usage information.
 pub async fn execute_help(terminal: &TerminalManager) -> Result<()> {
     terminal.write_line(HELP_TEXT)?;
     Ok(())
@@ -29,10 +28,9 @@ mod tests {
 
     #[test]
     fn help_text_contains_commands() {
-        assert!(HELP_TEXT.contains("/attach"));
-        assert!(HELP_TEXT.contains("/detach"));
-        assert!(HELP_TEXT.contains("/status"));
-        assert!(HELP_TEXT.contains("/help"));
-        assert!(HELP_TEXT.contains("//"));
+        assert!(HELP_TEXT.contains("/nexo help"));
+        assert!(HELP_TEXT.contains("/nexo status"));
+        assert!(HELP_TEXT.contains("/nexo attach"));
+        assert!(HELP_TEXT.contains("/nexo detach"));
     }
 }

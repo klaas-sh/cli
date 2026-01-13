@@ -1,12 +1,15 @@
 //! Command interceptor state machine.
 //!
-//! Detects and intercepts CLI commands (starting with `/`) while
+//! Detects and intercepts wrapper commands (starting with `/nexo `) while
 //! forwarding all other input to Claude Code.
 
 use crate::config::COMMAND_TIMEOUT_MS;
 use crate::types::{Command, InterceptorState};
 use std::time::{Duration, Instant};
 use tokio::sync::mpsc;
+
+/// The command prefix we intercept.
+const COMMAND_PREFIX: &str = "nexo ";
 
 /// Result of processing a byte through the interceptor.
 enum ProcessResult {
@@ -18,7 +21,7 @@ enum ProcessResult {
     Command(Command),
 }
 
-/// State machine for intercepting CLI commands from user input.
+/// State machine for intercepting wrapper commands from user input.
 pub struct CommandInterceptor {
     /// Current state of the interceptor.
     state: InterceptorState,
@@ -132,13 +135,6 @@ impl CommandInterceptor {
                     ProcessResult::Forward(bytes)
                 }
             }
-            // Double slash escapes to send single '/'
-            b'/' if self.buffer.is_empty() => {
-                self.state = InterceptorState::Normal;
-                self.at_line_start = false;
-                self.command_start = None;
-                ProcessResult::Forward(vec![b'/'])
-            }
             // Backspace handling
             0x7f | 0x08 => {
                 if self.buffer.is_empty() {
@@ -151,19 +147,6 @@ impl CommandInterceptor {
                     ProcessResult::Buffer
                 }
             }
-            // Space might complete a command
-            b' ' => {
-                if let Some(cmd) = self.match_command() {
-                    self.state = InterceptorState::Normal;
-                    self.at_line_start = false;
-                    self.command_start = None;
-                    self.buffer.clear();
-                    ProcessResult::Command(cmd)
-                } else {
-                    self.buffer.push(byte as char);
-                    ProcessResult::Buffer
-                }
-            }
             // Any other character adds to buffer
             _ => {
                 self.buffer.push(byte as char);
@@ -173,12 +156,30 @@ impl CommandInterceptor {
     }
 
     /// Attempts to match the current buffer to a command.
+    /// Commands must be in format "nexo" or "nexo <command>".
     fn match_command(&self) -> Option<Command> {
-        match self.buffer.to_lowercase().as_str() {
+        let input = self.buffer.to_lowercase();
+        let trimmed = input.trim();
+
+        // Handle "/nexo" alone (no space, no command)
+        if trimmed == "nexo" {
+            return Some(Command::Help);
+        }
+
+        // Must start with "nexo "
+        if !input.starts_with(COMMAND_PREFIX) {
+            return None;
+        }
+
+        // Extract command after "nexo "
+        let cmd = input.strip_prefix(COMMAND_PREFIX)?.trim();
+
+        match cmd {
             "attach" => Some(Command::Attach),
             "detach" => Some(Command::Detach),
             "status" => Some(Command::Status),
             "help" => Some(Command::Help),
+            "" => Some(Command::Help), // "/nexo " with trailing space shows help
             _ => None,
         }
     }
@@ -216,25 +217,21 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn test_help_command() {
+    async fn test_nexo_help_command() {
         let (mut interceptor, mut rx) = create_interceptor().await;
 
-        // Type "/help\n"
-        let forward = interceptor.process(b"/help\n").await;
-
-        // Nothing should be forwarded
+        let forward = interceptor.process(b"/nexo help\n").await;
         assert!(forward.is_empty());
 
-        // Command should be received
         let cmd = rx.recv().await.unwrap();
         assert!(matches!(cmd, Command::Help));
     }
 
     #[tokio::test]
-    async fn test_status_command() {
+    async fn test_nexo_status_command() {
         let (mut interceptor, mut rx) = create_interceptor().await;
 
-        let forward = interceptor.process(b"/status\n").await;
+        let forward = interceptor.process(b"/nexo status\n").await;
         assert!(forward.is_empty());
 
         let cmd = rx.recv().await.unwrap();
@@ -242,10 +239,10 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn test_attach_command() {
+    async fn test_nexo_attach_command() {
         let (mut interceptor, mut rx) = create_interceptor().await;
 
-        let forward = interceptor.process(b"/attach\n").await;
+        let forward = interceptor.process(b"/nexo attach\n").await;
         assert!(forward.is_empty());
 
         let cmd = rx.recv().await.unwrap();
@@ -253,10 +250,10 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn test_detach_command() {
+    async fn test_nexo_detach_command() {
         let (mut interceptor, mut rx) = create_interceptor().await;
 
-        let forward = interceptor.process(b"/detach\n").await;
+        let forward = interceptor.process(b"/nexo detach\n").await;
         assert!(forward.is_empty());
 
         let cmd = rx.recv().await.unwrap();
@@ -264,58 +261,58 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn test_double_slash_escape() {
-        let (mut interceptor, _rx) = create_interceptor().await;
-
-        let forward = interceptor.process(b"//").await;
-
-        // Single slash should be forwarded
-        assert_eq!(forward, vec![b'/']);
-    }
-
-    #[tokio::test]
-    async fn test_unrecognized_command_passthrough() {
-        let (mut interceptor, _rx) = create_interceptor().await;
-
-        let forward = interceptor.process(b"/unknown\n").await;
-
-        // Full input should be forwarded
-        assert_eq!(forward, b"/unknown\n");
-    }
-
-    #[tokio::test]
-    async fn test_command_not_at_line_start() {
-        let (mut interceptor, _rx) = create_interceptor().await;
-
-        // Type some text first, then /help
-        let forward1 = interceptor.process(b"text").await;
-        assert_eq!(forward1, b"text");
-
-        let forward2 = interceptor.process(b"/help\n").await;
-        // Should be forwarded since not at line start
-        assert_eq!(forward2, b"/help\n");
-    }
-
-    #[tokio::test]
-    async fn test_newline_resets_line_start() {
+    async fn test_nexo_alone_shows_help() {
         let (mut interceptor, mut rx) = create_interceptor().await;
 
-        // Type text, newline, then /help
-        let forward1 = interceptor.process(b"text\n").await;
-        assert_eq!(forward1, b"text\n");
-
-        let forward2 = interceptor.process(b"/help\n").await;
-        assert!(forward2.is_empty());
+        let forward = interceptor.process(b"/nexo\n").await;
+        assert!(forward.is_empty());
 
         let cmd = rx.recv().await.unwrap();
         assert!(matches!(cmd, Command::Help));
+    }
+
+    #[tokio::test]
+    async fn test_nexo_with_trailing_space_shows_help() {
+        let (mut interceptor, mut rx) = create_interceptor().await;
+
+        let forward = interceptor.process(b"/nexo \n").await;
+        assert!(forward.is_empty());
+
+        let cmd = rx.recv().await.unwrap();
+        assert!(matches!(cmd, Command::Help));
+    }
+
+    #[tokio::test]
+    async fn test_claude_help_passes_through() {
+        let (mut interceptor, _rx) = create_interceptor().await;
+
+        // Claude Code's /help should pass through
+        let forward = interceptor.process(b"/help\n").await;
+        assert_eq!(forward, b"/help\n");
+    }
+
+    #[tokio::test]
+    async fn test_claude_status_passes_through() {
+        let (mut interceptor, _rx) = create_interceptor().await;
+
+        // Claude Code's /status should pass through
+        let forward = interceptor.process(b"/status\n").await;
+        assert_eq!(forward, b"/status\n");
+    }
+
+    #[tokio::test]
+    async fn test_unknown_nexo_command_passes_through() {
+        let (mut interceptor, _rx) = create_interceptor().await;
+
+        let forward = interceptor.process(b"/nexo unknown\n").await;
+        assert_eq!(forward, b"/nexo unknown\n");
     }
 
     #[tokio::test]
     async fn test_case_insensitive() {
         let (mut interceptor, mut rx) = create_interceptor().await;
 
-        let forward = interceptor.process(b"/HELP\n").await;
+        let forward = interceptor.process(b"/NEXO HELP\n").await;
         assert!(forward.is_empty());
 
         let cmd = rx.recv().await.unwrap();
@@ -323,12 +320,27 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn test_command_with_space() {
+    async fn test_command_not_at_line_start() {
+        let (mut interceptor, _rx) = create_interceptor().await;
+
+        // Type some text first, then /nexo help
+        let forward1 = interceptor.process(b"text").await;
+        assert_eq!(forward1, b"text");
+
+        let forward2 = interceptor.process(b"/nexo help\n").await;
+        // Should be forwarded since not at line start
+        assert_eq!(forward2, b"/nexo help\n");
+    }
+
+    #[tokio::test]
+    async fn test_newline_resets_line_start() {
         let (mut interceptor, mut rx) = create_interceptor().await;
 
-        // "/help " should trigger command on space
-        let forward = interceptor.process(b"/help ").await;
-        assert!(forward.is_empty());
+        let forward1 = interceptor.process(b"text\n").await;
+        assert_eq!(forward1, b"text\n");
+
+        let forward2 = interceptor.process(b"/nexo help\n").await;
+        assert!(forward2.is_empty());
 
         let cmd = rx.recv().await.unwrap();
         assert!(matches!(cmd, Command::Help));
