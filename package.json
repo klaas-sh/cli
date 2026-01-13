@@ -16,22 +16,22 @@
     "yarn": ">=4.0.0"
   },
   "scripts": {
-    "dev": "concurrently -n api,cli -c blue,green \"yarn dev:api\" \"yarn dev:cli\"",
-    "dev:api": "yarn workspace @nexo/api dev",
-    "dev:cli": "cd packages/cli && cargo run",
     "build": "yarn workspaces foreach -Aptv run build",
     "build:api": "yarn workspace @nexo/api build",
     "build:cli": "cd packages/cli && cargo build --release",
+    "db:migrate": "yarn workspace @nexo/api db:migrate",
+    "deploy:api": "yarn workspace @nexo/api deploy",
+    "deploy:api:production": "yarn workspace @nexo/api deploy:production",
+    "deploy:api:staging": "yarn workspace @nexo/api deploy:staging",
+    "dev": "concurrently -n api,cli -c blue,green \"yarn dev:api\" \"yarn dev:cli\"",
+    "dev:api": "yarn workspace @nexo/api dev",
+    "dev:cli": "cd packages/cli && cargo run",
+    "lint": "yarn workspaces foreach -Aptv run lint",
+    "pre-commit": "yarn install && yarn lint && yarn typecheck && yarn test && yarn build",
     "test": "yarn workspaces foreach -Aptv run test:once",
     "test:api": "yarn workspace @nexo/api test:once",
     "test:cli": "cd packages/cli && cargo test",
-    "lint": "yarn workspaces foreach -Aptv run lint",
-    "typecheck": "yarn workspaces foreach -Aptv run typecheck",
-    "pre-commit": "yarn install && yarn lint && yarn typecheck && yarn test && yarn build",
-    "deploy:api": "yarn workspace @nexo/api deploy",
-    "deploy:api:staging": "yarn workspace @nexo/api deploy:staging",
-    "deploy:api:production": "yarn workspace @nexo/api deploy:production",
-    "db:migrate": "yarn workspace @nexo/api db:migrate"
+    "typecheck": "yarn workspaces foreach -Aptv run typecheck"
   },
   "devDependencies": {
     "concurrently": "^9.1.0"

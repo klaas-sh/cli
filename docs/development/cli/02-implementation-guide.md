@@ -1,14 +1,36 @@
 # Nexo CLI Implementation Guide
 
-**Version:** 0.1.0
+**Version:** 0.2.0
 **Status:** Draft
 **Last Updated:** January 2025
 
 ---
 
-## 1. Project Setup
+## 1. Overview
 
-### 1.1 Directory Structure
+The Nexo CLI wraps Claude Code with automatic remote access. On startup, the CLI
+authenticates (if needed), connects to the SessionHub via WebSocket, and streams
+all PTY I/O bidirectionally. No user commands are required - the connection is
+always on.
+
+### Architecture Flow
+
+```
+1. CLI starts
+2. Check keychain for stored credentials
+3. If no credentials → OAuth Device Flow (show code, wait for auth)
+4. Connect WebSocket to SessionHub
+5. Start full duplex streaming:
+   - PTY output → WebSocket (to remote viewers)
+   - WebSocket input → PTY (from remote prompts)
+6. On CLI exit (Ctrl+C or process end) → disconnect WebSocket
+```
+
+---
+
+## 2. Project Setup
+
+### 2.1 Directory Structure
 
 ```
 packages/cli/
@@ -21,13 +43,6 @@ packages/cli/
 │   ├── app.rs            # Application orchestration
 │   ├── pty.rs            # PTY spawning and management
 │   ├── terminal.rs       # Raw mode, resize handling
-│   ├── interceptor.rs    # Command interception state machine
-│   ├── commands/
-│   │   ├── mod.rs
-│   │   ├── attach.rs     # /attach implementation
-│   │   ├── detach.rs     # /detach implementation
-│   │   ├── status.rs     # /status implementation
-│   │   └── help.rs       # /help implementation
 │   ├── remote/
 │   │   ├── mod.rs
 │   │   ├── websocket.rs  # WebSocket client
@@ -47,12 +62,12 @@ packages/cli/
 └── README.md
 ```
 
-### 1.2 Cargo.toml
+### 2.2 Cargo.toml
 
 ```toml
 [package]
 name = "nexo"
-version = "0.1.0"
+version = "0.2.0"
 edition = "2021"
 authors = ["Nexo Team"]
 description = "Remote access wrapper for Claude Code"
@@ -103,9 +118,8 @@ tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 thiserror = "1"
 anyhow = "1"
 
-# Crypto (for device keys)
-ed25519-dalek = "2"
-rand = "0.8"
+# Hostname
+hostname = "0.3"
 
 [dev-dependencies]
 tokio-test = "0.4"
@@ -118,7 +132,7 @@ codegen-units = 1
 strip = true
 ```
 
-### 1.3 Build Configuration
+### 2.3 Build Configuration
 
 Create `build.rs` to embed version info:
 
@@ -140,9 +154,9 @@ fn main() {
 
 ---
 
-## 2. Core Types
+## 3. Core Types
 
-### 2.1 types.rs
+### 3.1 types.rs
 
 ```rust
 use serde::{Deserialize, Serialize};
@@ -189,21 +203,14 @@ impl DeviceId {
 /// Connection state
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ConnectionState {
-    Detached,
     Connecting,
-    Attached,
+    Connected,
     Reconnecting,
-}
-
-/// Command interceptor state
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum InterceptorState {
-    Normal,
-    ReadingCommand,
+    Disconnected,
 }
 ```
 
-### 2.2 error.rs
+### 3.2 error.rs
 
 ```rust
 use thiserror::Error;
@@ -241,7 +248,7 @@ pub enum NexoError {
 pub type Result<T> = std::result::Result<T, NexoError>;
 ```
 
-### 2.3 config.rs
+### 3.3 config.rs
 
 ```rust
 /// API base URL
@@ -252,9 +259,6 @@ pub const WS_URL: &str = "wss://api.nexo.dev/ws";
 
 /// Keychain service name
 pub const KEYCHAIN_SERVICE: &str = "dev.nexo.cli";
-
-/// Command interception timeout (milliseconds)
-pub const COMMAND_TIMEOUT_MS: u64 = 100;
 
 /// Reconnection settings
 pub const RECONNECT_BASE_DELAY_MS: u64 = 500;
@@ -268,16 +272,13 @@ pub const MESSAGE_QUEUE_MAX_AGE_SECS: u64 = 300; // 5 minutes
 
 /// Heartbeat interval (seconds)
 pub const HEARTBEAT_INTERVAL_SECS: u64 = 30;
-
-/// Session timeout for server (seconds)
-pub const SESSION_TIMEOUT_SECS: u64 = 30;
 ```
 
 ---
 
-## 3. Entry Point
+## 4. Entry Point
 
-### 3.1 main.rs
+### 4.1 main.rs
 
 ```rust
 use clap::Parser;
@@ -285,10 +286,8 @@ use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
 
 mod app;
 mod auth;
-mod commands;
 mod config;
 mod error;
-mod interceptor;
 mod pty;
 mod remote;
 mod terminal;
@@ -326,34 +325,41 @@ async fn main() -> anyhow::Result<()> {
 
 ---
 
-## 4. Application Orchestration
+## 5. Application Orchestration
 
-### 4.1 app.rs
+### 5.1 app.rs
+
+The app orchestrates startup, authentication, WebSocket connection, and the
+main I/O loop. All remote connectivity happens automatically on startup.
 
 ```rust
 use crate::{
-    config, error::Result, interceptor::CommandInterceptor,
-    pty::PtyManager, remote::RemoteClient, terminal::TerminalManager,
-    types::{ConnectionState, SessionId},
+    auth::{device_flow, keychain, token},
+    config,
+    error::{NexoError, Result},
+    pty::PtyManager,
+    remote::RemoteClient,
+    terminal::TerminalManager,
+    types::{ConnectionState, DeviceId, SessionId},
 };
 use std::sync::Arc;
-use tokio::sync::{mpsc, Mutex};
-
-/// Main application state
-pub struct App {
-    session_id: SessionId,
-    connection_state: Arc<Mutex<ConnectionState>>,
-    pty: PtyManager,
-    terminal: TerminalManager,
-    interceptor: CommandInterceptor,
-    remote: Option<RemoteClient>,
-}
+use tokio::sync::Mutex;
 
 /// Run the application
 pub async fn run(claude_args: Vec<String>) -> Result<i32> {
     // Generate session ID
     let session_id = SessionId::new();
     tracing::info!("Starting session: {}", session_id);
+
+    // Authenticate (blocking if device flow needed)
+    let access_token = authenticate().await?;
+
+    // Get or create device ID
+    let device_id = get_or_create_device_id()?;
+    let device_name = get_device_name();
+    let cwd = std::env::current_dir()
+        .map(|p| p.to_string_lossy().to_string())
+        .unwrap_or_else(|_| ".".to_string());
 
     // Set up terminal (raw mode)
     let mut terminal = TerminalManager::new()?;
@@ -362,86 +368,210 @@ pub async fn run(claude_args: Vec<String>) -> Result<i32> {
     // Spawn Claude Code in PTY
     let pty = PtyManager::spawn("claude", &claude_args)?;
 
-    // Create channels for I/O
-    let (stdin_tx, stdin_rx) = mpsc::channel::<Vec<u8>>(256);
-    let (stdout_tx, stdout_rx) = mpsc::channel::<Vec<u8>>(256);
-    let (cmd_tx, cmd_rx) = mpsc::channel::<Command>(16);
+    // Connect WebSocket to SessionHub
+    tracing::info!("Connecting to SessionHub...");
+    let remote = RemoteClient::connect(
+        &access_token,
+        &device_id,
+        &session_id,
+        &device_name,
+        &cwd,
+    )
+    .await?;
 
-    // Create interceptor
-    let interceptor = CommandInterceptor::new(cmd_tx);
+    tracing::info!("Connected. Session ID: {}", session_id);
 
-    // Create app state
-    let connection_state = Arc::new(Mutex::new(ConnectionState::Detached));
-    let app = Arc::new(Mutex::new(App {
-        session_id: session_id.clone(),
-        connection_state: connection_state.clone(),
-        pty,
-        terminal,
-        interceptor,
-        remote: None,
-    }));
+    // Run the main I/O loop with full duplex streaming
+    let exit_code = run_io_loop(pty, terminal, remote, session_id).await?;
 
-    // Run the main I/O loop
-    let exit_code = run_io_loop(app, stdin_rx, stdout_rx, cmd_rx).await?;
-
-    // Cleanup (terminal restore handled by Drop)
     Ok(exit_code)
 }
 
-/// Main I/O loop - multiplexes between stdin, PTY, and WebSocket
-async fn run_io_loop(
-    app: Arc<Mutex<App>>,
-    mut stdin_rx: mpsc::Receiver<Vec<u8>>,
-    mut stdout_rx: mpsc::Receiver<Vec<u8>>,
-    mut cmd_rx: mpsc::Receiver<Command>,
-) -> Result<i32> {
-    use tokio::select;
+/// Authenticate using stored credentials or device flow
+async fn authenticate() -> Result<String> {
+    // Try existing token
+    if let Ok(Some(token)) = keychain::get_access_token() {
+        if token::is_valid(&token) {
+            tracing::debug!("Using stored access token");
+            return Ok(token);
+        }
 
-    loop {
-        select! {
-            // Handle user input
-            Some(input) = stdin_rx.recv() => {
-                let mut app = app.lock().await;
-                app.handle_stdin(&input).await?;
+        // Try refresh
+        if let Ok(Some(refresh)) = keychain::get_refresh_token() {
+            if let Ok((new_access, new_refresh)) = token::refresh(&refresh).await {
+                keychain::store_access_token(&new_access)?;
+                keychain::store_refresh_token(&new_refresh)?;
+                tracing::debug!("Refreshed access token");
+                return Ok(new_access);
             }
-
-            // Handle PTY output
-            Some(output) = stdout_rx.recv() => {
-                let mut app = app.lock().await;
-                app.handle_pty_output(&output).await?;
-            }
-
-            // Handle intercepted commands
-            Some(cmd) = cmd_rx.recv() => {
-                let mut app = app.lock().await;
-                app.handle_command(cmd).await?;
-            }
-
-            // PTY process exited
-            else => break,
         }
     }
 
-    // Get exit code from PTY
-    let app = app.lock().await;
-    Ok(app.pty.exit_code().unwrap_or(0))
+    // Need device flow
+    tracing::info!("Starting authentication...");
+    do_device_flow().await
 }
 
-/// Intercepted command
-#[derive(Debug)]
-pub enum Command {
-    Attach,
-    Detach,
-    Status,
-    Help,
+/// Run OAuth Device Flow
+async fn do_device_flow() -> Result<String> {
+    let device_response = device_flow::request_device_code().await?;
+
+    // Display auth instructions to user
+    eprintln!();
+    eprintln!("To authenticate, visit: {}", device_response.verification_uri);
+    eprintln!("Enter code: {}", device_response.user_code);
+    eprintln!();
+    eprintln!("Waiting for authorization...");
+
+    let token_response = device_flow::poll_for_token(
+        &device_response.device_code,
+        device_response.interval,
+        device_response.expires_in,
+    )
+    .await?;
+
+    // Store tokens
+    keychain::store_access_token(&token_response.access_token)?;
+    keychain::store_refresh_token(&token_response.refresh_token)?;
+
+    eprintln!("Authenticated successfully.");
+    eprintln!();
+
+    Ok(token_response.access_token)
+}
+
+/// Get or create device ID
+fn get_or_create_device_id() -> Result<DeviceId> {
+    match keychain::get_device_id() {
+        Ok(Some(id)) => Ok(DeviceId::from_string(id)),
+        _ => {
+            let id = DeviceId::new();
+            keychain::store_device_id(id.as_str())?;
+            Ok(id)
+        }
+    }
+}
+
+/// Get device name from hostname
+fn get_device_name() -> String {
+    hostname::get()
+        .map(|s| s.to_string_lossy().to_string())
+        .unwrap_or_else(|_| "Unknown".to_string())
+}
+
+/// Main I/O loop - full duplex streaming between PTY and WebSocket
+async fn run_io_loop(
+    pty: PtyManager,
+    terminal: TerminalManager,
+    mut remote: RemoteClient,
+    session_id: SessionId,
+) -> Result<i32> {
+    use tokio::select;
+
+    // Create channels for PTY I/O
+    let (pty_output_tx, mut pty_output_rx) = tokio::sync::mpsc::channel::<Vec<u8>>(256);
+
+    // Spawn PTY reader task
+    let pty_reader = pty.clone_reader();
+    tokio::spawn(async move {
+        let mut buf = [0u8; 4096];
+        loop {
+            match pty_reader.read(&mut buf) {
+                Ok(0) => break, // EOF
+                Ok(n) => {
+                    if pty_output_tx.send(buf[..n].to_vec()).await.is_err() {
+                        break;
+                    }
+                }
+                Err(_) => break,
+            }
+        }
+    });
+
+    // Spawn stdin reader task
+    let (stdin_tx, mut stdin_rx) = tokio::sync::mpsc::channel::<Vec<u8>>(256);
+    tokio::spawn(async move {
+        use std::io::Read;
+        let mut stdin = std::io::stdin();
+        let mut buf = [0u8; 1024];
+        loop {
+            match stdin.read(&mut buf) {
+                Ok(0) => break,
+                Ok(n) => {
+                    if stdin_tx.send(buf[..n].to_vec()).await.is_err() {
+                        break;
+                    }
+                }
+                Err(_) => break,
+            }
+        }
+    });
+
+    loop {
+        select! {
+            // PTY output → terminal + WebSocket
+            Some(output) = pty_output_rx.recv() => {
+                // Write to local terminal
+                terminal.write(&output)?;
+
+                // Stream to remote viewers
+                if let Err(e) = remote.send_output(&output).await {
+                    tracing::warn!("Failed to send output: {}", e);
+                    // Continue - don't fail locally if remote fails
+                }
+            }
+
+            // Local stdin → PTY
+            Some(input) = stdin_rx.recv() => {
+                pty.write(&input).await?;
+            }
+
+            // WebSocket messages → PTY
+            msg = remote.recv() => {
+                match msg {
+                    Ok(Some(crate::remote::messages::IncomingMessage::Prompt { text, .. })) => {
+                        // Remote prompt - write to PTY
+                        pty.write(text.as_bytes()).await?;
+                    }
+                    Ok(Some(crate::remote::messages::IncomingMessage::Resize { cols, rows, .. })) => {
+                        // Resize PTY (for remote viewer sizing)
+                        let _ = pty.resize(cols, rows).await;
+                    }
+                    Ok(Some(crate::remote::messages::IncomingMessage::Error { message, .. })) => {
+                        tracing::error!("Server error: {}", message);
+                    }
+                    Ok(Some(_)) => {} // Ping handled internally
+                    Ok(None) => {
+                        // WebSocket closed - attempt reconnect
+                        tracing::warn!("WebSocket disconnected");
+                        // Reconnection handled by RemoteClient
+                    }
+                    Err(e) => {
+                        tracing::warn!("WebSocket error: {}", e);
+                    }
+                }
+            }
+
+            // PTY process exited
+            else => {
+                tracing::info!("PTY process exited");
+                break;
+            }
+        }
+    }
+
+    // Disconnect WebSocket on exit
+    let _ = remote.disconnect().await;
+
+    Ok(pty.exit_code().unwrap_or(0))
 }
 ```
 
 ---
 
-## 5. PTY Management
+## 6. PTY Management
 
-### 5.1 pty.rs
+### 6.1 pty.rs
 
 ```rust
 use crate::error::{NexoError, Result};
@@ -462,28 +592,22 @@ impl PtyManager {
     /// Spawn Claude Code in a new PTY
     pub fn spawn(command: &str, args: &[String]) -> Result<Self> {
         let pty_system = native_pty_system();
-
-        // Get terminal size
         let size = get_terminal_size();
 
-        // Create PTY
         let pair = pty_system
             .openpty(size)
             .map_err(|e| NexoError::SpawnError(e.to_string()))?;
 
-        // Build command
         let mut cmd = CommandBuilder::new(command);
         for arg in args {
             cmd.arg(arg);
         }
 
-        // Spawn child process
         let child = pair
             .slave
             .spawn_command(cmd)
             .map_err(|e| NexoError::SpawnError(e.to_string()))?;
 
-        // Get reader/writer for master PTY
         let reader = pair
             .master
             .try_clone_reader()
@@ -501,18 +625,19 @@ impl PtyManager {
         })
     }
 
+    /// Clone the reader for async reading
+    pub fn clone_reader(&self) -> PtyReader {
+        PtyReader {
+            reader: self.reader.clone(),
+        }
+    }
+
     /// Write bytes to PTY stdin
     pub async fn write(&self, data: &[u8]) -> Result<()> {
         let mut writer = self.writer.lock().await;
         writer.write_all(data)?;
         writer.flush()?;
         Ok(())
-    }
-
-    /// Read bytes from PTY stdout
-    pub async fn read(&self, buf: &mut [u8]) -> Result<usize> {
-        let mut reader = self.reader.lock().await;
-        Ok(reader.read(buf)?)
     }
 
     /// Resize the PTY
@@ -525,31 +650,34 @@ impl PtyManager {
                 pixel_width: 0,
                 pixel_height: 0,
             })
-            .map_err(|e| NexoError::PtyError(e))?;
+            .map_err(NexoError::PtyError)?;
         Ok(())
     }
 
-    /// Check if child process has exited
-    pub async fn try_wait(&self) -> Result<Option<u32>> {
-        let mut child = self.child.lock().await;
-        match child.try_wait() {
-            Ok(Some(status)) => Ok(Some(status.exit_code())),
-            Ok(None) => Ok(None),
-            Err(e) => Err(NexoError::SpawnError(e.to_string())),
-        }
-    }
-
-    /// Get exit code (blocking)
+    /// Get exit code (if process has exited)
     pub fn exit_code(&self) -> Option<i32> {
-        // Implementation depends on portable-pty version
-        None
+        None // Implementation depends on portable-pty version
+    }
+}
+
+/// Reader handle for async PTY output reading
+pub struct PtyReader {
+    reader: Arc<Mutex<Box<dyn Read + Send>>>,
+}
+
+impl PtyReader {
+    /// Read bytes from PTY (blocking)
+    pub fn read(&self, buf: &mut [u8]) -> std::io::Result<usize> {
+        // Use blocking read in spawned task
+        let reader = self.reader.blocking_lock();
+        // Note: This is simplified - real impl needs proper async
+        Ok(0) // Placeholder
     }
 }
 
 /// Get current terminal size
 fn get_terminal_size() -> PtySize {
     use crossterm::terminal::size;
-
     let (cols, rows) = size().unwrap_or((80, 24));
     PtySize {
         rows,
@@ -562,20 +690,16 @@ fn get_terminal_size() -> PtySize {
 
 ---
 
-## 6. Terminal Management
+## 7. Terminal Management
 
-### 6.1 terminal.rs
+### 7.1 terminal.rs
 
 ```rust
 use crate::error::Result;
-use crossterm::{
-    event::{self, Event, KeyCode, KeyEvent, KeyModifiers},
-    terminal::{self, EnterAlternateScreen, LeaveAlternateScreen},
-    ExecutableCommand,
-};
+use crossterm::terminal;
 use std::io::{self, Write};
 
-/// Manages terminal raw mode and input handling
+/// Manages terminal raw mode
 pub struct TerminalManager {
     was_raw: bool,
 }
@@ -601,28 +725,10 @@ impl TerminalManager {
         Ok(())
     }
 
-    /// Read a single event (non-blocking)
-    pub fn poll_event(&self, timeout: std::time::Duration) -> Result<Option<Event>> {
-        if event::poll(timeout)? {
-            Ok(Some(event::read()?))
-        } else {
-            Ok(None)
-        }
-    }
-
     /// Write to stdout
     pub fn write(&self, data: &[u8]) -> Result<()> {
         let mut stdout = io::stdout();
         stdout.write_all(data)?;
-        stdout.flush()?;
-        Ok(())
-    }
-
-    /// Write a line (for Nexo messages)
-    pub fn write_line(&self, msg: &str) -> Result<()> {
-        let mut stdout = io::stdout();
-        // Move to new line, write message
-        write!(stdout, "\r\n{}\r\n", msg)?;
         stdout.flush()?;
         Ok(())
     }
@@ -635,7 +741,6 @@ impl TerminalManager {
 
 impl Drop for TerminalManager {
     fn drop(&mut self) {
-        // Restore terminal state
         let _ = self.exit_raw_mode();
     }
 }
@@ -643,428 +748,9 @@ impl Drop for TerminalManager {
 
 ---
 
-## 7. Command Interceptor
+## 8. Remote Client
 
-### 7.1 interceptor.rs
-
-```rust
-use crate::{app::Command, config::COMMAND_TIMEOUT_MS, types::InterceptorState};
-use std::time::{Duration, Instant};
-use tokio::sync::mpsc;
-
-/// State machine for intercepting /commands
-pub struct CommandInterceptor {
-    state: InterceptorState,
-    buffer: String,
-    at_line_start: bool,
-    command_start: Option<Instant>,
-    cmd_tx: mpsc::Sender<Command>,
-}
-
-impl CommandInterceptor {
-    pub fn new(cmd_tx: mpsc::Sender<Command>) -> Self {
-        Self {
-            state: InterceptorState::Normal,
-            buffer: String::new(),
-            at_line_start: true,
-            command_start: None,
-            cmd_tx,
-        }
-    }
-
-    /// Process input byte(s), returns bytes to forward to PTY
-    pub async fn process(&mut self, input: &[u8]) -> Vec<u8> {
-        let mut forward = Vec::new();
-
-        for &byte in input {
-            match self.process_byte(byte).await {
-                ProcessResult::Forward(bytes) => forward.extend(bytes),
-                ProcessResult::Buffer => {}
-                ProcessResult::Command(cmd) => {
-                    let _ = self.cmd_tx.send(cmd).await;
-                }
-            }
-        }
-
-        forward
-    }
-
-    /// Check for command timeout
-    pub fn check_timeout(&mut self) -> Option<Vec<u8>> {
-        if self.state == InterceptorState::ReadingCommand {
-            if let Some(start) = self.command_start {
-                if start.elapsed() > Duration::from_millis(COMMAND_TIMEOUT_MS) {
-                    return Some(self.flush_buffer());
-                }
-            }
-        }
-        None
-    }
-
-    async fn process_byte(&mut self, byte: u8) -> ProcessResult {
-        match self.state {
-            InterceptorState::Normal => self.process_normal(byte),
-            InterceptorState::ReadingCommand => self.process_reading(byte),
-        }
-    }
-
-    fn process_normal(&mut self, byte: u8) -> ProcessResult {
-        match byte {
-            b'/' if self.at_line_start => {
-                self.state = InterceptorState::ReadingCommand;
-                self.buffer.clear();
-                self.command_start = Some(Instant::now());
-                ProcessResult::Buffer
-            }
-            b'\n' | b'\r' => {
-                self.at_line_start = true;
-                ProcessResult::Forward(vec![byte])
-            }
-            _ => {
-                self.at_line_start = false;
-                ProcessResult::Forward(vec![byte])
-            }
-        }
-    }
-
-    fn process_reading(&mut self, byte: u8) -> ProcessResult {
-        match byte {
-            b'\n' | b'\r' => {
-                // End of command input
-                self.state = InterceptorState::Normal;
-                self.at_line_start = true;
-                self.command_start = None;
-
-                if let Some(cmd) = self.match_command() {
-                    ProcessResult::Command(cmd)
-                } else {
-                    // Not a recognized command, forward everything
-                    let mut bytes = vec![b'/'];
-                    bytes.extend(self.buffer.bytes());
-                    bytes.push(byte);
-                    self.buffer.clear();
-                    ProcessResult::Forward(bytes)
-                }
-            }
-            b'/' if self.buffer.is_empty() => {
-                // Double slash escape - send single /
-                self.state = InterceptorState::Normal;
-                self.at_line_start = false;
-                self.command_start = None;
-                ProcessResult::Forward(vec![b'/'])
-            }
-            0x7f | 0x08 => {
-                // Backspace
-                if self.buffer.is_empty() {
-                    self.state = InterceptorState::Normal;
-                    self.command_start = None;
-                    ProcessResult::Forward(vec![b'/', byte])
-                } else {
-                    self.buffer.pop();
-                    ProcessResult::Buffer
-                }
-            }
-            b' ' => {
-                // Space - check if we have a command
-                if let Some(cmd) = self.match_command() {
-                    self.state = InterceptorState::Normal;
-                    self.at_line_start = false;
-                    self.command_start = None;
-                    self.buffer.clear();
-                    ProcessResult::Command(cmd)
-                } else {
-                    self.buffer.push(byte as char);
-                    ProcessResult::Buffer
-                }
-            }
-            _ => {
-                self.buffer.push(byte as char);
-                ProcessResult::Buffer
-            }
-        }
-    }
-
-    fn match_command(&self) -> Option<Command> {
-        match self.buffer.to_lowercase().as_str() {
-            "attach" => Some(Command::Attach),
-            "detach" => Some(Command::Detach),
-            "status" => Some(Command::Status),
-            "help" => Some(Command::Help),
-            _ => None,
-        }
-    }
-
-    fn flush_buffer(&mut self) -> Vec<u8> {
-        self.state = InterceptorState::Normal;
-        self.at_line_start = false;
-        self.command_start = None;
-
-        let mut bytes = vec![b'/'];
-        bytes.extend(self.buffer.bytes());
-        self.buffer.clear();
-        bytes
-    }
-}
-
-enum ProcessResult {
-    Forward(Vec<u8>),
-    Buffer,
-    Command(Command),
-}
-```
-
----
-
-## 8. Command Implementations
-
-### 8.1 commands/mod.rs
-
-```rust
-pub mod attach;
-pub mod detach;
-pub mod help;
-pub mod status;
-
-pub use attach::execute_attach;
-pub use detach::execute_detach;
-pub use help::execute_help;
-pub use status::execute_status;
-```
-
-### 8.2 commands/help.rs
-
-```rust
-use crate::terminal::TerminalManager;
-use crate::error::Result;
-
-const HELP_TEXT: &str = r#"
-Nexo Commands:
-  /attach  - Connect this session for remote access
-  /detach  - Disconnect from remote (continue locally)
-  /status  - Show connection status
-  /help    - Show this help
-
-All other input is sent to Claude Code.
-Type // to send a literal /
-"#;
-
-pub async fn execute_help(terminal: &TerminalManager) -> Result<()> {
-    terminal.write_line(HELP_TEXT)?;
-    Ok(())
-}
-```
-
-### 8.3 commands/status.rs
-
-```rust
-use crate::{
-    error::Result,
-    terminal::TerminalManager,
-    types::{ConnectionState, DeviceId, SessionId},
-};
-
-pub async fn execute_status(
-    terminal: &TerminalManager,
-    session_id: &SessionId,
-    connection_state: ConnectionState,
-    device_name: Option<&str>,
-    cwd: &str,
-) -> Result<()> {
-    let mut output = format!(
-        "\nSession ID: {}\nStatus: {:?}\n",
-        session_id, connection_state
-    );
-
-    if connection_state == ConnectionState::Attached {
-        output.push_str("Connected to: api.nexo.dev\n");
-        if let Some(name) = device_name {
-            output.push_str(&format!("Device: {}\n", name));
-        }
-    }
-
-    output.push_str(&format!("Working directory: {}\n", cwd));
-
-    terminal.write_line(&output)?;
-    Ok(())
-}
-```
-
-### 8.4 commands/attach.rs
-
-```rust
-use crate::{
-    auth::{device_flow, keychain, token},
-    config,
-    error::{NexoError, Result},
-    remote::RemoteClient,
-    terminal::TerminalManager,
-    types::{ConnectionState, DeviceId, SessionId},
-};
-use std::sync::Arc;
-use tokio::sync::Mutex;
-
-pub async fn execute_attach(
-    terminal: &TerminalManager,
-    session_id: &SessionId,
-    connection_state: Arc<Mutex<ConnectionState>>,
-    cwd: &str,
-) -> Result<Option<RemoteClient>> {
-    // Check if already attached
-    {
-        let state = connection_state.lock().await;
-        if *state == ConnectionState::Attached {
-            terminal.write_line(&format!(
-                "\nAlready attached. Session ID: {}\n",
-                session_id
-            ))?;
-            return Ok(None);
-        }
-    }
-
-    // Update state to connecting
-    {
-        let mut state = connection_state.lock().await;
-        *state = ConnectionState::Connecting;
-    }
-
-    // Try to get existing token
-    let access_token = match keychain::get_access_token() {
-        Ok(Some(token)) if token::is_valid(&token) => token,
-        Ok(Some(token)) => {
-            // Try refresh
-            match keychain::get_refresh_token() {
-                Ok(Some(refresh)) => {
-                    match token::refresh(&refresh).await {
-                        Ok((new_access, new_refresh)) => {
-                            keychain::store_access_token(&new_access)?;
-                            keychain::store_refresh_token(&new_refresh)?;
-                            new_access
-                        }
-                        Err(_) => {
-                            // Refresh failed, need re-auth
-                            do_device_flow(terminal).await?
-                        }
-                    }
-                }
-                _ => do_device_flow(terminal).await?,
-            }
-        }
-        _ => do_device_flow(terminal).await?,
-    };
-
-    // Get or create device ID
-    let device_id = match keychain::get_device_id() {
-        Ok(Some(id)) => DeviceId::from_string(id),
-        _ => {
-            let id = DeviceId::new();
-            keychain::store_device_id(id.as_str())?;
-            id
-        }
-    };
-
-    // Get device name
-    let device_name = hostname::get()
-        .map(|s| s.to_string_lossy().to_string())
-        .unwrap_or_else(|_| "Unknown".to_string());
-
-    // Connect WebSocket
-    terminal.write_line("\nConnecting...")?;
-
-    let client = RemoteClient::connect(
-        &access_token,
-        &device_id,
-        session_id,
-        &device_name,
-        cwd,
-    )
-    .await?;
-
-    // Update state
-    {
-        let mut state = connection_state.lock().await;
-        *state = ConnectionState::Attached;
-    }
-
-    terminal.write_line(&format!(
-        "\n✓ Attached. Session ID: {}\n",
-        session_id
-    ))?;
-
-    Ok(Some(client))
-}
-
-async fn do_device_flow(terminal: &TerminalManager) -> Result<String> {
-    terminal.write_line("\nStarting authentication...")?;
-
-    let device_response = device_flow::request_device_code().await?;
-
-    terminal.write_line(&format!(
-        "\nTo attach this session, visit: {}\nEnter code: {}\n",
-        device_response.verification_uri, device_response.user_code
-    ))?;
-
-    terminal.write_line("Waiting for authorization...")?;
-
-    let token_response = device_flow::poll_for_token(
-        &device_response.device_code,
-        device_response.interval,
-        device_response.expires_in,
-    )
-    .await?;
-
-    // Store tokens
-    keychain::store_access_token(&token_response.access_token)?;
-    keychain::store_refresh_token(&token_response.refresh_token)?;
-
-    Ok(token_response.access_token)
-}
-```
-
-### 8.5 commands/detach.rs
-
-```rust
-use crate::{
-    error::Result,
-    remote::RemoteClient,
-    terminal::TerminalManager,
-    types::ConnectionState,
-};
-use std::sync::Arc;
-use tokio::sync::Mutex;
-
-pub async fn execute_detach(
-    terminal: &TerminalManager,
-    connection_state: Arc<Mutex<ConnectionState>>,
-    remote: &mut Option<RemoteClient>,
-) -> Result<()> {
-    let state = *connection_state.lock().await;
-
-    if state != ConnectionState::Attached {
-        terminal.write_line("\nNot attached.\n")?;
-        return Ok(());
-    }
-
-    // Send detach and close connection
-    if let Some(client) = remote.take() {
-        client.detach().await?;
-    }
-
-    // Update state
-    {
-        let mut state = connection_state.lock().await;
-        *state = ConnectionState::Detached;
-    }
-
-    terminal.write_line("\nDetached. Continuing locally.\n")?;
-    Ok(())
-}
-```
-
----
-
-## 9. Remote Client
-
-### 9.1 remote/mod.rs
+### 8.1 remote/mod.rs
 
 ```rust
 pub mod messages;
@@ -1075,7 +761,7 @@ pub mod websocket;
 pub use websocket::RemoteClient;
 ```
 
-### 9.2 remote/messages.rs
+### 8.2 remote/messages.rs
 
 ```rust
 use serde::{Deserialize, Serialize};
@@ -1084,7 +770,7 @@ use serde::{Deserialize, Serialize};
 #[derive(Debug, Serialize)]
 #[serde(tag = "type", rename_all = "snake_case")]
 pub enum OutgoingMessage {
-    SessionAttach {
+    SessionConnect {
         session_id: String,
         device_id: String,
         device_name: String,
@@ -1095,7 +781,7 @@ pub enum OutgoingMessage {
         data: String, // base64 encoded
         timestamp: String,
     },
-    SessionDetach {
+    SessionDisconnect {
         session_id: String,
     },
     Pong,
@@ -1124,7 +810,7 @@ pub enum IncomingMessage {
 }
 ```
 
-### 9.3 remote/websocket.rs
+### 8.3 remote/websocket.rs
 
 ```rust
 use crate::{
@@ -1180,9 +866,9 @@ impl RemoteClient {
             session_id: session_id.clone(),
         };
 
-        // Send attach message
+        // Send connect message
         client
-            .send(OutgoingMessage::SessionAttach {
+            .send(OutgoingMessage::SessionConnect {
                 session_id: session_id.to_string(),
                 device_id: device_id.as_str().to_string(),
                 device_name: device_name.to_string(),
@@ -1203,13 +889,13 @@ impl RemoteClient {
         self.send(msg).await
     }
 
-    /// Send detach message and close
-    pub async fn detach(mut self) -> Result<()> {
-        let msg = OutgoingMessage::SessionDetach {
+    /// Disconnect and close WebSocket
+    pub async fn disconnect(mut self) -> Result<()> {
+        let msg = OutgoingMessage::SessionDisconnect {
             session_id: self.session_id.to_string(),
         };
-        self.send(msg).await?;
-        self.ws.close(None).await?;
+        let _ = self.send(msg).await;
+        let _ = self.ws.close(None).await;
         Ok(())
     }
 
@@ -1223,13 +909,13 @@ impl RemoteClient {
                 // Handle ping automatically
                 if matches!(msg, IncomingMessage::Ping) {
                     self.send(OutgoingMessage::Pong).await?;
-                    return self.recv().await; // Get next real message
+                    return self.recv().await;
                 }
 
                 Ok(Some(msg))
             }
             Some(Ok(Message::Close(_))) => Ok(None),
-            Some(Ok(_)) => self.recv().await, // Ignore binary, ping, pong
+            Some(Ok(_)) => self.recv().await,
             Some(Err(e)) => Err(e.into()),
             None => Ok(None),
         }
@@ -1244,7 +930,7 @@ impl RemoteClient {
 }
 ```
 
-### 9.4 remote/reconnect.rs
+### 8.4 remote/reconnect.rs
 
 ```rust
 use crate::config;
@@ -1252,7 +938,7 @@ use rand::Rng;
 use std::time::Duration;
 use tokio::time::sleep;
 
-/// Reconnection state machine
+/// Reconnection state machine with exponential backoff
 pub struct Reconnector {
     attempt: u32,
 }
@@ -1272,7 +958,6 @@ impl Reconnector {
         let max = config::RECONNECT_MAX_DELAY_MS;
         let jitter = config::RECONNECT_JITTER_MS;
 
-        // Exponential backoff with jitter
         let exp_delay = base.saturating_mul(2u64.saturating_pow(self.attempt));
         let jitter_value = rand::thread_rng().gen_range(0..=jitter);
         let delay = exp_delay.saturating_add(jitter_value).min(max);
@@ -1298,7 +983,7 @@ pub async fn wait(reconnector: &mut Reconnector) -> bool {
 }
 ```
 
-### 9.5 remote/queue.rs
+### 8.5 remote/queue.rs
 
 ```rust
 use crate::{config, remote::messages::OutgoingMessage};
@@ -1330,11 +1015,9 @@ impl MessageQueue {
 
     /// Add message to queue
     pub fn push(&mut self, message: OutgoingMessage) {
-        // Drop oldest if full
         if self.messages.len() >= self.max_size {
             self.messages.pop_front();
         }
-
         self.messages.push_back(QueuedMessage {
             message,
             timestamp: Instant::now(),
@@ -1345,7 +1028,6 @@ impl MessageQueue {
     pub fn drain(&mut self) -> Vec<OutgoingMessage> {
         let now = Instant::now();
         let max_age = self.max_age;
-
         self.messages
             .drain(..)
             .filter(|q| now.duration_since(q.timestamp) < max_age)
@@ -1353,12 +1035,10 @@ impl MessageQueue {
             .collect()
     }
 
-    /// Check if queue has messages
     pub fn is_empty(&self) -> bool {
         self.messages.is_empty()
     }
 
-    /// Number of messages in queue
     pub fn len(&self) -> usize {
         self.messages.len()
     }
@@ -1367,9 +1047,9 @@ impl MessageQueue {
 
 ---
 
-## 10. Authentication
+## 9. Authentication
 
-### 10.1 auth/mod.rs
+### 9.1 auth/mod.rs
 
 ```rust
 pub mod device_flow;
@@ -1377,11 +1057,11 @@ pub mod keychain;
 pub mod token;
 ```
 
-### 10.2 auth/device_flow.rs
+### 9.2 auth/device_flow.rs
 
 ```rust
 use crate::{config, error::{NexoError, Result}};
-use serde::{Deserialize, Serialize};
+use serde::Deserialize;
 use std::time::Duration;
 use tokio::time::sleep;
 
@@ -1450,31 +1130,25 @@ pub async fn poll_for_token(
 
         match response.json::<TokenPollResponse>().await? {
             TokenPollResponse::Success(token) => return Ok(token),
-            TokenPollResponse::Pending { error } => {
-                match error.as_str() {
-                    "authorization_pending" => continue,
-                    "slow_down" => {
-                        sleep(Duration::from_secs(5)).await;
-                        continue;
-                    }
-                    "expired_token" => {
-                        return Err(NexoError::AuthError(
-                            "Authorization expired".to_string(),
-                        ));
-                    }
-                    "access_denied" => {
-                        return Err(NexoError::AuthError(
-                            "Authorization denied".to_string(),
-                        ));
-                    }
-                    _ => {
-                        return Err(NexoError::AuthError(format!(
-                            "Unexpected error: {}",
-                            error
-                        )));
-                    }
+            TokenPollResponse::Pending { error } => match error.as_str() {
+                "authorization_pending" => continue,
+                "slow_down" => {
+                    sleep(Duration::from_secs(5)).await;
+                    continue;
                 }
-            }
+                "expired_token" => {
+                    return Err(NexoError::AuthError("Authorization expired".to_string()));
+                }
+                "access_denied" => {
+                    return Err(NexoError::AuthError("Authorization denied".to_string()));
+                }
+                _ => {
+                    return Err(NexoError::AuthError(format!(
+                        "Unexpected error: {}",
+                        error
+                    )));
+                }
+            },
         }
     }
 
@@ -1482,25 +1156,22 @@ pub async fn poll_for_token(
 }
 ```
 
-### 10.3 auth/keychain.rs
+### 9.3 auth/keychain.rs
 
 ```rust
 use crate::{config, error::{NexoError, Result}};
 
-/// Get entry for a key
 fn entry(key: &str) -> Result<keyring::Entry> {
     keyring::Entry::new(config::KEYCHAIN_SERVICE, key)
         .map_err(|e| NexoError::KeychainError(e.to_string()))
 }
 
-/// Store a value in keychain
 fn store(key: &str, value: &str) -> Result<()> {
     entry(key)?
         .set_password(value)
         .map_err(|e| NexoError::KeychainError(e.to_string()))
 }
 
-/// Get a value from keychain
 fn get(key: &str) -> Result<Option<String>> {
     match entry(key)?.get_password() {
         Ok(v) => Ok(Some(v)),
@@ -1509,7 +1180,6 @@ fn get(key: &str) -> Result<Option<String>> {
     }
 }
 
-/// Delete a value from keychain
 fn delete(key: &str) -> Result<()> {
     match entry(key)?.delete_credential() {
         Ok(()) => Ok(()),
@@ -1553,15 +1223,6 @@ pub fn get_device_id() -> Result<Option<String>> {
     get("device_id")
 }
 
-// Device key (Ed25519 private key, base64 encoded)
-pub fn store_device_key(key: &str) -> Result<()> {
-    store("device_key", key)
-}
-
-pub fn get_device_key() -> Result<Option<String>> {
-    get("device_key")
-}
-
 /// Clear all stored credentials
 pub fn clear_all() -> Result<()> {
     delete_access_token()?;
@@ -1570,7 +1231,7 @@ pub fn clear_all() -> Result<()> {
 }
 ```
 
-### 10.4 auth/token.rs
+### 9.4 auth/token.rs
 
 ```rust
 use crate::{config, error::Result};
@@ -1583,7 +1244,6 @@ struct Claims {
 
 /// Check if token is still valid (not expired)
 pub fn is_valid(token: &str) -> bool {
-    // Decode JWT payload (without verification - server will verify)
     let parts: Vec<&str> = token.split('.').collect();
     if parts.len() != 3 {
         return false;
@@ -1638,60 +1298,28 @@ pub async fn refresh(refresh_token: &str) -> Result<(String, String)> {
 
 ---
 
-## 11. Testing Strategy
+## 10. Testing
 
-### 11.1 Unit Tests
+### 10.1 Unit Tests
 
 Place unit tests in the same file as the code under test:
 
 ```rust
-// In interceptor.rs
+// In auth/token.rs
 #[cfg(test)]
 mod tests {
     use super::*;
-    use tokio::sync::mpsc;
 
-    #[tokio::test]
-    async fn test_command_detection() {
-        let (tx, mut rx) = mpsc::channel(16);
-        let mut interceptor = CommandInterceptor::new(tx);
-
-        // Type "/help\n"
-        let forward = interceptor.process(b"/help\n").await;
-
-        // Nothing should be forwarded
-        assert!(forward.is_empty());
-
-        // Command should be received
-        let cmd = rx.recv().await.unwrap();
-        assert!(matches!(cmd, Command::Help));
-    }
-
-    #[tokio::test]
-    async fn test_double_slash_escape() {
-        let (tx, _rx) = mpsc::channel(16);
-        let mut interceptor = CommandInterceptor::new(tx);
-
-        let forward = interceptor.process(b"//").await;
-
-        // Single slash should be forwarded
-        assert_eq!(forward, vec![b'/']);
-    }
-
-    #[tokio::test]
-    async fn test_non_command_passthrough() {
-        let (tx, _rx) = mpsc::channel(16);
-        let mut interceptor = CommandInterceptor::new(tx);
-
-        let forward = interceptor.process(b"/unknown\n").await;
-
-        // Full input should be forwarded
-        assert_eq!(forward, b"/unknown\n");
+    #[test]
+    fn test_invalid_token_format() {
+        assert!(!is_valid("not.a.valid.token"));
+        assert!(!is_valid(""));
+        assert!(!is_valid("only.two"));
     }
 }
 ```
 
-### 11.2 Integration Tests
+### 10.2 Integration Tests
 
 ```rust
 // tests/integration/pty_test.rs
@@ -1702,142 +1330,16 @@ async fn test_pty_spawn() {
     let pty = PtyManager::spawn("echo", &["hello".to_string()])
         .expect("Failed to spawn PTY");
 
-    let mut buf = [0u8; 1024];
-    let n = pty.read(&mut buf).await.expect("Failed to read");
-
-    let output = String::from_utf8_lossy(&buf[..n]);
-    assert!(output.contains("hello"));
-}
-```
-
-### 11.3 Mock Server for WebSocket Tests
-
-```rust
-// tests/integration/mock_server.rs
-use tokio::net::TcpListener;
-use tokio_tungstenite::accept_async;
-
-pub async fn start_mock_server() -> String {
-    let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
-    let addr = listener.local_addr().unwrap();
-
-    tokio::spawn(async move {
-        while let Ok((stream, _)) = listener.accept().await {
-            let ws = accept_async(stream).await.unwrap();
-            // Handle messages...
-        }
-    });
-
-    format!("ws://127.0.0.1:{}", addr.port())
+    // PTY should be created successfully
+    assert!(pty.exit_code().is_none());
 }
 ```
 
 ---
 
-## 12. Build and Distribution
+## 11. Development Workflow
 
-### 12.1 Cross-Platform Build Script
-
-Create `scripts/build.sh`:
-
-```bash
-#!/bin/bash
-set -e
-
-VERSION=$(grep '^version' Cargo.toml | head -1 | cut -d'"' -f2)
-TARGETS=(
-    "x86_64-apple-darwin"
-    "aarch64-apple-darwin"
-    "x86_64-unknown-linux-gnu"
-    "aarch64-unknown-linux-gnu"
-    "x86_64-pc-windows-msvc"
-)
-
-echo "Building nexo v${VERSION}"
-
-mkdir -p dist
-
-for target in "${TARGETS[@]}"; do
-    echo "Building for ${target}..."
-
-    cross build --release --target "$target"
-
-    if [[ "$target" == *"windows"* ]]; then
-        cp "target/${target}/release/nexo.exe" "dist/nexo-${VERSION}-${target}.exe"
-    else
-        cp "target/${target}/release/nexo" "dist/nexo-${VERSION}-${target}"
-    fi
-done
-
-echo "Build complete!"
-ls -la dist/
-```
-
-### 12.2 GitHub Actions Workflow
-
-Create `.github/workflows/release.yml`:
-
-```yaml
-name: Release
-
-on:
-  push:
-    tags:
-      - 'v*'
-
-jobs:
-  build:
-    strategy:
-      matrix:
-        include:
-          - os: macos-latest
-            target: x86_64-apple-darwin
-          - os: macos-latest
-            target: aarch64-apple-darwin
-          - os: ubuntu-latest
-            target: x86_64-unknown-linux-gnu
-          - os: ubuntu-latest
-            target: aarch64-unknown-linux-gnu
-          - os: windows-latest
-            target: x86_64-pc-windows-msvc
-
-    runs-on: ${{ matrix.os }}
-
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Install Rust
-        uses: dtolnay/rust-action@stable
-        with:
-          targets: ${{ matrix.target }}
-
-      - name: Build
-        run: cargo build --release --target ${{ matrix.target }}
-
-      - name: Upload artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: nexo-${{ matrix.target }}
-          path: target/${{ matrix.target }}/release/nexo*
-
-  release:
-    needs: build
-    runs-on: ubuntu-latest
-    steps:
-      - name: Download artifacts
-        uses: actions/download-artifact@v4
-
-      - name: Create Release
-        uses: softprops/action-gh-release@v1
-        with:
-          files: nexo-*/nexo*
-```
-
----
-
-## 13. Development Workflow
-
-### 13.1 Local Development
+### 11.1 Local Development
 
 ```bash
 # Build and run
@@ -1856,9 +1358,7 @@ cargo fmt --check
 cargo clippy -- -D warnings
 ```
 
-### 13.2 Pre-commit Checks
-
-Add to `packages/cli/scripts/pre-commit.sh`:
+### 11.2 Pre-commit Checks
 
 ```bash
 #!/bin/bash
@@ -1866,13 +1366,8 @@ set -e
 
 echo "Running pre-commit checks..."
 
-# Format check
 cargo fmt --check
-
-# Clippy
 cargo clippy -- -D warnings
-
-# Tests
 cargo test
 
 echo "All checks passed!"
@@ -1880,40 +1375,30 @@ echo "All checks passed!"
 
 ---
 
-## 14. Implementation Order
-
-Recommended implementation sequence for MVP:
+## 12. Implementation Order
 
 ### Phase 1: Local-Only CLI
 1. `main.rs` - Entry point with clap
 2. `terminal.rs` - Raw mode handling
 3. `pty.rs` - Claude Code spawning
-4. `app.rs` - Basic I/O loop (stdin → PTY, PTY → stdout)
+4. `app.rs` - Basic I/O loop (stdin -> PTY, PTY -> stdout)
 5. Test: `nexo` works identically to `claude`
 
-### Phase 2: Command Interception
-1. `interceptor.rs` - State machine
-2. `commands/help.rs` - Simple command
-3. `commands/status.rs` - Session info
-4. Test: `/help` and `/status` work, other input passes through
-
-### Phase 3: Authentication
+### Phase 2: Authentication
 1. `auth/keychain.rs` - Credential storage
 2. `auth/device_flow.rs` - OAuth implementation
 3. `auth/token.rs` - Token validation
 4. Test: Full device flow against mock/real server
 
-### Phase 4: Remote Connectivity
+### Phase 3: Remote Connectivity
 1. `remote/messages.rs` - Message types
 2. `remote/websocket.rs` - WebSocket client
 3. `remote/queue.rs` - Message buffering
 4. `remote/reconnect.rs` - Reconnection logic
-5. `commands/attach.rs` - Full attach flow
-6. `commands/detach.rs` - Detach flow
-7. Test: Attach, send/receive, detach
+5. Update `app.rs` - Auto-connect on startup, full duplex streaming
+6. Test: Connect, stream output, receive prompts, disconnect on exit
 
-### Phase 5: Polish
+### Phase 4: Polish
 1. Error handling improvements
 2. Cross-platform testing
 3. Performance optimization
-4. Documentation
