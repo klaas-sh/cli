@@ -13,7 +13,8 @@
     "lint": "eslint src/",
     "test": "vitest",
     "test:once": "vitest run",
-    "db:migrate": "wrangler d1 migrations apply DB --local"
+    "db:migrate": "wrangler d1 migrations apply DB --local",
+    "create-user": "node scripts/create-user.mjs"
   },
   "dependencies": {
     "hono": "^4.7.0",
@@ -26,6 +27,8 @@
     "@types/node": "^22.0.0",
     "@typescript-eslint/eslint-plugin": "^8.0.0",
     "@typescript-eslint/parser": "^8.0.0",
+    "barva": "^1.2.0",
+    "better-sqlite3": "^12.2.0",
     "eslint": "^8.57.0",
     "typescript": "^5.7.0",
     "vitest": "^3.0.0",
