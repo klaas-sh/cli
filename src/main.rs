@@ -20,11 +20,14 @@ use clap::Parser;
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
 
 mod app;
+mod auth;
 mod config;
+mod credentials;
 mod error;
 mod pty;
 mod terminal;
 mod types;
+mod websocket;
 
 /// CLI arguments.
 #[derive(Parser)]

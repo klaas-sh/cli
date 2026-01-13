@@ -1,22 +1,35 @@
 //! Application orchestration and main I/O loop.
 //!
 //! Wraps Claude Code in a PTY and captures all I/O for remote streaming.
-//! Auto-attaches to the remote session on startup.
+//! Handles authentication, WebSocket connection, and full-duplex I/O.
 
-use crate::config::CLAUDE_COMMAND;
+use std::sync::Arc;
+use std::time::Duration;
+
+use crossterm::event::{Event, KeyCode, KeyEvent, KeyModifiers};
+use tokio::sync::{mpsc, Mutex};
+use tracing::{debug, error, info, warn};
+
+use crate::auth::{authenticate, refresh_token, AuthError};
+use crate::config::{get_api_config, ApiConfig, CLAUDE_COMMAND};
+use crate::credentials::CredentialStore;
 use crate::error::{CliError, Result};
 use crate::pty::PtyManager;
 use crate::terminal::TerminalManager;
-use crate::types::{ConnectionState, SessionId};
-use crossterm::event::{Event, KeyCode, KeyEvent, KeyModifiers};
-use std::sync::Arc;
-use std::time::Duration;
-use tokio::sync::{mpsc, Mutex};
+use crate::types::{ConnectionState, DeviceId, SessionId};
+use crate::websocket::{IncomingMessage, WebSocketClient};
+
+/// Interval for checking WebSocket reconnection (milliseconds).
+const RECONNECT_CHECK_INTERVAL_MS: u64 = 100;
+
+/// Timeout for WebSocket receive operations (milliseconds).
+const WS_RECV_TIMEOUT_MS: u64 = 10;
 
 /// Runs the CLI application.
 ///
-/// Spawns Claude Code in a PTY, captures all I/O, and auto-attaches
-/// to the remote session for streaming.
+/// Spawns Claude Code in a PTY, captures all I/O, and connects to the remote
+/// session for streaming. Handles authentication, reconnection, and graceful
+/// shutdown.
 ///
 /// # Arguments
 /// * `claude_args` - Arguments to pass through to Claude Code.
@@ -24,25 +37,37 @@ use tokio::sync::{mpsc, Mutex};
 /// # Returns
 /// Exit code from Claude Code.
 pub async fn run(claude_args: Vec<String>) -> Result<i32> {
-    // Generate session ID
-    let session_id = SessionId::new();
-    tracing::info!("Starting session: {}", session_id);
+    // Load configuration from environment
+    let config = get_api_config();
+    info!(api_url = %config.api_url, ws_url = %config.ws_url, "Loaded configuration");
 
-    // Get current working directory
+    // Initialize credential store
+    let cred_store = CredentialStore::new();
+
+    // Get or generate device ID (persisted across sessions)
+    let device_id = get_or_create_device_id(&cred_store)?;
+    debug!(device_id = %device_id, "Using device ID");
+
+    // Ensure we have valid credentials (authenticate if needed)
+    let access_token = ensure_authenticated(&config, &cred_store).await?;
+
+    // Generate new session ID for this run
+    let session_id = SessionId::new();
+    info!(session_id = %session_id, "Starting session");
+
+    // Get current working directory and device name
     let cwd = std::env::current_dir()
         .map(|p| p.to_string_lossy().to_string())
         .unwrap_or_else(|_| ".".to_string());
 
-    // Get device name from hostname
     let device_name = hostname::get()
         .map(|s| s.to_string_lossy().to_string())
         .unwrap_or_else(|_| "Unknown".to_string());
 
-    tracing::info!(
-        "Device: {}, CWD: {}, Session: {}",
-        device_name,
-        cwd,
-        session_id
+    debug!(
+        device_name = %device_name,
+        cwd = %cwd,
+        "Session context"
     );
 
     // Set up terminal (raw mode)
@@ -62,21 +87,39 @@ pub async fn run(claude_args: Vec<String>) -> Result<i32> {
         }
     };
 
-    // Auto-attach: set connection state to Attached
-    // In full implementation, this would establish WebSocket connection
-    let connection_state = Arc::new(Mutex::new(ConnectionState::Attached));
-    tracing::info!("Auto-attached to session");
+    // Try to connect to WebSocket (non-blocking, continue if fails)
+    let ws_client = connect_websocket(
+        &config,
+        &access_token,
+        session_id.as_str(),
+        device_id.as_str(),
+        &device_name,
+        &cwd,
+    )
+    .await;
+
+    // Track connection state
+    let connection_state = Arc::new(Mutex::new(match &ws_client {
+        Some(_) => ConnectionState::Attached,
+        None => ConnectionState::Detached,
+    }));
+
+    // Wrap WebSocket client in Arc<Mutex> for sharing across tasks
+    let ws_client = Arc::new(Mutex::new(ws_client));
 
     // Create channels for coordinating shutdown
     let (shutdown_tx, mut shutdown_rx) = mpsc::channel::<i32>(1);
 
-    // Channel for PTY output (displayed to terminal, and later streamed to WebSocket)
+    // Channel for PTY output (displayed to terminal, streamed to WebSocket)
     let (pty_output_tx, mut pty_output_rx) = mpsc::channel::<Vec<u8>>(256);
 
-    // Channel for PTY input (from keyboard, and later from WebSocket)
+    // Channel for PTY input (from keyboard and WebSocket prompts)
     let (pty_input_tx, mut pty_input_rx) = mpsc::channel::<Vec<u8>>(256);
 
-    // Clone PTY for the reader task
+    // Channel for WebSocket incoming messages
+    let (ws_msg_tx, mut ws_msg_rx) = mpsc::channel::<IncomingMessage>(64);
+
+    // Clone handles for reader task
     let pty_for_reader = pty.clone();
     let shutdown_tx_reader = shutdown_tx.clone();
 
@@ -103,7 +146,7 @@ pub async fn run(claude_args: Vec<String>) -> Result<i32> {
         }
     });
 
-    // Clone PTY for the writer task
+    // Clone handles for writer task
     let pty_for_writer = pty.clone();
 
     // Spawn PTY writer task (writes input to Claude Code)
@@ -115,18 +158,116 @@ pub async fn run(claude_args: Vec<String>) -> Result<i32> {
         }
     });
 
-    // Main event loop - simple pass-through
+    // Clone handles for WebSocket receiver task
+    let ws_client_for_recv = Arc::clone(&ws_client);
+    let connection_state_for_recv = Arc::clone(&connection_state);
+
+    // Spawn WebSocket receiver task
+    let ws_recv_handle = tokio::spawn(async move {
+        loop {
+            // Check if we have a connection
+            let has_connection = {
+                let client = ws_client_for_recv.lock().await;
+                client.is_some()
+            };
+
+            if !has_connection {
+                // Wait before checking again
+                tokio::time::sleep(Duration::from_millis(RECONNECT_CHECK_INTERVAL_MS)).await;
+                continue;
+            }
+
+            // Try to receive a message with timeout
+            let recv_result = {
+                let client_guard = ws_client_for_recv.lock().await;
+                if let Some(ref client) = *client_guard {
+                    // Use a timeout to avoid blocking indefinitely
+                    tokio::time::timeout(Duration::from_millis(WS_RECV_TIMEOUT_MS), client.recv())
+                        .await
+                        .ok()
+                } else {
+                    None
+                }
+            };
+
+            match recv_result {
+                Some(Ok(Some(msg))) => {
+                    // Forward message to main loop
+                    if ws_msg_tx.send(msg).await.is_err() {
+                        break; // Channel closed, exit
+                    }
+                }
+                Some(Ok(None)) => {
+                    // Connection closed gracefully
+                    info!("WebSocket connection closed");
+                    *connection_state_for_recv.lock().await = ConnectionState::Detached;
+                }
+                Some(Err(e)) => {
+                    // Connection error - mark as disconnected
+                    warn!(error = %e, "WebSocket receive error");
+                    *connection_state_for_recv.lock().await = ConnectionState::Reconnecting;
+                }
+                None => {
+                    // Timeout - continue polling
+                }
+            }
+        }
+    });
+
+    // Clone handles for main loop
+    let ws_client_for_loop = Arc::clone(&ws_client);
+    let connection_state_for_loop = Arc::clone(&connection_state);
+    let pty_for_resize = pty.clone();
+
+    // Main event loop - full duplex I/O
     let exit_code = 'main: loop {
         tokio::select! {
-            // Handle PTY output (display to terminal)
+            // Handle PTY output (display to terminal, stream to WebSocket)
             Some(output) = pty_output_rx.recv() => {
                 // Write to local terminal
                 terminal.write(&output)?;
 
-                // TODO: Stream to WebSocket when connected
-                // if *connection_state.lock().await == ConnectionState::Attached {
-                //     websocket.send(output).await;
-                // }
+                // Stream to WebSocket if connected
+                let state = *connection_state_for_loop.lock().await;
+                if state == ConnectionState::Attached {
+                    let client_guard = ws_client_for_loop.lock().await;
+                    if let Some(ref client) = *client_guard {
+                        if let Err(e) = client.send_output(&output).await {
+                            debug!(error = %e, "Failed to send output to WebSocket");
+                            // Message is queued automatically by websocket module
+                        }
+                    }
+                }
+            }
+
+            // Handle WebSocket incoming messages
+            Some(msg) = ws_msg_rx.recv() => {
+                match msg {
+                    IncomingMessage::Prompt { text, .. } => {
+                        // Inject prompt text into PTY
+                        debug!(text = %text, "Received prompt from web client");
+                        let _ = pty_input_tx.send(text.into_bytes()).await;
+                    }
+                    IncomingMessage::Resize { cols, rows, .. } => {
+                        // Resize PTY
+                        debug!(cols, rows, "Received resize request");
+                        if let Err(e) = pty_for_resize.resize(cols, rows).await {
+                            warn!(error = %e, "Failed to resize PTY");
+                        }
+                    }
+                    IncomingMessage::Ping => {
+                        // Respond with pong
+                        debug!("Received ping, sending pong");
+                        let client_guard = ws_client_for_loop.lock().await;
+                        if let Some(ref client) = *client_guard {
+                            let _ = client.send_pong().await;
+                        }
+                    }
+                    IncomingMessage::Error { code, message } => {
+                        // Log error from server
+                        error!(code = %code, message = %message, "Server error");
+                    }
+                }
             }
 
             // Handle shutdown signal
@@ -134,15 +275,17 @@ pub async fn run(claude_args: Vec<String>) -> Result<i32> {
                 break 'main code;
             }
 
-            // Poll for keyboard input
+            // Poll for keyboard input and handle reconnection
             _ = tokio::time::sleep(Duration::from_millis(10)) => {
                 // Poll for terminal events (non-blocking)
-                while let Ok(Some(event)) = terminal.poll_event(Duration::from_millis(0)) {
+                while let Ok(Some(event)) =
+                    terminal.poll_event(Duration::from_millis(0))
+                {
                     match event {
                         Event::Key(key_event) => {
                             let bytes = key_event_to_bytes(key_event);
                             if !bytes.is_empty() {
-                                // Forward directly to PTY (no interception)
+                                // Forward directly to PTY
                                 let _ = pty_input_tx.send(bytes).await;
                             }
                         }
@@ -152,19 +295,223 @@ pub async fn run(claude_args: Vec<String>) -> Result<i32> {
                         _ => {}
                     }
                 }
+
+                // Handle reconnection if needed
+                let state = *connection_state_for_loop.lock().await;
+                if state == ConnectionState::Reconnecting {
+                    handle_reconnection(
+                        &ws_client_for_loop,
+                        &connection_state_for_loop,
+                        &config,
+                        &cred_store,
+                        session_id.as_str(),
+                        device_id.as_str(),
+                        &device_name,
+                        &cwd,
+                    )
+                    .await;
+                }
             }
         }
     };
 
-    // Cleanup
-    tracing::info!("Session ended: {}", session_id);
+    // Cleanup: send session_detach and close WebSocket
+    info!(session_id = %session_id, "Session ended");
+
+    {
+        let client_guard = ws_client.lock().await;
+        if let Some(ref client) = *client_guard {
+            if let Err(e) = client.close().await {
+                debug!(error = %e, "Error closing WebSocket");
+            }
+        }
+    }
+
     *connection_state.lock().await = ConnectionState::Detached;
 
+    // Abort WebSocket receiver task
+    ws_recv_handle.abort();
+
+    // Clean up PTY tasks
     drop(pty_input_tx);
     let _ = reader_handle.await;
     let _ = writer_handle.await;
 
     Ok(exit_code)
+}
+
+/// Gets or creates a device ID.
+///
+/// The device ID is persisted in the keychain/credential store and reused
+/// across sessions. If no device ID exists, a new ULID is generated.
+fn get_or_create_device_id(cred_store: &CredentialStore) -> Result<DeviceId> {
+    match cred_store.get_device_id()? {
+        Some(id) => {
+            debug!("Retrieved existing device ID");
+            Ok(DeviceId::from_string(id))
+        }
+        None => {
+            let new_id = DeviceId::new();
+            cred_store.store_device_id(new_id.as_str())?;
+            info!(device_id = %new_id, "Generated new device ID");
+            Ok(new_id)
+        }
+    }
+}
+
+/// Ensures the user is authenticated.
+///
+/// Checks for stored credentials and refreshes if expired.
+/// Runs OAuth Device Flow if no valid credentials exist.
+///
+/// # Returns
+/// A valid access token.
+async fn ensure_authenticated(config: &ApiConfig, cred_store: &CredentialStore) -> Result<String> {
+    // Check for stored tokens
+    if let Some((access_token, refresh_token_val)) = cred_store.get_tokens()? {
+        debug!("Found stored tokens, attempting to use them");
+
+        // Try to use the access token (API will reject if expired)
+        // For now, we assume it is valid; real implementation would
+        // verify the JWT expiry before use
+        // TODO: Decode JWT and check expiry
+
+        // Try refreshing to get a fresh token
+        match refresh_token(&config.api_url, &refresh_token_val).await {
+            Ok(tokens) => {
+                debug!("Successfully refreshed tokens");
+                cred_store.store_tokens(&tokens.access_token, &tokens.refresh_token)?;
+                return Ok(tokens.access_token);
+            }
+            Err(AuthError::InvalidGrant) => {
+                // Refresh token expired, need to re-authenticate
+                info!("Refresh token expired, starting new authentication");
+                cred_store.clear_tokens()?;
+            }
+            Err(e) => {
+                // Network error or other issue - try using existing token
+                warn!(error = %e, "Failed to refresh token, using existing");
+                return Ok(access_token);
+            }
+        }
+    }
+
+    // No valid tokens, run OAuth Device Flow
+    info!("No valid credentials, starting authentication");
+    let tokens = authenticate(&config.api_url)
+        .await
+        .map_err(|e| CliError::AuthError(e.to_string()))?;
+
+    // Store the new tokens
+    cred_store.store_tokens(&tokens.access_token, &tokens.refresh_token)?;
+    info!("Authentication successful");
+
+    Ok(tokens.access_token)
+}
+
+/// Connects to the WebSocket server.
+///
+/// Returns None if connection fails (CLI continues to work locally).
+async fn connect_websocket(
+    config: &ApiConfig,
+    access_token: &str,
+    session_id: &str,
+    device_id: &str,
+    device_name: &str,
+    cwd: &str,
+) -> Option<WebSocketClient> {
+    debug!(ws_url = %config.ws_url, "Connecting to WebSocket");
+
+    match WebSocketClient::connect(
+        &config.ws_url,
+        access_token,
+        session_id,
+        device_id,
+        device_name,
+        cwd,
+    )
+    .await
+    {
+        Ok(client) => {
+            info!("Connected to remote session");
+            Some(client)
+        }
+        Err(e) => {
+            warn!(
+                error = %e,
+                "Failed to connect to remote session, continuing locally"
+            );
+            None
+        }
+    }
+}
+
+/// Handles WebSocket reconnection with backoff.
+#[allow(clippy::too_many_arguments)]
+async fn handle_reconnection(
+    ws_client: &Arc<Mutex<Option<WebSocketClient>>>,
+    connection_state: &Arc<Mutex<ConnectionState>>,
+    config: &ApiConfig,
+    cred_store: &CredentialStore,
+    session_id: &str,
+    device_id: &str,
+    device_name: &str,
+    cwd: &str,
+) {
+    debug!("Attempting WebSocket reconnection");
+
+    // First, try to reconnect with the existing client
+    {
+        let client_guard = ws_client.lock().await;
+        if let Some(ref client) = *client_guard {
+            match client.reconnect().await {
+                Ok(true) => {
+                    info!("Reconnected to remote session");
+                    *connection_state.lock().await = ConnectionState::Attached;
+                    return;
+                }
+                Ok(false) => {
+                    // Max attempts reached, give up
+                    warn!("Max reconnection attempts reached");
+                }
+                Err(e) => {
+                    debug!(error = %e, "Reconnection attempt failed");
+                    // Continue to try fresh connection
+                }
+            }
+        }
+    }
+
+    // Try a fresh connection with potentially refreshed token
+    let access_token = match ensure_authenticated(config, cred_store).await {
+        Ok(token) => token,
+        Err(e) => {
+            warn!(error = %e, "Failed to get access token for reconnection");
+            *connection_state.lock().await = ConnectionState::Detached;
+            return;
+        }
+    };
+
+    match connect_websocket(
+        config,
+        &access_token,
+        session_id,
+        device_id,
+        device_name,
+        cwd,
+    )
+    .await
+    {
+        Some(new_client) => {
+            *ws_client.lock().await = Some(new_client);
+            *connection_state.lock().await = ConnectionState::Attached;
+            info!("Established new connection to remote session");
+        }
+        None => {
+            *connection_state.lock().await = ConnectionState::Detached;
+            warn!("Failed to establish new connection, continuing locally");
+        }
+    }
 }
 
 /// Converts a key event to raw bytes.
