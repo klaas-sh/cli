@@ -133,7 +133,7 @@ async function createUser() {
       }
 
       console.log(
-        bold`\nYou can now login to the dashboard at http://localhost:3000`
+        bold`\nYou can now login to the dashboard at http://localhost:3001`
       );
 
     } finally {

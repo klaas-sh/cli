@@ -58,10 +58,12 @@ authRoutes.post('/device', async (c) => {
     expirationTtl: DEVICE_CODE_EXPIRES_IN,
   });
 
-  const verificationUri =
-    c.env.ENVIRONMENT === 'production'
-      ? 'https://nexo.dev/device'
-      : 'http://localhost:3000/device';
+  // Use DASHBOARD_URL from environment or fall back to defaults
+  const dashboardUrl = c.env.DASHBOARD_URL
+    || (c.env.ENVIRONMENT === 'production'
+      ? 'https://app.nexo.dev'
+      : 'http://localhost:3001');
+  const verificationUri = `${dashboardUrl}/device`;
 
   const response: DeviceCode = {
     device_code: deviceCode,

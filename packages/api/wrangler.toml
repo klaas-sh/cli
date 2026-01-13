@@ -34,6 +34,7 @@ new_classes = ["SessionHub"]
 [vars]
 ENVIRONMENT = "development"
 API_VERSION = "v1"
+DASHBOARD_URL = "http://localhost:3001"
 
 # Staging environment
 [env.staging]
@@ -59,6 +60,7 @@ class_name = "SessionHub"
 
 [env.staging.vars]
 ENVIRONMENT = "staging"
+DASHBOARD_URL = "https://staging.nexo.dev"
 
 # Production environment
 [env.production]
@@ -85,3 +87,4 @@ class_name = "SessionHub"
 
 [env.production.vars]
 ENVIRONMENT = "production"
+DASHBOARD_URL = "https://app.nexo.dev"

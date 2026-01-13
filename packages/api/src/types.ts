@@ -26,6 +26,8 @@ export interface Env {
   GITHUB_CLIENT_SECRET?: string;
   /** JWT signing secret */
   JWT_SECRET?: string;
+  /** Dashboard URL (for device authorization flow) */
+  DASHBOARD_URL?: string;
 }
 
 /**
