@@ -1,0 +1,22 @@
+{
+  "name": "@nexo/monorepo",
+  "version": "0.0.1",
+  "private": true,
+  "description": "Wrapper around Claude Code",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/smoking-media/nexo.git"
+  },
+  "workspaces": [
+    "packages/*"
+  ],
+  "packageManager": "yarn@4.0.0",
+  "engines": {
+    "node": ">=18.0.0",
+    "yarn": ">=4.0.0"
+  },
+  "scripts": {
+    "build": "yarn workspaces foreach -Aptv run build",
+    "build:cli": "cd packages/cli && cargo build"
+  }
+}

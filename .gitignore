@@ -133,3 +133,9 @@ packages-backup/
 
 # screenshot - temp for development
 docs/screenshots/*
+
+# Rust
+target/
+Cargo.lock
+**/*.rs.bk
+*.pdb
