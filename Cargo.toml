@@ -28,6 +28,14 @@ ulid = "1"
 # Encoding
 base64 = "0.22"
 
+# WebSocket client
+tokio-tungstenite = { version = "0.24", features = ["native-tls"] }
+url = "2"
+futures-util = "0.3"
+
+# Randomness for backoff jitter
+rand = "0.8"
+
 # Time
 chrono = { version = "0.4", features = ["serde"] }
 
@@ -41,6 +49,15 @@ anyhow = "1"
 
 # Hostname detection
 hostname = "0.4"
+
+# Keychain access for credential storage
+keyring = "3"
+
+# Directory creation for fallback storage
+dirs = "5"
+
+# HTTP client for API calls
+reqwest = { version = "0.12", features = ["json", "rustls-tls"], default-features = false }
 
 [dev-dependencies]
 tokio-test = "0.4"
