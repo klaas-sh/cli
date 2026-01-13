@@ -26,6 +26,7 @@
     "dev": "concurrently -n api,cli -c blue,green \"yarn dev:api\" \"yarn dev:cli\"",
     "dev:api": "yarn workspace @nexo/api dev",
     "dev:cli": "cd packages/cli && cargo run",
+    "dev:dashboard": "yarn workspace @nexo/dashboard clean && yarn workspace @nexo/dashboard dev",
     "lint": "yarn workspaces foreach -Aptv run lint",
     "pre-commit": "yarn install && yarn lint && yarn typecheck && yarn test && yarn build",
     "test": "yarn workspaces foreach -Aptv run test:once",
