@@ -12,13 +12,15 @@ capabilities. This is Phase 1-2 of the MVP spec (local-only CLI).
 
 ## Available Commands (during a session)
 
-| Command   | Description                                        |
-|-----------|----------------------------------------------------|
-| `/help`   | Shows available commands                           |
-| `/status` | Shows session ID, connection state, working dir    |
-| `/attach` | Connect session for remote access (not yet implemented) |
-| `/detach` | Disconnect from remote (not yet implemented)       |
-| `//`      | Escape sequence - sends a literal `/` to Claude Code |
+| Command         | Description                                        |
+|-----------------|----------------------------------------------------|
+| `/nexo help`    | Shows available wrapper commands                   |
+| `/nexo status`  | Shows session ID, connection state, working dir    |
+| `/nexo attach`  | Connect session for remote access (not yet implemented) |
+| `/nexo detach`  | Disconnect from remote (not yet implemented)       |
+| `/nexo`         | Same as `/nexo help`                               |
+
+All Claude Code commands (`/help`, `/status`, `/compact`, etc.) pass through unchanged.
 
 ## Not Implemented (future phases):
 - Remote connectivity (WebSocket, OAuth)
@@ -74,10 +76,10 @@ cargo test
   
 #### What You Can Test
 
-1. Basic wrapping: Run cargo run - it should start Claude Code normally
-2. Command interception: Type /help at the start of a line - should show the help menu
-3. Status command: Type /status - shows session ID and working directory
-4. Escape sequence: Type // - should send a single / to Claude Code
+1. Basic wrapping: Run `cargo run` - it should start Claude Code normally
+2. Wrapper commands: Type `/nexo help` - should show the wrapper help menu
+3. Status command: Type `/nexo status` - shows session ID and working directory
+4. Claude Code commands: Type `/help` or `/status` - should pass through to Claude Code
 5. Passthrough: Normal typing and all Claude Code features should work unchanged
 
 Note: You need claude (Claude Code CLI) installed and in your PATH for this 
