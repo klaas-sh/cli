@@ -1,121 +1,126 @@
 'use client'
 
 import React, { useEffect, useRef } from 'react'
-import type { Terminal as XTerm } from '@xterm/xterm'
+import { Terminal as XTerm } from '@xterm/xterm'
+import { FitAddon } from '@xterm/addon-fit'
+import { WebLinksAddon } from '@xterm/addon-web-links'
+import '@xterm/xterm/css/xterm.css'
 
-/**
- * Props for the Terminal component.
- */
 interface TerminalProps {
-  /** The session ID to connect to */
   sessionId: string
-  /** Callback when the terminal disconnects */
   onDisconnect?: () => void
 }
 
 /**
- * Terminal component that displays a read-only view of the Claude Code session.
- * Uses xterm.js for terminal rendering and WebSocket for real-time updates.
+ * Terminal component that connects to a session via WebSocket.
+ * Uses xterm.js for terminal rendering.
  */
 export function Terminal({
   sessionId,
   onDisconnect
 }: TerminalProps): React.JSX.Element {
   const terminalRef = useRef<HTMLDivElement>(null)
-  const termInstanceRef = useRef<XTerm | null>(null)
+  const xtermRef = useRef<XTerm | null>(null)
   const wsRef = useRef<WebSocket | null>(null)
-  const initialized = useRef(false)
+  const fitAddonRef = useRef<FitAddon | null>(null)
 
   useEffect(() => {
-    // Prevent double initialization in strict mode
-    if (initialized.current) return
-    initialized.current = true
+    if (!terminalRef.current) return
 
-    let handleResize: (() => void) | null = null
+    // Initialize xterm.js
+    const term = new XTerm({
+      cursorBlink: true,
+      fontSize: 14,
+      fontFamily: 'Menlo, Monaco, "Courier New", monospace',
+      theme: {
+        background: '#1a1a1a',
+        foreground: '#f0f0f0',
+        cursor: '#f0f0f0',
+        cursorAccent: '#1a1a1a',
+        selectionBackground: 'rgba(255, 255, 255, 0.3)',
+      },
+      allowProposedApi: true,
+    })
 
-    // Dynamic import xterm to avoid SSR issues
-    async function initTerminal(): Promise<void> {
-      if (!terminalRef.current) return
+    const fitAddon = new FitAddon()
+    const webLinksAddon = new WebLinksAddon()
 
-      const { Terminal } = await import('@xterm/xterm')
-      const { FitAddon } = await import('@xterm/addon-fit')
-      const { WebLinksAddon } = await import('@xterm/addon-web-links')
+    term.loadAddon(fitAddon)
+    term.loadAddon(webLinksAddon)
 
-      const term = new Terminal({
-        cursorBlink: false,
-        disableStdin: true,
-        fontSize: 14,
-        fontFamily: 'Menlo, Monaco, "Courier New", monospace',
-        theme: {
-          background: '#1a1a1a',
-          foreground: '#e0e0e0',
-          cursor: '#e0e0e0',
-        },
-      })
-      termInstanceRef.current = term
+    term.open(terminalRef.current)
+    fitAddon.fit()
 
-      const fitAddon = new FitAddon()
-      term.loadAddon(fitAddon)
-      term.loadAddon(new WebLinksAddon())
+    xtermRef.current = term
+    fitAddonRef.current = fitAddon
 
-      term.open(terminalRef.current)
-      fitAddon.fit()
+    // Connect to WebSocket
+    const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8787'
+    const wsUrl = apiUrl.replace(/^http/, 'ws')
+    const token = localStorage.getItem('user-token')
 
-      // Show connecting message
-      term.writeln('\x1b[1;34mConnecting to session...\x1b[0m')
+    const ws = new WebSocket(
+      `${wsUrl}/dashboard/sessions/${sessionId}/terminal?token=${token}`
+    )
+
+    ws.onopen = (): void => {
+      term.writeln('\x1b[32mConnected to session\x1b[0m')
       term.writeln('')
-
-      // Handle WebSocket connection
-      const wsUrl = `${process.env.NEXT_PUBLIC_API_URL
-        ?.replace('http://', 'ws://')
-        .replace('https://', 'wss://')}/ws/sessions/${sessionId}`
-
-      const ws = new WebSocket(wsUrl)
-      wsRef.current = ws
-
-      ws.onopen = (): void => {
-        term.writeln('\x1b[1;32mConnected.\x1b[0m')
-        term.writeln('')
-      }
-
-      ws.onmessage = (event): void => {
-        term.write(event.data)
-      }
-
-      ws.onerror = (): void => {
-        term.writeln('\x1b[1;31mConnection error.\x1b[0m')
-      }
-
-      ws.onclose = (): void => {
-        term.writeln('')
-        term.writeln('\x1b[1;33mDisconnected.\x1b[0m')
-        onDisconnect?.()
-      }
-
-      // Handle window resize
-      handleResize = (): void => {
-        fitAddon.fit()
-      }
-      window.addEventListener('resize', handleResize)
     }
 
-    initTerminal()
-
-    // Cleanup function
-    return (): void => {
-      if (handleResize) {
-        window.removeEventListener('resize', handleResize)
+    ws.onmessage = (event): void => {
+      const data = JSON.parse(event.data)
+      if (data.type === 'output') {
+        term.write(data.content)
+      } else if (data.type === 'clear') {
+        term.clear()
       }
-      wsRef.current?.close()
-      termInstanceRef.current?.dispose()
+    }
+
+    ws.onclose = (): void => {
+      term.writeln('')
+      term.writeln('\x1b[31mDisconnected from session\x1b[0m')
+      onDisconnect?.()
+    }
+
+    ws.onerror = (): void => {
+      term.writeln('\x1b[31mConnection error\x1b[0m')
+    }
+
+    wsRef.current = ws
+
+    // Handle terminal input
+    term.onData((data) => {
+      if (ws.readyState === WebSocket.OPEN) {
+        ws.send(JSON.stringify({ type: 'input', content: data }))
+      }
+    })
+
+    // Handle resize
+    const handleResize = (): void => {
+      fitAddon.fit()
+      if (ws.readyState === WebSocket.OPEN) {
+        ws.send(JSON.stringify({
+          type: 'resize',
+          cols: term.cols,
+          rows: term.rows
+        }))
+      }
+    }
+
+    window.addEventListener('resize', handleResize)
+
+    return (): void => {
+      window.removeEventListener('resize', handleResize)
+      ws.close()
+      term.dispose()
     }
   }, [sessionId, onDisconnect])
 
   return (
     <div
       ref={terminalRef}
-      className="h-[500px] p-4"
-      style={{ backgroundColor: '#1a1a1a' }}
+      className="h-[500px] w-full"
     />
   )
 }
