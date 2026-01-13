@@ -124,8 +124,6 @@ export const config = {
      * - Static files (favicon, manifest, robots, etc.)
      * - public files (public folder)
      */
-    '/((?!api/health|_next/static|_next/image|favicon\\.ico|favicon-.*\\.png' +
-    '|apple-touch-icon\\.png|site\\.webmanifest|robots\\.txt|favicon\\.svg' +
-    '|android-chrome-.*\\.png|public).*)'
+    '/((?!api/health|_next/static|_next/image|favicon\\.ico|favicon-.*\\.png|apple-touch-icon\\.png|site\\.webmanifest|robots\\.txt|favicon\\.svg|android-chrome-.*\\.png|public).*)'
   ],
 }
