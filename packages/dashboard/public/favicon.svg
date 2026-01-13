@@ -5,7 +5,7 @@
   <rect x="2" y="3" width="20" height="4" rx="2" fill="#2563eb"/>
   <rect x="2" y="5" width="20" height="2" fill="#2563eb"/>
   <!-- Terminal prompt arrow -->
-  <path d="M6 11L10 14.5L6 18" stroke="#ffffff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+  <path d="M6 11L10 14.5L6 18" stroke="#cfcfcf" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
   <!-- Cursor/text line -->
-  <path d="M13 18H18" stroke="#ffffff" stroke-width="2" stroke-linecap="round"/>
+  <path d="M13 18H18" stroke="#cfcfcf" stroke-width="2" stroke-linecap="round"/>
 </svg>

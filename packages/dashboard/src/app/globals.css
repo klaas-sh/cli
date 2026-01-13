@@ -15,33 +15,40 @@
  * Use dark:text-app-*-dark to switch in dark mode.
  */
 @theme {
-  /* Light mode colors - Blue theme */
+  /*
+   * Theme colors derived from favicon:
+   * - Dark blue: #1e40af (background/accent)
+   * - Primary blue: #2563eb (interactive elements)
+   * - Soft white: #cfcfcf (text on dark backgrounds)
+   */
+
+  /* Light mode colors */
   --color-app-primary: #2563eb;
   --color-app-secondary: #64748b;
-  --color-app-accent: #3b82f6;
+  --color-app-accent: #1e40af;
   --color-app-success: #10b981;
   --color-app-warning: #f59e0b;
   --color-app-error: #ef4444;
-  --color-app-background: #f0f9ff;
+  --color-app-background: #f8fafc;
   --color-app-surface: #ffffff;
-  --color-app-border: #bfdbfe;
-  --color-app-text-primary: #1e3a5f;
-  --color-app-text-secondary: #1d4ed8;
-  --color-app-text-muted: #2563eb;
+  --color-app-border: #e2e8f0;
+  --color-app-text-primary: #1e293b;
+  --color-app-text-secondary: #475569;
+  --color-app-text-muted: #64748b;
 
   /* Dark mode colors */
-  --color-app-primary-dark: #60a5fa;
-  --color-app-secondary-dark: #6b7280;
-  --color-app-accent-dark: #93c5fd;
+  --color-app-primary-dark: #2563eb;
+  --color-app-secondary-dark: #64748b;
+  --color-app-accent-dark: #1e40af;
   --color-app-success-dark: #34d399;
   --color-app-warning-dark: #fbbf24;
   --color-app-error-dark: #f87171;
-  --color-app-background-dark: #0c1929;
-  --color-app-surface-dark: #1e3a5f;
-  --color-app-border-dark: #1d4ed8;
-  --color-app-text-primary-dark: #f0f9ff;
-  --color-app-text-secondary-dark: #bfdbfe;
-  --color-app-text-muted-dark: #93c5fd;
+  --color-app-background-dark: #0f172a;
+  --color-app-surface-dark: #1e293b;
+  --color-app-border-dark: #334155;
+  --color-app-text-primary-dark: #cfcfcf;
+  --color-app-text-secondary-dark: #94a3b8;
+  --color-app-text-muted-dark: #64748b;
 
   /* Spacing variables */
   --spacing-18: 4.5rem;
