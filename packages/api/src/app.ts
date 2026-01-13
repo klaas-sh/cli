@@ -16,7 +16,7 @@ import type { Env } from './types';
 import { authRoutes } from './routes/auth';
 import { sessionsRoutes } from './routes/sessions';
 import { healthRoutes } from './routes/health';
-import { dashboardRoutes } from './routes/dashboard';
+import { dashboardRoutes } from './routes/dashboard/index';
 
 /** Hono app type with environment bindings */
 export type AppType = Hono<{ Bindings: Env }>;
