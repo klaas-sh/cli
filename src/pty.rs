@@ -120,8 +120,8 @@ impl PtyManager {
 
 /// Gets the current terminal size, falling back to defaults.
 fn get_terminal_size() -> PtySize {
-    let (cols, rows) = crossterm::terminal::size()
-        .unwrap_or((DEFAULT_TERMINAL_COLS, DEFAULT_TERMINAL_ROWS));
+    let (cols, rows) =
+        crossterm::terminal::size().unwrap_or((DEFAULT_TERMINAL_COLS, DEFAULT_TERMINAL_ROWS));
 
     PtySize {
         rows,
@@ -138,8 +138,7 @@ mod tests {
     #[test]
     fn test_spawn_echo() {
         // Test spawning a simple command
-        let pty = PtyManager::spawn("echo", &["hello".to_string()])
-            .expect("Failed to spawn PTY");
+        let pty = PtyManager::spawn("echo", &["hello".to_string()]).expect("Failed to spawn PTY");
 
         // Read output
         let mut buf = [0u8; 1024];

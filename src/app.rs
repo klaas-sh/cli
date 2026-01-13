@@ -1,18 +1,22 @@
 //! Application orchestration and main I/O loop.
+//!
+//! Wraps Claude Code in a PTY and captures all I/O for remote streaming.
+//! Auto-attaches to the remote session on startup.
 
-use crate::commands::{execute_attach, execute_detach, execute_help, execute_status};
 use crate::config::CLAUDE_COMMAND;
 use crate::error::{CliError, Result};
-use crate::interceptor::CommandInterceptor;
 use crate::pty::PtyManager;
 use crate::terminal::TerminalManager;
-use crate::types::{Command, ConnectionState, SessionId};
+use crate::types::{ConnectionState, SessionId};
 use crossterm::event::{Event, KeyCode, KeyEvent, KeyModifiers};
 use std::sync::Arc;
 use std::time::Duration;
 use tokio::sync::{mpsc, Mutex};
 
 /// Runs the CLI application.
+///
+/// Spawns Claude Code in a PTY, captures all I/O, and auto-attaches
+/// to the remote session for streaming.
 ///
 /// # Arguments
 /// * `claude_args` - Arguments to pass through to Claude Code.
@@ -34,6 +38,13 @@ pub async fn run(claude_args: Vec<String>) -> Result<i32> {
         .map(|s| s.to_string_lossy().to_string())
         .unwrap_or_else(|_| "Unknown".to_string());
 
+    tracing::info!(
+        "Device: {}, CWD: {}, Session: {}",
+        device_name,
+        cwd,
+        session_id
+    );
+
     // Set up terminal (raw mode)
     let mut terminal = TerminalManager::new()?;
     terminal.enter_raw_mode()?;
@@ -51,22 +62,18 @@ pub async fn run(claude_args: Vec<String>) -> Result<i32> {
         }
     };
 
-    // Create command channel
-    let (cmd_tx, mut cmd_rx) = mpsc::channel::<Command>(16);
-
-    // Create interceptor
-    let interceptor = Arc::new(Mutex::new(CommandInterceptor::new(cmd_tx)));
-
-    // Create shared state
-    let connection_state = Arc::new(Mutex::new(ConnectionState::Detached));
+    // Auto-attach: set connection state to Attached
+    // In full implementation, this would establish WebSocket connection
+    let connection_state = Arc::new(Mutex::new(ConnectionState::Attached));
+    tracing::info!("Auto-attached to session");
 
     // Create channels for coordinating shutdown
     let (shutdown_tx, mut shutdown_rx) = mpsc::channel::<i32>(1);
 
-    // Channel for PTY output
+    // Channel for PTY output (displayed to terminal, and later streamed to WebSocket)
     let (pty_output_tx, mut pty_output_rx) = mpsc::channel::<Vec<u8>>(256);
 
-    // Channel for PTY input (from keyboard)
+    // Channel for PTY input (from keyboard, and later from WebSocket)
     let (pty_input_tx, mut pty_input_rx) = mpsc::channel::<Vec<u8>>(256);
 
     // Clone PTY for the reader task
@@ -108,12 +115,18 @@ pub async fn run(claude_args: Vec<String>) -> Result<i32> {
         }
     });
 
-    // Main event loop
+    // Main event loop - simple pass-through
     let exit_code = 'main: loop {
         tokio::select! {
             // Handle PTY output (display to terminal)
             Some(output) = pty_output_rx.recv() => {
+                // Write to local terminal
                 terminal.write(&output)?;
+
+                // TODO: Stream to WebSocket when connected
+                // if *connection_state.lock().await == ConnectionState::Attached {
+                //     websocket.send(output).await;
+                // }
             }
 
             // Handle shutdown signal
@@ -121,39 +134,16 @@ pub async fn run(claude_args: Vec<String>) -> Result<i32> {
                 break 'main code;
             }
 
-            // Handle intercepted commands
-            Some(cmd) = cmd_rx.recv() => {
-                handle_command(
-                    &terminal,
-                    &session_id,
-                    connection_state.clone(),
-                    &cwd,
-                    &device_name,
-                    cmd,
-                ).await?;
-            }
-
             // Poll for keyboard input
             _ = tokio::time::sleep(Duration::from_millis(10)) => {
-                // Check for command timeout
-                {
-                    let mut int = interceptor.lock().await;
-                    if let Some(bytes) = int.check_timeout() {
-                        let _ = pty_input_tx.send(bytes).await;
-                    }
-                }
-
                 // Poll for terminal events (non-blocking)
                 while let Ok(Some(event)) = terminal.poll_event(Duration::from_millis(0)) {
                     match event {
                         Event::Key(key_event) => {
                             let bytes = key_event_to_bytes(key_event);
                             if !bytes.is_empty() {
-                                let mut int = interceptor.lock().await;
-                                let forward = int.process(&bytes).await;
-                                if !forward.is_empty() {
-                                    let _ = pty_input_tx.send(forward).await;
-                                }
+                                // Forward directly to PTY (no interception)
+                                let _ = pty_input_tx.send(bytes).await;
                             }
                         }
                         Event::Resize(cols, rows) => {
@@ -167,6 +157,9 @@ pub async fn run(claude_args: Vec<String>) -> Result<i32> {
     };
 
     // Cleanup
+    tracing::info!("Session ended: {}", session_id);
+    *connection_state.lock().await = ConnectionState::Detached;
+
     drop(pty_input_tx);
     let _ = reader_handle.await;
     let _ = writer_handle.await;
@@ -220,34 +213,4 @@ fn key_event_to_bytes(event: KeyEvent) -> Vec<u8> {
         }
         _ => vec![],
     }
-}
-
-/// Handles an intercepted command.
-async fn handle_command(
-    terminal: &TerminalManager,
-    session_id: &SessionId,
-    connection_state: Arc<Mutex<ConnectionState>>,
-    cwd: &str,
-    device_name: &str,
-    cmd: Command,
-) -> Result<()> {
-    tracing::debug!("Handling command: {:?}", cmd);
-
-    match cmd {
-        Command::Help => {
-            execute_help(terminal).await?;
-        }
-        Command::Status => {
-            let state = *connection_state.lock().await;
-            execute_status(terminal, session_id, state, Some(device_name), cwd).await?;
-        }
-        Command::Attach => {
-            execute_attach(terminal, session_id, connection_state.clone(), cwd).await?;
-        }
-        Command::Detach => {
-            execute_detach(terminal, connection_state.clone()).await?;
-        }
-    }
-
-    Ok(())
 }

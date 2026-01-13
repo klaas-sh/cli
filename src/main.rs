@@ -1,13 +1,12 @@
 //! Remote access wrapper for Claude Code.
 //!
-//! Wraps Claude Code sessions and enables optional remote access
-//! via a web interface. By default, it works offline with zero network
-//! activity.
+//! Wraps Claude Code sessions and enables remote access via a web interface.
+//! Sessions auto-attach on startup for streaming to the cloud.
 //!
 //! # Usage
 //!
 //! ```bash
-//! # Start Claude Code with remote access wrapper
+//! # Start Claude Code with remote access
 //! nexo
 //!
 //! # Start with a prompt
@@ -16,23 +15,13 @@
 //! # Pass through Claude Code flags
 //! nexo --model sonnet --allowedTools Read,Write
 //! ```
-//!
-//! # Commands (during session)
-//!
-//! - `/attach` - Connect for remote access
-//! - `/detach` - Disconnect from remote
-//! - `/status` - Show connection status
-//! - `/help` - Show available commands
-//! - `//` - Send literal `/` to Claude Code
 
 use clap::Parser;
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
 
 mod app;
-mod commands;
 mod config;
 mod error;
-mod interceptor;
 mod pty;
 mod terminal;
 mod types;
@@ -42,16 +31,10 @@ mod types;
 #[command(name = "nexo")]
 #[command(about = "Remote access wrapper for Claude Code")]
 #[command(version)]
-#[command(
-    long_about = "Wraps Claude Code sessions and enables optional remote access \
-    via a web interface. By default, it works offline with zero network activity.\n\n\
-    COMMANDS (type during session):\n  \
-    /attach  - Connect for remote access\n  \
-    /detach  - Disconnect from remote\n  \
-    /status  - Show connection status\n  \
-    /help    - Show available commands\n\n\
-    Type // to send a literal /"
-)]
+#[command(long_about = "Wraps Claude Code sessions and enables remote access \
+    via a web interface. Sessions auto-attach on startup.\n\n\
+    All input is passed through to Claude Code. \
+    All output is captured for remote streaming.")]
 struct Cli {
     /// Arguments to pass through to Claude Code.
     /// All unrecognized arguments are forwarded.

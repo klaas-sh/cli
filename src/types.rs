@@ -90,28 +90,6 @@ impl std::fmt::Display for ConnectionState {
     }
 }
 
-/// State of the command interceptor state machine.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum InterceptorState {
-    /// Normal mode: forwarding input to PTY.
-    Normal,
-    /// Reading a potential command after detecting '/'.
-    ReadingCommand,
-}
-
-/// Intercepted command from user input.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub enum Command {
-    /// /attach - Connect session for remote access.
-    Attach,
-    /// /detach - Disconnect from remote.
-    Detach,
-    /// /status - Show connection status.
-    Status,
-    /// /help - Show available commands.
-    Help,
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
