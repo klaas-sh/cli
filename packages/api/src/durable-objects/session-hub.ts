@@ -55,6 +55,9 @@ export class SessionHub implements DurableObject {
   /** CLI WebSocket connection (only one per session) */
   private cliSocket: WebSocket | null = null;
 
+  /** Last pong received from CLI (timestamp for health monitoring) */
+  private cliLastPong: number = 0;
+
   /** Web client WebSocket connections (multiple viewers) */
   private webSockets: Set<WebSocket> = new Set();
 
@@ -136,6 +139,7 @@ export class SessionHub implements DurableObject {
     }
 
     this.cliSocket = socket;
+    this.cliLastPong = Date.now();
 
     // Drain queued messages
     this.drainMessageQueue();
@@ -193,13 +197,29 @@ export class SessionHub implements DurableObject {
         : new TextDecoder().decode(message);
 
     try {
+      const parsed = JSON.parse(msgStr) as Record<string, unknown>;
+
+      // Handle pong messages from both client types
+      if (parsed.type === 'pong') {
+        if (clientType === 'cli') {
+          this.cliLastPong = Date.now();
+        } else {
+          this.webLastPong.set(ws, Date.now());
+        }
+        return;
+      }
+
       if (clientType === 'cli') {
-        await this.handleCliMessage(JSON.parse(msgStr) as CliToServerMessage);
+        await this.handleCliMessage(parsed as CliToServerMessage);
       } else {
-        await this.handleWebMessage(JSON.parse(msgStr) as WebToServerMessage);
+        await this.handleWebMessage(parsed as WebToServerMessage, ws);
       }
     } catch (error) {
       console.error('Error handling message:', error);
+      // Send error to web clients
+      if (clientType === 'web') {
+        this.sendErrorToWeb(ws, 'parse_error', 'Failed to parse message');
+      }
     }
   }
 
@@ -285,23 +305,66 @@ export class SessionHub implements DurableObject {
       }
 
       case 'pong':
-        // Heartbeat response received, connection is healthy
+        // Update last pong timestamp for connection health monitoring
+        this.cliLastPong = Date.now();
         break;
     }
   }
 
   /**
    * Handle web client messages.
+   *
+   * Message types:
+   * - subscribe: Subscribe to session updates (array of session_ids)
+   * - prompt: Send text prompt to CLI
+   * - resize: Send terminal resize to CLI
    */
-  private async handleWebMessage(msg: WebToServerMessage): Promise<void> {
+  private async handleWebMessage(
+    msg: WebToServerMessage,
+    ws: WebSocket
+  ): Promise<void> {
     switch (msg.type) {
       case 'subscribe':
-        // Web clients can subscribe to multiple sessions
-        // For now, we just acknowledge (session routing is handled by DO naming)
+        // Web clients connect to specific session DO via session_id
+        // The subscribe message confirms the subscription and can request
+        // initial state. Send current status for all requested sessions.
+        if (this.sessionId && msg.session_ids.includes(this.sessionId)) {
+          const statusMsg: ServerToWebMessage = {
+            type: 'session_status',
+            session_id: this.sessionId,
+            status: this.cliSocket ? 'attached' : 'detached',
+          };
+          ws.send(JSON.stringify(statusMsg));
+
+          // Send session metadata if available
+          if (this.deviceName && this.cwd) {
+            const sessionsUpdate: ServerToWebMessage = {
+              type: 'sessions_update',
+              sessions: [
+                {
+                  session_id: this.sessionId,
+                  device_id: this.deviceId || '',
+                  device_name: this.deviceName,
+                  status: this.cliSocket ? 'attached' : 'detached',
+                  started_at: new Date().toISOString(),
+                  attached_at: this.cliSocket ? new Date().toISOString() : null,
+                  cwd: this.cwd,
+                },
+              ],
+            };
+            ws.send(JSON.stringify(sessionsUpdate));
+          }
+        }
         break;
 
       case 'prompt':
-        // Forward prompt to CLI
+        // Verify session ID matches
+        if (msg.session_id !== this.sessionId) {
+          this.sendErrorToWeb(ws, 'session_mismatch', 'Session ID mismatch');
+          return;
+        }
+
+        // Forward prompt to CLI (will be queued if disconnected)
         this.sendToCli({
           type: 'prompt',
           session_id: msg.session_id,
@@ -312,7 +375,13 @@ export class SessionHub implements DurableObject {
         break;
 
       case 'resize':
-        // Forward resize to CLI
+        // Verify session ID matches
+        if (msg.session_id !== this.sessionId) {
+          this.sendErrorToWeb(ws, 'session_mismatch', 'Session ID mismatch');
+          return;
+        }
+
+        // Forward resize to CLI (will be queued if disconnected)
         this.sendToCli({
           type: 'resize',
           session_id: msg.session_id,
@@ -333,6 +402,14 @@ export class SessionHub implements DurableObject {
     if (clientType === 'cli' && this.cliSocket === ws) {
       this.cliSocket = null;
 
+      // Update stored status
+      const currentMetadata =
+        await this.state.storage.get<SessionMetadata>('metadata');
+      if (currentMetadata) {
+        currentMetadata.status = 'detached';
+        await this.state.storage.put('metadata', currentMetadata);
+      }
+
       // Notify web clients that CLI disconnected
       if (this.sessionId) {
         this.broadcastToWeb({
@@ -342,7 +419,9 @@ export class SessionHub implements DurableObject {
         });
       }
     } else {
+      // Clean up web client
       this.webSockets.delete(ws);
+      this.webLastPong.delete(ws);
     }
   }
 
@@ -374,6 +453,20 @@ export class SessionHub implements DurableObject {
       if (ws.readyState === WebSocket.OPEN) {
         ws.send(msgStr);
       }
+    }
+  }
+
+  /**
+   * Send error message to a specific web client.
+   */
+  private sendErrorToWeb(ws: WebSocket, code: string, message: string): void {
+    if (ws.readyState === WebSocket.OPEN) {
+      const errorMsg: ServerToWebMessage = {
+        type: 'error',
+        code,
+        message,
+      };
+      ws.send(JSON.stringify(errorMsg));
     }
   }
 
@@ -425,7 +518,14 @@ export class SessionHub implements DurableObject {
       this.cliSocket.send(JSON.stringify({ type: 'ping' }));
     }
 
-    // Schedule next alarm (30 seconds)
-    await this.state.storage.setAlarm(Date.now() + 30_000);
+    // Send ping to all web clients
+    for (const ws of this.webSockets) {
+      if (ws.readyState === WebSocket.OPEN) {
+        ws.send(JSON.stringify({ type: 'ping' }));
+      }
+    }
+
+    // Schedule next alarm
+    await this.state.storage.setAlarm(Date.now() + HEARTBEAT_INTERVAL_MS);
   }
 }
