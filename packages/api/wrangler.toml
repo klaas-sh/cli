@@ -1,0 +1,87 @@
+# Nexo API - Cloudflare Workers Configuration
+name = "nexo-api"
+main = "src/index.ts"
+compatibility_date = "2025-01-13"
+compatibility_flags = ["nodejs_compat"]
+
+# Development environment (default)
+[[d1_databases]]
+binding = "DB"
+database_name = "nexo-db-local"
+database_id = "local"
+migrations_dir = "migrations"
+
+[[kv_namespaces]]
+binding = "RATE_LIMIT_KV"
+id = "placeholder-rate-limit"
+preview_id = "placeholder-rate-limit-preview"
+
+[[kv_namespaces]]
+binding = "CACHE_KV"
+id = "placeholder-cache"
+preview_id = "placeholder-cache-preview"
+
+# Durable Objects for WebSocket management
+[[durable_objects.bindings]]
+name = "SESSION_HUB"
+class_name = "SessionHub"
+
+[[migrations]]
+tag = "v1"
+new_classes = ["SessionHub"]
+
+# Environment variables
+[vars]
+ENVIRONMENT = "development"
+API_VERSION = "v1"
+
+# Staging environment
+[env.staging]
+name = "nexo-api-staging"
+
+[[env.staging.d1_databases]]
+binding = "DB"
+database_name = "nexo-db-staging"
+database_id = "placeholder-staging-db-id"
+migrations_dir = "migrations"
+
+[[env.staging.kv_namespaces]]
+binding = "RATE_LIMIT_KV"
+id = "placeholder-staging-rate-limit"
+
+[[env.staging.kv_namespaces]]
+binding = "CACHE_KV"
+id = "placeholder-staging-cache"
+
+[[env.staging.durable_objects.bindings]]
+name = "SESSION_HUB"
+class_name = "SessionHub"
+
+[env.staging.vars]
+ENVIRONMENT = "staging"
+
+# Production environment
+[env.production]
+name = "nexo-api"
+routes = [{ pattern = "api.nexo.dev", custom_domain = true }]
+
+[[env.production.d1_databases]]
+binding = "DB"
+database_name = "nexo-db-production"
+database_id = "placeholder-production-db-id"
+migrations_dir = "migrations"
+
+[[env.production.kv_namespaces]]
+binding = "RATE_LIMIT_KV"
+id = "placeholder-production-rate-limit"
+
+[[env.production.kv_namespaces]]
+binding = "CACHE_KV"
+id = "placeholder-production-cache"
+
+[[env.production.durable_objects.bindings]]
+name = "SESSION_HUB"
+class_name = "SessionHub"
+
+[env.production.vars]
+ENVIRONMENT = "production"

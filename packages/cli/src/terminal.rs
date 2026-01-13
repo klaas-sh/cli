@@ -10,6 +10,7 @@ use std::time::Duration;
 
 /// Manages terminal state including raw mode.
 /// Ensures terminal is restored on drop.
+#[derive(Default)]
 pub struct TerminalManager {
     /// Whether raw mode was enabled by this instance.
     was_raw: bool,
@@ -76,12 +77,6 @@ impl TerminalManager {
     /// Returns whether the terminal is currently in raw mode.
     pub fn is_raw(&self) -> bool {
         self.was_raw
-    }
-}
-
-impl Default for TerminalManager {
-    fn default() -> Self {
-        Self { was_raw: false }
     }
 }
 

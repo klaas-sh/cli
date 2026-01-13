@@ -3,75 +3,78 @@
 ## Overview
 
 Nexo is a cross-platform CLI tool that wraps Claude Code sessions, enabling
-remote access and control via a web interface. The core CLI is built in Rust.
+remote access and control via a web interface. The core CLI is built in Rust,
+the API backend runs on Cloudflare Workers.
+
+## Reference Project
+
+**Use `/Users/bjorn/projects/smoking-media/redirme.com` as the reference** for:
+- Cloudflare Workers setup and patterns
+- Hono API structure and middleware
+- D1 database migrations
+- GitHub Actions deployment workflows
+- Testing patterns with vitest
+- ESLint and TypeScript configuration
 
 ## Project Structure
 
 ```
 nexo/
 ├── packages/
-│   ├── cli/              # Rust CLI (primary focus)
+│   ├── cli/              # Rust CLI wrapper
 │   │   ├── Cargo.toml
 │   │   └── src/
 │   │       ├── main.rs
 │   │       ├── lib.rs
-│   │       ├── app.rs
-│   │       ├── pty.rs
-│   │       ├── terminal.rs
-│   │       ├── interceptor.rs
-│   │       ├── types.rs
-│   │       ├── config.rs
-│   │       ├── error.rs
-│   │       └── commands/
-│   │           ├── mod.rs
-│   │           ├── attach.rs
-│   │           ├── detach.rs
-│   │           ├── status.rs
-│   │           └── help.rs
-│   ├── worker/           # Cloudflare Worker (future)
-│   └── web/              # React web client (future)
-└── docs/
-    └── development/
-        ├── 01-teleportation-dev-research.md
-        ├── 02-nexo-mvp-spec.md
-        └── cli/
-            ├── 01-functional-requirements.md
-            └── 02-implementation-guide.md
+│   │       ├── app.rs      # Main event loop
+│   │       ├── pty.rs      # PTY management
+│   │       ├── terminal.rs # Terminal handling
+│   │       ├── types.rs    # Core types
+│   │       ├── config.rs   # Configuration
+│   │       └── error.rs    # Error types
+│   ├── api/              # Cloudflare Workers API
+│   │   ├── package.json
+│   │   ├── wrangler.toml
+│   │   ├── migrations/   # D1 database migrations
+│   │   └── src/
+│   │       ├── index.ts          # Worker entry point
+│   │       ├── app.ts            # Hono application
+│   │       ├── types.ts          # TypeScript types
+│   │       ├── routes/           # API route handlers
+│   │       ├── middleware/       # Auth middleware
+│   │       ├── services/         # Business logic
+│   │       └── durable-objects/  # WebSocket hubs
+│   ├── dashboard/        # User web dashboard (future)
+│   └── admin/            # Admin panel (future)
+├── docs/
+│   └── development/
+│       ├── 01-teleportation-dev-research.md
+│       ├── 02-nexo-mvp-spec.md
+│       └── cli/
+│           ├── 01-functional-requirements.md
+│           └── 02-implementation-guide.md
+└── .github/
+    └── workflows/        # Deployment workflows (future)
 ```
 
 ## Prerequisites
 
-### Installing Rust
-
-The CLI requires Rust to be installed. Install via rustup:
+### Installing Rust (for CLI)
 
 ```bash
 curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
 source ~/.cargo/env
 ```
 
-Verify installation:
+### Node.js (for API)
+
+Node.js >= 18.0.0 is required for the API package.
+
+## Development
+
+### CLI (Rust)
 
 ```bash
-cargo --version
-rustc --version
-```
-
-## CLI Development
-
-### Key Technologies
-
-- **Language:** Rust
-- **PTY Handling:** portable-pty
-- **Terminal:** crossterm
-- **Async Runtime:** tokio
-- **CLI Arguments:** clap
-- **IDs:** ULID (per global CLAUDE.md requirement - NEVER use UUID!)
-
-### Building & Running
-
-```bash
-# Navigate to CLI package
 cd packages/cli
 
 # Build
@@ -89,17 +92,48 @@ RUST_LOG=nexo=debug cargo run
 # Run tests
 cargo test
 
-# Format code
+# Format and lint
 cargo fmt
-
-# Lint
 cargo clippy -- -D warnings
 ```
 
-### Pre-commit Checks for CLI
+### API (Cloudflare Workers)
 
-Before committing CLI changes:
+```bash
+# From project root
+yarn install
 
+# Apply D1 migrations locally
+yarn db:migrate
+
+# Start API dev server
+yarn dev:api
+
+# Run API tests
+yarn test:api
+
+# Type check
+yarn typecheck
+```
+
+### Full Stack Development
+
+```bash
+# Start both API and CLI
+yarn dev
+```
+
+## Pre-commit Checks
+
+Always run before committing:
+
+```bash
+yarn pre-commit
+```
+
+This runs: install, lint, typecheck, test, build
+
+For CLI-only changes:
 ```bash
 cd packages/cli
 cargo fmt --check
@@ -107,28 +141,32 @@ cargo clippy -- -D warnings
 cargo test
 ```
 
-### CLI Commands (intercepted during session)
+## API Endpoints
 
-- `/attach` - Connect session for remote access
-- `/detach` - Disconnect from remote
-- `/status` - Show connection status
-- `/help` - Show available commands
-- `//` - Escape to send literal `/` to Claude
-
-### Connection States
-
-1. **DETACHED** - Default, no network activity
-2. **CONNECTING** - Establishing WebSocket connection
-3. **ATTACHED** - Connected to Nexo cloud
-4. **RECONNECTING** - Attempting to restore connection
+- `GET /` - API info
+- `GET /health` - Health check
+- `GET /health/db` - Database health check
+- `POST /auth/device` - Start OAuth Device Flow
+- `POST /auth/token` - Poll for token
+- `POST /auth/refresh` - Refresh access token
+- `GET /sessions` - List sessions (authenticated)
+- `GET /sessions/:id` - Get session details
+- `DELETE /sessions/:id` - Terminate session
+- WebSocket at `/?session_id=xxx` - Real-time streaming
 
 ## ID Format
 
-**CRITICAL:** All IDs in this project MUST use ULID format:
+**CRITICAL:** All IDs MUST use ULID format:
 - Session IDs: `01HQXK7V8G3N5M2R4P6T1W9Y0Z`
 - Device IDs: `01HQXK7V8G3N5M2R4P6T1W9Y0Z`
+- User IDs: `01HQXK7V8G3N5M2R4P6T1W9Y0Z`
 
 NEVER use UUID, auto-increment, or any other ID format.
+
+## Deployment
+
+Production deployments are handled via GitHub Actions (not manual wrangler).
+See redirme.com workflows for reference.
 
 ## Documentation
 
