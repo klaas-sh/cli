@@ -25,6 +25,9 @@ const MAX_QUEUE_AGE_MS = 5 * 60 * 1000;
 /** Heartbeat interval in milliseconds (30 seconds) */
 const HEARTBEAT_INTERVAL_MS = 30_000;
 
+/** Connection timeout in milliseconds (90 seconds without pong) */
+const CONNECTION_TIMEOUT_MS = 90_000;
+
 interface QueuedMessage {
   message: ServerToCliMessage;
   timestamp: number;
@@ -513,15 +516,45 @@ export class SessionHub implements DurableObject {
    * Alarm handler for periodic tasks (heartbeat, cleanup).
    */
   async alarm(): Promise<void> {
-    // Send ping to CLI
+    const now = Date.now();
+
+    // Check CLI connection health
     if (this.cliSocket && this.cliSocket.readyState === WebSocket.OPEN) {
-      this.cliSocket.send(JSON.stringify({ type: 'ping' }));
+      // Check if CLI has timed out
+      if (this.cliLastPong > 0 && now - this.cliLastPong > CONNECTION_TIMEOUT_MS) {
+        console.log('CLI connection timed out, closing socket');
+        this.cliSocket.close(4001, 'Connection timeout');
+        this.cliSocket = null;
+
+        // Notify web clients of disconnection
+        if (this.sessionId) {
+          this.broadcastToWeb({
+            type: 'session_status',
+            session_id: this.sessionId,
+            status: 'detached',
+          });
+        }
+      } else {
+        // Send ping to CLI
+        this.cliSocket.send(JSON.stringify({ type: 'ping' }));
+      }
     }
 
-    // Send ping to all web clients
+    // Check web client connection health and send pings
     for (const ws of this.webSockets) {
       if (ws.readyState === WebSocket.OPEN) {
-        ws.send(JSON.stringify({ type: 'ping' }));
+        const lastPong = this.webLastPong.get(ws) ?? 0;
+
+        // Check if web client has timed out
+        if (lastPong > 0 && now - lastPong > CONNECTION_TIMEOUT_MS) {
+          console.log('Web client connection timed out, closing socket');
+          ws.close(4001, 'Connection timeout');
+          this.webSockets.delete(ws);
+          this.webLastPong.delete(ws);
+        } else {
+          // Send ping to web client
+          ws.send(JSON.stringify({ type: 'ping' }));
+        }
       }
     }
 
