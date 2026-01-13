@@ -3,14 +3,43 @@
 //! This module provides default configuration values and functions to load
 //! configuration from environment variables. Environment variables take
 //! precedence over defaults.
+//!
+//! In debug builds, the CLI defaults to localhost:8787 for local development.
+//! In release builds, it defaults to api.nexo.dev.
 
 use std::env;
 
-/// Default API base URL for remote services.
-pub const DEFAULT_API_URL: &str = "https://api.nexo.dev";
+/// Default API base URL for remote services (production).
+pub const DEFAULT_API_URL_PROD: &str = "https://api.nexo.dev";
 
-/// Default WebSocket URL for real-time communication.
-pub const DEFAULT_WS_URL: &str = "wss://api.nexo.dev/ws";
+/// Default API base URL for local development.
+pub const DEFAULT_API_URL_DEV: &str = "http://localhost:8787";
+
+/// Default WebSocket URL for real-time communication (production).
+pub const DEFAULT_WS_URL_PROD: &str = "wss://api.nexo.dev/ws";
+
+/// Default WebSocket URL for local development.
+pub const DEFAULT_WS_URL_DEV: &str = "ws://localhost:8787/ws";
+
+/// Get the default API URL based on build type.
+#[inline]
+pub fn default_api_url() -> &'static str {
+    if cfg!(debug_assertions) {
+        DEFAULT_API_URL_DEV
+    } else {
+        DEFAULT_API_URL_PROD
+    }
+}
+
+/// Get the default WebSocket URL based on build type.
+#[inline]
+pub fn default_ws_url() -> &'static str {
+    if cfg!(debug_assertions) {
+        DEFAULT_WS_URL_DEV
+    } else {
+        DEFAULT_WS_URL_PROD
+    }
+}
 
 /// Keychain service name for credential storage.
 pub const KEYCHAIN_SERVICE: &str = "dev.nexo.cli";
@@ -89,7 +118,8 @@ impl ApiConfig {
     /// println!("WS URL: {}", config.ws_url);
     /// ```
     pub fn from_env() -> Self {
-        let api_url = env::var("NEXO_API_URL").unwrap_or_else(|_| DEFAULT_API_URL.to_string());
+        let api_url =
+            env::var("NEXO_API_URL").unwrap_or_else(|_| default_api_url().to_string());
 
         let ws_url = env::var("NEXO_WS_URL").unwrap_or_else(|_| derive_ws_url(&api_url));
 
@@ -164,7 +194,20 @@ mod tests {
         env::remove_var("NEXO_WS_URL");
 
         let config = ApiConfig::from_env();
-        assert_eq!(config.api_url, DEFAULT_API_URL);
-        assert_eq!(config.ws_url, "wss://api.nexo.dev/ws");
+        // In debug builds (tests), should use localhost
+        assert_eq!(config.api_url, default_api_url());
+        assert_eq!(config.ws_url, derive_ws_url(default_api_url()));
+    }
+
+    #[test]
+    fn test_debug_defaults_to_localhost() {
+        // This test verifies that debug builds use localhost
+        if cfg!(debug_assertions) {
+            assert_eq!(default_api_url(), DEFAULT_API_URL_DEV);
+            assert_eq!(default_ws_url(), DEFAULT_WS_URL_DEV);
+        } else {
+            assert_eq!(default_api_url(), DEFAULT_API_URL_PROD);
+            assert_eq!(default_ws_url(), DEFAULT_WS_URL_PROD);
+        }
     }
 }
