@@ -9,39 +9,39 @@
 /*
  * Tailwind v4 Theme Configuration
  * Define custom colors as Tailwind utilities using @theme
- * These become available as text-nexo-*, bg-nexo-*, etc.
+ * These become available as text-app-*, bg-app-*, etc.
  *
  * Light and dark variants are defined separately.
- * Use dark:text-nexo-*-dark to switch in dark mode.
+ * Use dark:text-app-*-dark to switch in dark mode.
  */
 @theme {
   /* Light mode colors - Blue theme */
-  --color-nexo-primary: #2563eb;
-  --color-nexo-secondary: #64748b;
-  --color-nexo-accent: #3b82f6;
-  --color-nexo-success: #10b981;
-  --color-nexo-warning: #f59e0b;
-  --color-nexo-error: #ef4444;
-  --color-nexo-background: #f0f9ff;
-  --color-nexo-surface: #ffffff;
-  --color-nexo-border: #bfdbfe;
-  --color-nexo-text-primary: #1e3a5f;
-  --color-nexo-text-secondary: #1d4ed8;
-  --color-nexo-text-muted: #2563eb;
+  --color-app-primary: #2563eb;
+  --color-app-secondary: #64748b;
+  --color-app-accent: #3b82f6;
+  --color-app-success: #10b981;
+  --color-app-warning: #f59e0b;
+  --color-app-error: #ef4444;
+  --color-app-background: #f0f9ff;
+  --color-app-surface: #ffffff;
+  --color-app-border: #bfdbfe;
+  --color-app-text-primary: #1e3a5f;
+  --color-app-text-secondary: #1d4ed8;
+  --color-app-text-muted: #2563eb;
 
   /* Dark mode colors */
-  --color-nexo-primary-dark: #60a5fa;
-  --color-nexo-secondary-dark: #6b7280;
-  --color-nexo-accent-dark: #93c5fd;
-  --color-nexo-success-dark: #34d399;
-  --color-nexo-warning-dark: #fbbf24;
-  --color-nexo-error-dark: #f87171;
-  --color-nexo-background-dark: #0c1929;
-  --color-nexo-surface-dark: #1e3a5f;
-  --color-nexo-border-dark: #1d4ed8;
-  --color-nexo-text-primary-dark: #f0f9ff;
-  --color-nexo-text-secondary-dark: #bfdbfe;
-  --color-nexo-text-muted-dark: #93c5fd;
+  --color-app-primary-dark: #60a5fa;
+  --color-app-secondary-dark: #6b7280;
+  --color-app-accent-dark: #93c5fd;
+  --color-app-success-dark: #34d399;
+  --color-app-warning-dark: #fbbf24;
+  --color-app-error-dark: #f87171;
+  --color-app-background-dark: #0c1929;
+  --color-app-surface-dark: #1e3a5f;
+  --color-app-border-dark: #1d4ed8;
+  --color-app-text-primary-dark: #f0f9ff;
+  --color-app-text-secondary-dark: #bfdbfe;
+  --color-app-text-muted-dark: #93c5fd;
 
   /* Spacing variables */
   --spacing-18: 4.5rem;
@@ -50,17 +50,17 @@
   --spacing-96: 24rem;
 
   /* Font family */
-  --font-family-nexo: 'Inter', system-ui, -apple-system, sans-serif;
+  --font-family-app: 'Inter', system-ui, -apple-system, sans-serif;
 }
 
 /* Base styles */
 html {
-  font-family: var(--font-family-nexo);
+  font-family: var(--font-family-app);
 }
 
 body {
-  @apply bg-nexo-background dark:bg-nexo-background-dark;
-  @apply text-nexo-text-primary dark:text-nexo-text-primary-dark;
+  @apply bg-app-background dark:bg-app-background-dark;
+  @apply text-app-text-primary dark:text-app-text-primary-dark;
 }
 
 /* Custom scrollbar */
@@ -70,29 +70,29 @@ body {
 }
 
 ::-webkit-scrollbar-track {
-  @apply bg-nexo-background dark:bg-nexo-background-dark;
+  @apply bg-app-background dark:bg-app-background-dark;
 }
 
 ::-webkit-scrollbar-thumb {
-  @apply bg-nexo-border dark:bg-nexo-border-dark;
+  @apply bg-app-border dark:bg-app-border-dark;
   border-radius: 3px;
 }
 
 ::-webkit-scrollbar-thumb:hover {
-  @apply bg-nexo-text-muted dark:bg-nexo-text-muted-dark;
+  @apply bg-app-text-muted dark:bg-app-text-muted-dark;
 }
 
-/* Nexo component styles */
+/* App component styles */
 @layer components {
-  .nexo-card {
-    @apply bg-nexo-surface dark:bg-nexo-surface-dark;
-    @apply border border-nexo-border dark:border-nexo-border-dark;
+  .app-card {
+    @apply bg-app-surface dark:bg-app-surface-dark;
+    @apply border border-app-border dark:border-app-border-dark;
     @apply rounded-xl p-8;
     @apply shadow-sm;
   }
 
-  .nexo-button-primary {
-    @apply bg-nexo-primary dark:bg-nexo-primary-dark;
+  .app-button-primary {
+    @apply bg-app-primary dark:bg-app-primary-dark;
     @apply text-white dark:text-gray-900;
     @apply border-none rounded-lg;
     @apply px-6 py-3;
@@ -100,33 +100,33 @@ body {
     @apply transition-colors duration-200;
   }
 
-  .nexo-button-primary:hover:not(:disabled) {
-    @apply bg-nexo-accent dark:bg-nexo-accent-dark;
+  .app-button-primary:hover:not(:disabled) {
+    @apply bg-app-accent dark:bg-app-accent-dark;
   }
 
-  .nexo-button-primary:disabled {
+  .app-button-primary:disabled {
     @apply opacity-50 cursor-not-allowed;
   }
 
   /* Form label styles */
-  .nexo-label {
-    @apply text-nexo-text-primary dark:text-nexo-text-primary-dark;
+  .app-label {
+    @apply text-app-text-primary dark:text-app-text-primary-dark;
   }
 
-  .nexo-helper-text {
-    @apply text-nexo-text-secondary dark:text-nexo-text-secondary-dark;
+  .app-helper-text {
+    @apply text-app-text-secondary dark:text-app-text-secondary-dark;
   }
 
-  .nexo-error-text {
-    @apply text-nexo-error dark:text-nexo-error-dark;
+  .app-error-text {
+    @apply text-app-error dark:text-app-error-dark;
   }
 
-  .nexo-link {
-    @apply text-nexo-text-secondary dark:text-nexo-text-secondary-dark;
+  .app-link {
+    @apply text-app-text-secondary dark:text-app-text-secondary-dark;
   }
 
-  .nexo-link:hover {
-    @apply text-nexo-text-primary dark:text-nexo-text-primary-dark;
+  .app-link:hover {
+    @apply text-app-text-primary dark:text-app-text-primary-dark;
   }
 }
 

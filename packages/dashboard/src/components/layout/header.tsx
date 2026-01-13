@@ -22,11 +22,11 @@ export function Header({ onMenuClick }: HeaderProps): React.JSX.Element {
    * Handle sign out action
    */
   const handleSignOut = (): void => {
-    localStorage.removeItem('nexo-token')
+    localStorage.removeItem('user-token')
     const isProduction = process.env.NODE_ENV === 'production'
     const secureFlag = isProduction ? '; secure' : ''
     document.cookie =
-      'nexo-token=; path=/; ' +
+      'user-token=; path=/; ' +
       'expires=Thu, 01 Jan 1970 00:00:01 GMT; ' +
       `samesite=strict${secureFlag}`
     window.location.href = '/login'

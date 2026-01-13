@@ -4,7 +4,7 @@ import type { NextRequest } from 'next/server'
 /**
  * Token key for authentication
  */
-const TOKEN_KEY = 'nexo-user-token'
+const TOKEN_KEY = 'user-token'
 
 /**
  * Middleware for authentication and route protection

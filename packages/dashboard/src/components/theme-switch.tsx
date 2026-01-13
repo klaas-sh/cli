@@ -3,7 +3,7 @@
 import React, { useState, useEffect, useCallback } from 'react'
 import { Moon, Sun } from 'lucide-react'
 
-const DARK_MODE_KEY = 'nexo-dark-mode'
+const DARK_MODE_KEY = 'dark-mode-preference'
 
 /**
  * Theme switch component for Nexo dashboard

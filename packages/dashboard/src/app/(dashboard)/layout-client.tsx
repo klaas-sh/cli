@@ -98,7 +98,7 @@ export default function DashboardLayout({
 
   useEffect(() => {
     // Check authentication
-    const token = localStorage.getItem('nexo-user-token')
+    const token = localStorage.getItem('user-token')
     if (!token) {
       router.push('/login')
     }

@@ -3,7 +3,7 @@ import { LoginCredentials } from '@/types/auth'
 /**
  * Token key for storing authentication token
  */
-const TOKEN_KEY = 'nexo-user-token'
+const TOKEN_KEY = 'user-token'
 
 /**
  * Authentication response from login endpoint
