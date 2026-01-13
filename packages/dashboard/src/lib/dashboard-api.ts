@@ -35,6 +35,28 @@ export interface DeleteResponse {
 }
 
 /**
+ * API response from sessions endpoint (actual structure)
+ */
+interface ApiSessionsResponse {
+  success: boolean
+  data: {
+    items: Array<{
+      session_id: string
+      device_id: string
+      device_name: string
+      status: string
+      started_at: string
+      attached_at: string | null
+      cwd: string
+    }>
+    total: number
+    page: number
+    limit: number
+    hasMore: boolean
+  }
+}
+
+/**
  * Dashboard API service for session management
  */
 class DashboardApi {
@@ -68,7 +90,32 @@ class DashboardApi {
     const queryString = searchParams.toString()
     const endpoint = `/dashboard/sessions${queryString ? `?${queryString}` : ''}`
 
-    return apiClient.request<PaginatedResponse<Session>>(endpoint)
+    const response = await apiClient.request<ApiSessionsResponse>(endpoint)
+
+    // Transform API response to expected format
+    const limit = response.data.limit || 20
+    const total = response.data.total || 0
+    const totalPages = Math.max(1, Math.ceil(total / limit))
+
+    return {
+      success: response.success,
+      data: response.data.items.map(item => ({
+        id: item.session_id,
+        deviceId: item.device_id,
+        deviceName: item.device_name,
+        deviceType: 'cli' as const,
+        status: item.status === 'attached' ? 'active' as const : 'disconnected' as const,
+        cwd: item.cwd,
+        createdAt: item.started_at,
+        lastActivityAt: item.attached_at || item.started_at,
+      })),
+      meta: {
+        page: response.data.page,
+        limit: response.data.limit,
+        total: response.data.total,
+        totalPages,
+      }
+    }
   }
 
   /**
