@@ -1,10 +1,11 @@
 <svg width="32" height="32" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-  <!-- Terminal window outline -->
-  <rect x="2" y="3" width="20" height="18" rx="2" stroke="#2563eb" stroke-width="1.5" fill="#1e3a8a"/>
-  <!-- Title bar line -->
-  <path d="M2 7H22" stroke="#2563eb" stroke-width="1.5"/>
+  <!-- Terminal window background -->
+  <rect x="2" y="3" width="20" height="18" rx="2" fill="#1e40af"/>
+  <!-- Title bar -->
+  <rect x="2" y="3" width="20" height="4" rx="2" fill="#2563eb"/>
+  <rect x="2" y="5" width="20" height="2" fill="#2563eb"/>
   <!-- Terminal prompt arrow -->
-  <path d="M6 12L10 15L6 18" stroke="#60a5fa" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+  <path d="M6 11L10 14.5L6 18" stroke="#ffffff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
   <!-- Cursor/text line -->
-  <path d="M13 18H18" stroke="#60a5fa" stroke-width="1.5" stroke-linecap="round"/>
+  <path d="M13 18H18" stroke="#ffffff" stroke-width="2" stroke-linecap="round"/>
 </svg>
