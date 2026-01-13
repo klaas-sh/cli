@@ -24,10 +24,10 @@ export const Checkbox = forwardRef<HTMLInputElement, CheckboxProps>(
       <input
         type="checkbox"
         className={clsx(
-          'shrink-0 mt-0.5 border-gray-200 rounded text-blue-600',
-          'focus:ring-blue-500 disabled:opacity-50 disabled:pointer-events-none',
-          'dark:bg-gray-800 dark:border-gray-700 dark:checked:bg-blue-500',
-          'dark:checked:border-blue-500 dark:focus:ring-offset-gray-800',
+          'shrink-0 mt-0.5 border-gray-200 rounded text-violet-600',
+          'focus:ring-violet-500 disabled:opacity-50 disabled:pointer-events-none',
+          'dark:bg-gray-800 dark:border-gray-700 dark:checked:bg-violet-500',
+          'dark:checked:border-violet-500 dark:focus:ring-offset-gray-800',
           className
         )}
         checked={checked}

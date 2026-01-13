@@ -86,7 +86,7 @@ export function MobileDrawer({
         >
           <div className="flex items-center gap-2">
             <AppIcon
-              className="text-blue-600 dark:text-blue-400"
+              className="text-violet-600 dark:text-violet-400"
               size={32}
             />
             <span
@@ -128,8 +128,8 @@ export function MobileDrawer({
                   'flex items-center gap-3 px-3 py-3 text-sm',
                   'font-medium rounded-lg transition-colors',
                   isActive
-                    ? 'bg-blue-50 text-blue-700 dark:bg-blue-900/20 ' +
-                      'dark:text-blue-400'
+                    ? 'bg-violet-50 text-violet-700 dark:bg-violet-900/20 ' +
+                      'dark:text-violet-400'
                     : 'text-gray-700 hover:bg-gray-100 dark:text-gray-300 ' +
                       'dark:hover:bg-gray-700'
                 )}
@@ -138,7 +138,7 @@ export function MobileDrawer({
                   className={clsx(
                     'h-5 w-5 flex-shrink-0',
                     isActive
-                      ? 'text-blue-600 dark:text-blue-400'
+                      ? 'text-violet-600 dark:text-violet-400'
                       : 'text-gray-400 dark:text-gray-500'
                   )}
                 />
@@ -146,9 +146,9 @@ export function MobileDrawer({
                 {item.badge && (
                   <span
                     className={clsx(
-                      'ml-auto rounded-full bg-blue-100',
-                      'dark:bg-blue-900/20 px-2 py-0.5 text-xs',
-                      'font-medium text-blue-700 dark:text-blue-400'
+                      'ml-auto rounded-full bg-violet-100',
+                      'dark:bg-violet-900/20 px-2 py-0.5 text-xs',
+                      'font-medium text-violet-700 dark:text-violet-400'
                     )}
                   >
                     {item.badge}
@@ -173,8 +173,8 @@ export function MobileDrawer({
               'flex items-center gap-3 px-3 py-3 text-sm',
               'font-medium rounded-lg transition-colors',
               pathname.startsWith(settingsItem.href)
-                ? 'bg-blue-50 text-blue-700 dark:bg-blue-900/20 ' +
-                  'dark:text-blue-400'
+                ? 'bg-violet-50 text-violet-700 dark:bg-violet-900/20 ' +
+                  'dark:text-violet-400'
                 : 'text-gray-700 hover:bg-gray-100 dark:text-gray-300 ' +
                   'dark:hover:bg-gray-700'
             )}
@@ -183,7 +183,7 @@ export function MobileDrawer({
               className={clsx(
                 'h-5 w-5 flex-shrink-0',
                 pathname.startsWith(settingsItem.href)
-                  ? 'text-blue-600 dark:text-blue-400'
+                  ? 'text-violet-600 dark:text-violet-400'
                   : 'text-gray-400 dark:text-gray-500'
               )}
             />

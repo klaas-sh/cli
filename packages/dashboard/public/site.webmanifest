@@ -4,8 +4,8 @@
   "description": "Remote access dashboard for Claude Code sessions",
   "start_url": "/",
   "display": "standalone",
-  "background_color": "#1e40af",
-  "theme_color": "#2563eb",
+  "background_color": "#4c1d95",
+  "theme_color": "#7c3aed",
   "icons": [
     {
       "src": "/favicon.svg",

@@ -152,8 +152,8 @@ export function ToastItem({
       + 'dark:bg-red-900/50 dark:border-red-800 dark:text-red-200',
     warning: 'bg-yellow-50 border-yellow-200 text-yellow-800 '
       + 'dark:bg-yellow-900/50 dark:border-yellow-800 dark:text-yellow-200',
-    info: 'bg-blue-50 border-blue-200 text-blue-800 '
-      + 'dark:bg-blue-900/50 dark:border-blue-800 dark:text-blue-200'
+    info: 'bg-violet-50 border-violet-200 text-violet-800 '
+      + 'dark:bg-violet-900/50 dark:border-violet-800 dark:text-violet-200'
   }
 
   const Icon = icons[toast.type] || Info

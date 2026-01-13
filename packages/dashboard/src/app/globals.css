@@ -16,39 +16,40 @@
  */
 @theme {
   /*
-   * Theme colors derived from favicon:
-   * - Dark blue: #1e40af (background/accent)
-   * - Primary blue: #2563eb (interactive elements)
-   * - Soft white: #cfcfcf (text on dark backgrounds)
+   * Theme colors using Tailwind violet palette:
+   * - violet-900: #4c1d95 (dark background)
+   * - violet-800: #5b21b6 (accent)
+   * - violet-600: #7c3aed (primary/interactive)
+   * - violet-100: #ede9fe (light elements on dark)
    */
 
   /* Light mode colors */
-  --color-app-primary: #2563eb;
-  --color-app-secondary: #64748b;
-  --color-app-accent: #1e40af;
-  --color-app-success: #10b981;
-  --color-app-warning: #f59e0b;
-  --color-app-error: #ef4444;
-  --color-app-background: #f8fafc;
-  --color-app-surface: #ffffff;
-  --color-app-border: #e2e8f0;
-  --color-app-text-primary: #1e293b;
-  --color-app-text-secondary: #475569;
-  --color-app-text-muted: #64748b;
+  --color-app-primary: #7c3aed;        /* violet-600 */
+  --color-app-secondary: #64748b;      /* slate-500 */
+  --color-app-accent: #5b21b6;         /* violet-800 */
+  --color-app-success: #10b981;        /* emerald-500 */
+  --color-app-warning: #f59e0b;        /* amber-500 */
+  --color-app-error: #ef4444;          /* red-500 */
+  --color-app-background: #faf5ff;     /* violet-50 */
+  --color-app-surface: #ffffff;        /* white */
+  --color-app-border: #ddd6fe;         /* violet-200 */
+  --color-app-text-primary: #1e293b;   /* slate-800 */
+  --color-app-text-secondary: #6d28d9; /* violet-700 */
+  --color-app-text-muted: #64748b;     /* slate-500 */
 
   /* Dark mode colors */
-  --color-app-primary-dark: #2563eb;
-  --color-app-secondary-dark: #64748b;
-  --color-app-accent-dark: #1e40af;
-  --color-app-success-dark: #34d399;
-  --color-app-warning-dark: #fbbf24;
-  --color-app-error-dark: #f87171;
-  --color-app-background-dark: #0f172a;
-  --color-app-surface-dark: #1e293b;
-  --color-app-border-dark: #334155;
-  --color-app-text-primary-dark: #cfcfcf;
-  --color-app-text-secondary-dark: #94a3b8;
-  --color-app-text-muted-dark: #64748b;
+  --color-app-primary-dark: #a78bfa;   /* violet-400 */
+  --color-app-secondary-dark: #64748b; /* slate-500 */
+  --color-app-accent-dark: #7c3aed;    /* violet-600 */
+  --color-app-success-dark: #34d399;   /* emerald-400 */
+  --color-app-warning-dark: #fbbf24;   /* amber-400 */
+  --color-app-error-dark: #f87171;     /* red-400 */
+  --color-app-background-dark: #2e1065; /* violet-950 */
+  --color-app-surface-dark: #4c1d95;   /* violet-900 */
+  --color-app-border-dark: #6d28d9;    /* violet-700 */
+  --color-app-text-primary-dark: #ede9fe; /* violet-100 */
+  --color-app-text-secondary-dark: #c4b5fd; /* violet-300 */
+  --color-app-text-muted-dark: #a78bfa; /* violet-400 */
 
   /* Spacing variables */
   --spacing-18: 4.5rem;

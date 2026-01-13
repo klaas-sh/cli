@@ -35,7 +35,7 @@ export function EmptyState({
       <p className="text-sm text-gray-500 mb-6 text-center max-w-sm">{description}</p>
       <button
         onClick={onAction}
-        className="inline-flex items-center gap-2 px-4 py-2 bg-blue-600 text-white text-sm font-medium rounded-md hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 transition-colors"
+        className="inline-flex items-center gap-2 px-4 py-2 bg-violet-600 text-white text-sm font-medium rounded-md hover:bg-violet-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-violet-500 transition-colors"
       >
         {ActionIcon ? (
           <ActionIcon className="h-4 w-4" />

@@ -248,7 +248,7 @@ export function getAvatarColor(str: string): string {
     'bg-teal-500',
     'bg-cyan-500',
     'bg-sky-500',
-    'bg-blue-500',
+    'bg-violet-500',
     'bg-indigo-500',
     'bg-violet-500',
     'bg-purple-500',
