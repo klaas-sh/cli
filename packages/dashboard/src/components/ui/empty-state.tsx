@@ -25,7 +25,7 @@ export function EmptyState({
   onAction,
   actionIcon: ActionIcon,
   className = ''
-}: EmptyStateProps) {
+}: EmptyStateProps): React.JSX.Element {
   return (
     <div className={`flex flex-col items-center justify-center py-12 ${className}`}>
       <div className="mb-4">

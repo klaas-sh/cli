@@ -8,7 +8,10 @@ interface CheckboxProps extends Omit<InputHTMLAttributes<HTMLInputElement>, 'typ
 }
 
 export const Checkbox = forwardRef<HTMLInputElement, CheckboxProps>(
-  ({ className, onCheckedChange, onChange, checked, ...props }, ref): React.JSX.Element => {
+  (
+    { className, onCheckedChange, onChange, checked, ...props },
+    ref
+  ): React.JSX.Element => {
     const handleChange = (
       event: React.ChangeEvent<HTMLInputElement>
     ): void => {

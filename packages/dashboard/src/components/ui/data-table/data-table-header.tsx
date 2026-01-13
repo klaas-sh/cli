@@ -35,7 +35,7 @@ export function DataTableHeader({
         onSearchChange(localSearch)
       }
     }, 300)
-    return () => clearTimeout(timer)
+    return (): void => clearTimeout(timer)
   }, [localSearch, onSearchChange, searchValue])
 
   const hasFilters = filters && filters.length > 0

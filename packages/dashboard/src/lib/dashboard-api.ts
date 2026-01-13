@@ -1,29 +1,8 @@
 import { apiClient } from './api-client'
+import type { Session, GetSessionsParams } from '@/types/session'
 
-/**
- * CLI session information
- */
-export interface Session {
-  id: string
-  userId: string
-  projectPath: string
-  deviceName: string
-  status: 'active' | 'idle' | 'disconnected'
-  createdAt: string
-  lastActivityAt: string
-  ipAddress?: string
-  userAgent?: string
-}
-
-/**
- * Pagination parameters for list requests
- */
-export interface PaginationParams {
-  page?: number
-  limit?: number
-  sortBy?: string
-  sortOrder?: 'asc' | 'desc'
-}
+// Re-export Session type for convenience
+export type { Session }
 
 /**
  * Paginated response wrapper
@@ -31,7 +10,7 @@ export interface PaginationParams {
 export interface PaginatedResponse<T> {
   success: boolean
   data: T[]
-  pagination: {
+  meta: {
     page: number
     limit: number
     total: number
@@ -63,7 +42,7 @@ class DashboardApi {
    * Get all sessions for the authenticated user
    */
   async getSessions(
-    params?: PaginationParams
+    params?: GetSessionsParams
   ): Promise<PaginatedResponse<Session>> {
     const searchParams = new URLSearchParams()
 
@@ -73,11 +52,17 @@ class DashboardApi {
     if (params?.limit) {
       searchParams.set('limit', params.limit.toString())
     }
-    if (params?.sortBy) {
-      searchParams.set('sortBy', params.sortBy)
+    if (params?.search) {
+      searchParams.set('search', params.search)
     }
-    if (params?.sortOrder) {
-      searchParams.set('sortOrder', params.sortOrder)
+    if (params?.status) {
+      searchParams.set('status', params.status)
+    }
+    if (params?.sort) {
+      searchParams.set('sortBy', params.sort)
+    }
+    if (params?.order) {
+      searchParams.set('sortOrder', params.order)
     }
 
     const queryString = searchParams.toString()
@@ -89,10 +74,11 @@ class DashboardApi {
   /**
    * Get a specific session by ID
    */
-  async getSessionById(id: string): Promise<SingleResponse<Session>> {
-    return apiClient.request<SingleResponse<Session>>(
+  async getSessionById(id: string): Promise<Session> {
+    const response = await apiClient.request<SingleResponse<Session>>(
       `/dashboard/sessions/${id}`
     )
+    return response.data
   }
 
   /**

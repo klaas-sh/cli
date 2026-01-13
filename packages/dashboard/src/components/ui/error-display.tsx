@@ -13,7 +13,9 @@ interface ErrorDisplayProps {
  * Consistent error display component for all overview pages
  * Shows error message with red icon and dismiss button
  */
-export function ErrorDisplay({ error, onDismiss, className = '' }: ErrorDisplayProps) {
+export function ErrorDisplay(
+  { error, onDismiss, className = '' }: ErrorDisplayProps
+): React.JSX.Element {
   return (
     <div className={`bg-red-50 border border-red-200 rounded-lg p-4 ${className}`}>
       <div className="flex items-start gap-3">

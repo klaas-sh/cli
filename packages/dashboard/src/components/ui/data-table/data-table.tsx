@@ -82,7 +82,7 @@ export function DataTable<TData extends { id: string }>({
         table
       }: {
         table: ReturnType<typeof useReactTable<TData>>
-      }) => (
+      }): React.JSX.Element => (
         <div className="flex items-center">
           <input
             type="checkbox"
@@ -101,7 +101,7 @@ export function DataTable<TData extends { id: string }>({
           getIsSelected: () => boolean
           toggleSelected: (value?: boolean) => void
         }
-      }) => (
+      }): React.JSX.Element => (
         <div
           className="flex items-center"
           onClick={(e) => e.stopPropagation()}

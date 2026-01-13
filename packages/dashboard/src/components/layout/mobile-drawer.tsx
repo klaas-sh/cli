@@ -40,7 +40,7 @@ export function MobileDrawer({
       document.body.style.overflow = 'hidden'
     }
 
-    return () => {
+    return (): void => {
       document.removeEventListener('keydown', handleEscape)
       document.body.style.overflow = ''
     }

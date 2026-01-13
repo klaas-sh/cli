@@ -116,7 +116,7 @@ export default function SessionsPage(): React.JSX.Element {
       header: ({ column }) => (
         <DataTableColumnHeader column={column} title="Status" />
       ),
-      cell: ({ row }) => {
+      cell: ({ row }): React.JSX.Element => {
         const status = row.original.status
         const variant = status === 'active' ? 'success'
           : status === 'idle' ? 'warning' : 'default'
