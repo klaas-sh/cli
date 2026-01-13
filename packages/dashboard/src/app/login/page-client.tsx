@@ -33,10 +33,7 @@ export default function LoginPageClient(): ReactElement {
       <div className="max-w-md w-full">
         <div className="text-center mb-8">
           <div className="flex items-center justify-center mb-4">
-            <AppIcon
-              className="text-blue-600 dark:text-blue-400 mr-3"
-              size={40}
-            />
+            <AppIcon className="mr-3" size={40} />
             <h1 className="text-3xl font-bold text-gray-900 dark:text-white">
               Nexo
             </h1>

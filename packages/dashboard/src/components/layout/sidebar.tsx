@@ -49,10 +49,7 @@ export function Sidebar(): React.JSX.Element {
         )}
       >
         <div className="flex items-center gap-2">
-          <AppIcon
-            className="text-blue-600 dark:text-blue-400"
-            size={32}
-          />
+          <AppIcon size={32} />
           {!isCollapsed && (
             <div className="flex items-center gap-2">
               <span
