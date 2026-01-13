@@ -142,14 +142,14 @@ export function AlertModal({
   cancelText
 }: AlertModalProps): React.JSX.Element {
   const typeColors = {
-    info: 'text-violet-600 dark:text-violet-400',
+    info: 'text-app-primary dark:text-app-primary-dark',
     warning: 'text-yellow-600 dark:text-yellow-400',
     error: 'text-red-600 dark:text-red-400',
     success: 'text-green-600 dark:text-green-400'
   }
 
   const typeBackgrounds = {
-    info: 'bg-violet-50 dark:bg-violet-900/20',
+    info: 'bg-app-highlight dark:bg-app-highlight-dark',
     warning: 'bg-yellow-50 dark:bg-yellow-900/20',
     error: 'bg-red-50 dark:bg-red-900/20',
     success: 'bg-green-50 dark:bg-green-900/20'

@@ -25,6 +25,8 @@
 
   /* Light mode colors */
   --color-app-primary: #7c3aed;        /* violet-600 */
+  --color-app-primary-hover: #6d28d9;  /* violet-700 */
+  --color-app-primary-light: #ede9fe;  /* violet-100 */
   --color-app-secondary: #64748b;      /* slate-500 */
   --color-app-accent: #5b21b6;         /* violet-800 */
   --color-app-success: #10b981;        /* emerald-500 */
@@ -33,12 +35,15 @@
   --color-app-background: #faf5ff;     /* violet-50 */
   --color-app-surface: #ffffff;        /* white */
   --color-app-border: #ddd6fe;         /* violet-200 */
+  --color-app-highlight: #f5f3ff;      /* violet-50 */
   --color-app-text-primary: #1e293b;   /* slate-800 */
   --color-app-text-secondary: #6d28d9; /* violet-700 */
   --color-app-text-muted: #64748b;     /* slate-500 */
 
   /* Dark mode colors */
   --color-app-primary-dark: #a78bfa;   /* violet-400 */
+  --color-app-primary-hover-dark: #8b5cf6; /* violet-500 */
+  --color-app-primary-light-dark: #4c1d95; /* violet-900 */
   --color-app-secondary-dark: #64748b; /* slate-500 */
   --color-app-accent-dark: #7c3aed;    /* violet-600 */
   --color-app-success-dark: #34d399;   /* emerald-400 */
@@ -47,6 +52,7 @@
   --color-app-background-dark: #2e1065; /* violet-950 */
   --color-app-surface-dark: #4c1d95;   /* violet-900 */
   --color-app-border-dark: #6d28d9;    /* violet-700 */
+  --color-app-highlight-dark: #3b1a6d; /* violet-900/50 approx */
   --color-app-text-primary-dark: #ede9fe; /* violet-100 */
   --color-app-text-secondary-dark: #c4b5fd; /* violet-300 */
   --color-app-text-muted-dark: #a78bfa; /* violet-400 */

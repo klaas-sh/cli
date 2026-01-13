@@ -140,8 +140,8 @@ export function LoginForm(): React.JSX.Element {
   return (
     <div className="bg-white dark:bg-gray-800 shadow rounded-lg p-6">
       {returnUrl && (
-        <div className="mb-4 p-3 bg-violet-50 dark:bg-violet-900/20 rounded-lg">
-          <p className="text-sm text-violet-600 dark:text-violet-400">
+        <div className="mb-4 p-3 bg-app-highlight dark:bg-app-highlight-dark rounded-lg">
+          <p className="text-sm text-app-primary dark:text-app-primary-dark">
             Your session has expired. You&apos;ll be redirected after signing
             in.
           </p>
@@ -202,8 +202,8 @@ export function LoginForm(): React.JSX.Element {
         ) : (
           // MFA verification form
           <>
-            <div className="bg-violet-50 dark:bg-violet-900/20 p-4 rounded-lg">
-              <p className="text-sm text-violet-600 dark:text-violet-400">
+            <div className="bg-app-highlight dark:bg-app-highlight-dark p-4 rounded-lg">
+              <p className="text-sm text-app-primary dark:text-app-primary-dark">
                 Multi-factor authentication is enabled for your account.
               </p>
             </div>
@@ -228,11 +228,11 @@ export function LoginForm(): React.JSX.Element {
                       maxLength={1}
                       className="block w-[52px] h-[52px] text-center border-2
                                border-gray-300 rounded-lg text-xl font-medium
-                               focus:border-violet-500 focus:ring-2
-                               focus:ring-violet-200 focus:outline-none
+                               focus:border-app-primary focus:ring-2
+                               focus:ring-app-border focus:outline-none
                                dark:bg-gray-800 dark:border-gray-600
-                               dark:text-white dark:focus:border-violet-400
-                               dark:focus:ring-violet-800"
+                               dark:text-white dark:focus:border-app-primary-dark
+                               dark:focus:ring-app-border-dark"
                       value={mfaToken[index] || ''}
                       onChange={(e) => {
                         const value = e.target.value.replace(/[^0-9]/g, '')
@@ -352,7 +352,7 @@ export function LoginForm(): React.JSX.Element {
         <div className="space-y-3">
           <Button
             type="submit"
-            className="w-full bg-violet-600 hover:bg-violet-700 text-white"
+            className="w-full bg-app-primary hover:bg-app-primary-hover text-white"
             disabled={isLoading
               || (mfaRequired && !useBackupCode && !mfaToken.trim())
               || (mfaRequired && useBackupCode && !backupCode.trim())}

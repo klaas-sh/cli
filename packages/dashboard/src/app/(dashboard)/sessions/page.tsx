@@ -166,8 +166,8 @@ export default function SessionsPage(): React.JSX.Element {
           onClick={(e) => e.stopPropagation()}>
           <button
             onClick={() => router.push(`/sessions/${row.original.id}`)}
-            className="p-1 text-gray-400 hover:text-violet-600
-              dark:hover:text-violet-400"
+            className="p-1 text-gray-400 hover:text-app-primary
+              dark:hover:text-app-primary-dark"
             title="View session"
           >
             <Eye className="h-4 w-4" />

@@ -13,7 +13,7 @@ function LoginFormWrapper(): ReactElement {
       <div className="bg-white dark:bg-gray-800 shadow rounded-lg p-6">
         <div className="flex items-center justify-center py-8">
           <div className="animate-spin rounded-full h-8 w-8 border-b-2
-            border-violet-600"></div>
+            border-app-primary"></div>
         </div>
       </div>
     }>
@@ -50,7 +50,7 @@ export default function LoginPageClient(): ReactElement {
             Don&apos;t have an account?{' '}
             <a
               href="/signup"
-              className="text-violet-600 dark:text-violet-400 hover:underline
+              className="text-app-primary dark:text-app-primary-dark hover:underline
                 font-medium"
             >
               Sign up
@@ -59,7 +59,7 @@ export default function LoginPageClient(): ReactElement {
           <p className="text-sm text-gray-600 dark:text-gray-400">
             <a
               href="/forgot-password"
-              className="text-violet-600 dark:text-violet-400 hover:underline"
+              className="text-app-primary dark:text-app-primary-dark hover:underline"
             >
               Forgot your password?
             </a>

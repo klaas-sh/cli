@@ -22,8 +22,8 @@ export default function NotFound(): React.JSX.Element {
         </p>
         <Link
           href="/"
-          className="inline-flex items-center px-4 py-2 bg-violet-600
-            text-white font-medium rounded-lg hover:bg-violet-700
+          className="inline-flex items-center px-4 py-2 bg-app-primary
+            text-white font-medium rounded-lg hover:bg-app-primary-hover
             transition-colors"
         >
           Go Home

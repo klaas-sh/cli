@@ -77,7 +77,7 @@ export function Header({ onMenuClick }: HeaderProps): React.JSX.Element {
             >
               <div
                 className={clsx(
-                  'h-8 w-8 bg-violet-600 rounded-full',
+                  'h-8 w-8 bg-app-primary rounded-full',
                   'flex items-center justify-center'
                 )}
               >

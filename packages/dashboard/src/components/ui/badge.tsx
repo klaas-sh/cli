@@ -34,7 +34,8 @@ export function Badge({
     error:
       'bg-red-100 text-red-800 dark:bg-red-800/30 dark:text-red-400',
     info:
-      'bg-violet-100 text-violet-800 dark:bg-violet-800/30 dark:text-violet-400',
+      'bg-app-primary-light text-app-accent ' +
+      'dark:bg-app-primary-light-dark/30 dark:text-app-primary-dark',
     soft:
       'bg-gray-50 text-gray-600 dark:bg-gray-700 dark:text-gray-400',
     outline:
