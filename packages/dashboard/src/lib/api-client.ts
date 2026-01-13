@@ -62,7 +62,9 @@ class ApiClient {
     const result = await response.json() as {
       success?: boolean
       data?: {
-        token: string
+        accessToken: string
+        refreshToken: string
+        user: { id: string; email: string }
         isFirstLogin?: boolean
         requiresPasswordChange?: boolean
         requiresMFASetup?: boolean
@@ -84,12 +86,12 @@ class ApiClient {
     }
 
     // Handle the nested data structure from API
-    if (result.success && result.data?.token) {
+    if (result.success && result.data?.accessToken) {
       // Store token in localStorage
-      localStorage.setItem(TOKEN_KEY, result.data.token)
+      localStorage.setItem(TOKEN_KEY, result.data.accessToken)
 
       // Also set a cookie for middleware authentication
-      const cookieValue = `${TOKEN_KEY}=${result.data.token}`
+      const cookieValue = `${TOKEN_KEY}=${result.data.accessToken}`
       // Use actual protocol to determine secure flag
       // This ensures cookie works when app is built in prod mode but served
       // over HTTP locally
@@ -101,7 +103,7 @@ class ApiClient {
 
       return {
         success: true,
-        token: result.data.token,
+        token: result.data.accessToken,
         isFirstLogin: result.data.isFirstLogin,
         requiresPasswordChange: result.data.requiresPasswordChange,
         requiresMFASetup: result.data.requiresMFASetup
