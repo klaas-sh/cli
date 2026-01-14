@@ -28,8 +28,8 @@ ulid = "1"
 # Encoding
 base64 = "0.22"
 
-# WebSocket client
-tokio-tungstenite = { version = "0.24", features = ["native-tls"] }
+# WebSocket client (using rustls for consistent TLS with reqwest)
+tokio-tungstenite = { version = "0.24", features = ["rustls-tls-native-roots"] }
 url = "2"
 futures-util = "0.3"
 
