@@ -10,7 +10,7 @@ const inter = Inter({
 })
 
 export const metadata: Metadata = {
-  title: 'Nexo Dashboard',
+  title: 'Klaas Dashboard',
   description: 'Remote access and control for Claude Code sessions',
   icons: {
     icon: [
@@ -32,7 +32,7 @@ export const viewport: Viewport = {
 }
 
 /**
- * Root layout for the Nexo Dashboard application.
+ * Root layout for the Klaas Dashboard application.
  * Sets up the HTML document with Inter font and dark mode support.
  */
 export default function RootLayout({

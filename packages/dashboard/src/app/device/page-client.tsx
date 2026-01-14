@@ -35,7 +35,7 @@ export default function DevicePageClient(): ReactElement {
           <div className="flex items-center justify-center mb-4">
             <AppIcon className="mr-3" size={40} />
             <h1 className="text-3xl font-bold text-gray-900 dark:text-white">
-              Nexo
+              Klaas
             </h1>
           </div>
           <p className="text-gray-600 dark:text-gray-400">
@@ -49,7 +49,7 @@ export default function DevicePageClient(): ReactElement {
           <p className="text-sm text-gray-600 dark:text-gray-400">
             Run <code className="bg-gray-100 dark:bg-gray-800 px-2 py-1
               rounded font-mono text-app-primary dark:text-app-primary-dark">
-              nexo
+              klaas
             </code> in your terminal to get a device code.
           </p>
         </div>

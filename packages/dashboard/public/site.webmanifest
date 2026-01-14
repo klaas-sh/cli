@@ -1,6 +1,6 @@
 {
-  "name": "Nexo Dashboard",
-  "short_name": "Nexo",
+  "name": "Klaas Dashboard",
+  "short_name": "Klaas",
   "description": "Remote access dashboard for Claude Code sessions",
   "start_url": "/",
   "display": "standalone",

@@ -10,7 +10,7 @@ interface HeaderProps {
 }
 
 /**
- * Header component for the Nexo dashboard
+ * Header component for the Klaas dashboard
  *
  * Contains dark mode toggle and user menu.
  * Uses blue color scheme for branding consistency.

@@ -1,5 +1,5 @@
 /**
- * Layout components for the Nexo dashboard
+ * Layout components for the Klaas dashboard
  */
 
 export { Sidebar } from './sidebar'

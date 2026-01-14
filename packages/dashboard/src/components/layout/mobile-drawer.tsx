@@ -14,7 +14,7 @@ interface MobileDrawerProps {
 }
 
 /**
- * Mobile navigation drawer for the Nexo dashboard
+ * Mobile navigation drawer for the Klaas dashboard
  *
  * Slides in from the left on mobile devices.
  * Uses blue color scheme for branding consistency.
@@ -91,7 +91,7 @@ export function MobileDrawer({
                 'text-xl font-bold text-gray-900 dark:text-white'
               )}
             >
-              Nexo
+              Klaas
             </span>
           </div>
           <button

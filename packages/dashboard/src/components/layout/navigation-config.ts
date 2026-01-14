@@ -12,7 +12,7 @@ export interface NavigationItem {
 }
 
 /**
- * Navigation items for the Nexo dashboard sidebar
+ * Navigation items for the Klaas dashboard sidebar
  *
  * Minimal navigation with Sessions as the primary feature.
  */

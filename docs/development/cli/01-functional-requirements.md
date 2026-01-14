@@ -49,16 +49,16 @@ pseudo-terminal (PTY).
 **Examples:**
 ```bash
 # Basic usage (no arguments)
-nexo
+klaas
 
 # With prompt
-nexo -p "Review this codebase"
+klaas -p "Review this codebase"
 
 # With Claude Code flags
-nexo --model sonnet --allowedTools Read,Write
+klaas --model sonnet --allowedTools Read,Write
 
 # All flags pass through
-nexo --dangerously-skip-permissions
+klaas --dangerously-skip-permissions
 ```
 
 #### FR-2.1.2: I/O Forwarding
@@ -178,7 +178,7 @@ Working directory: /Users/example/project
 ```
 Session ID: 01HQXK7V8G3N5M2R4P6T1W9Y0Z
 Status: Attached
-Connected to: api.nexo.dev
+Connected to: api.klaas.dev
 Device: MacBook Pro
 Working directory: /Users/example/project
 ```
@@ -201,7 +201,7 @@ Working directory: /Users/example/project
 
 **Authentication Flow:**
 ```
-To attach this session, visit: https://nexo.dev/activate
+To attach this session, visit: https://klaas.dev/activate
 Enter code: ABCD-1234
 
 Waiting for authorization...
@@ -235,7 +235,7 @@ Detached. Continuing locally.
 **Description:** Maintains persistent WebSocket connection when attached.
 
 **Acceptance Criteria:**
-- [ ] Connects to `wss://api.nexo.dev/ws`
+- [ ] Connects to `wss://api.klaas.dev/ws`
 - [ ] Includes authentication token in connection headers
 - [ ] Includes device ID and session ID in headers
 - [ ] Handles connection success and failure states
@@ -320,8 +320,8 @@ Claude Code.
 - [ ] macOS: Uses Keychain Services
 - [ ] Linux: Uses Secret Service API (libsecret)
 - [ ] Windows: Uses Credential Manager
-- [ ] Fallback: File-based storage in `~/.config/nexo/` (mode 600)
-- [ ] Service name: `dev.nexo.cli`
+- [ ] Fallback: File-based storage in `~/.config/klaas/` (mode 600)
+- [ ] Service name: `dev.klaas.cli`
 - [ ] Stored items: access_token, refresh_token, device_id, device_key
 
 #### FR-2.5.4: Device Identity
@@ -426,7 +426,7 @@ Error: Could not save credentials. Using temporary storage.
 ### 5.1 Usage
 
 ```
-nexo [OPTIONS] [-- CLAUDE_ARGS...]
+klaas [OPTIONS] [-- CLAUDE_ARGS...]
 
 Options:
   -h, --help       Show help message
@@ -438,16 +438,16 @@ All other options pass through to Claude Code.
 ### 5.2 Version Output
 
 ```
-nexo 0.1.0
+klaas 0.1.0
 ```
 
 ### 5.3 Help Output
 
 ```
-nexo - Remote access wrapper for Claude Code
+klaas - Remote access wrapper for Claude Code
 
 USAGE:
-    nexo [OPTIONS] [-- CLAUDE_ARGS...]
+    klaas [OPTIONS] [-- CLAUDE_ARGS...]
 
 OPTIONS:
     -h, --help       Print help information
@@ -462,9 +462,9 @@ NEXO COMMANDS (type during session):
     /help    - Show available commands
 
 EXAMPLES:
-    nexo                           # Start Claude Code
-    nexo -p "Review this code"     # Start with prompt
-    nexo --model sonnet            # Use specific model
+    klaas                           # Start Claude Code
+    klaas -p "Review this code"     # Start with prompt
+    klaas --model sonnet            # Use specific model
 ```
 
 ---

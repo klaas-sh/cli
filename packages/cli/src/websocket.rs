@@ -148,7 +148,7 @@ impl WebSocketClient {
     ///
     /// # Arguments
     ///
-    /// * `url` - WebSocket URL (wss://api.nexo.dev/ws)
+    /// * `url` - WebSocket URL (wss://api.klaas.sh/ws)
     /// * `token` - JWT access token for authentication
     /// * `session_id` - ULID session identifier
     /// * `device_id` - ULID device identifier

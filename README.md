@@ -1,4 +1,4 @@
-# Nexo
+# Klaas
 
 Remote access wrapper for Claude Code sessions. Run Claude Code locally and
 view/interact with it from anywhere via a web browser.
@@ -16,7 +16,7 @@ view/interact with it from anywhere via a web browser.
 
 ```
 ┌─────────────┐     WebSocket      ┌─────────────┐     WebSocket     ┌─────────────┐
-│  Nexo CLI   │◄──────────────────►│ Cloudflare  │◄────────────────►│    Web      │
+│  Klaas CLI   │◄──────────────────►│ Cloudflare  │◄────────────────►│    Web      │
 │  (Rust)     │                    │  Workers    │                   │  Dashboard  │
 │             │                    │  + D1 + DO  │                   │  (Next.js)  │
 └─────────────┘                    └─────────────┘                   └─────────────┘

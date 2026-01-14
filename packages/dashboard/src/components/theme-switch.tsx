@@ -6,7 +6,7 @@ import { Moon, Sun } from 'lucide-react'
 const DARK_MODE_KEY = 'dark-mode-preference'
 
 /**
- * Theme switch component for Nexo dashboard
+ * Theme switch component for Klaas dashboard
  *
  * Toggles between light and dark mode, persisting the preference
  * to localStorage and applying the dark class to the document element.

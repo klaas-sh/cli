@@ -35,7 +35,7 @@ interface ApiErrorResponse {
 }
 
 /**
- * Simple API client for making requests to the Nexo backend
+ * Simple API client for making requests to the Klaas backend
  */
 class ApiClient {
   private baseUrl: string

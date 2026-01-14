@@ -1,4 +1,4 @@
-//! OAuth Device Flow authentication for Nexo CLI.
+//! OAuth Device Flow authentication for Klaas CLI.
 //!
 //! Implements RFC 8628 OAuth 2.0 Device Authorization Grant.
 //! The flow:
@@ -134,7 +134,7 @@ const SPINNER_CHARS: &[char] = &['|', '/', '-', '\\'];
 ///
 /// # Arguments
 ///
-/// * `api_url` - Base URL of the Nexo API (e.g., "https://api.nexo.dev")
+/// * `api_url` - Base URL of the Klaas API (e.g., "https://api.klaas.sh")
 ///
 /// # Returns
 ///
@@ -143,7 +143,7 @@ const SPINNER_CHARS: &[char] = &['|', '/', '-', '\\'];
 /// # Example
 ///
 /// ```ignore
-/// let response = start_device_flow("https://api.nexo.dev").await?;
+/// let response = start_device_flow("https://api.klaas.sh").await?;
 /// println!("Visit: {} and enter: {}", response.verification_uri, response.user_code);
 /// ```
 pub async fn start_device_flow(api_url: &str) -> AuthResult<DeviceFlowResponse> {
@@ -172,7 +172,7 @@ pub async fn start_device_flow(api_url: &str) -> AuthResult<DeviceFlowResponse> 
 ///
 /// # Arguments
 ///
-/// * `api_url` - Base URL of the Nexo API
+/// * `api_url` - Base URL of the Klaas API
 /// * `device_code` - The device code from `start_device_flow`
 /// * `interval` - Initial polling interval in seconds
 /// * `expires_in` - Seconds until the device code expires
@@ -185,7 +185,7 @@ pub async fn start_device_flow(api_url: &str) -> AuthResult<DeviceFlowResponse> 
 ///
 /// ```ignore
 /// let tokens = poll_for_token(
-///     "https://api.nexo.dev",
+///     "https://api.klaas.sh",
 ///     &device_response.device_code,
 ///     device_response.interval,
 ///     device_response.expires_in,
@@ -288,7 +288,7 @@ pub async fn poll_for_token(
 ///
 /// # Arguments
 ///
-/// * `api_url` - Base URL of the Nexo API
+/// * `api_url` - Base URL of the Klaas API
 /// * `refresh_token` - The refresh token from a previous authentication
 ///
 /// # Returns
@@ -298,7 +298,7 @@ pub async fn poll_for_token(
 /// # Example
 ///
 /// ```ignore
-/// let new_tokens = refresh_token("https://api.nexo.dev", &old_refresh_token).await?;
+/// let new_tokens = refresh_token("https://api.klaas.sh", &old_refresh_token).await?;
 /// ```
 pub async fn refresh_token(api_url: &str, refresh_token: &str) -> AuthResult<TokenResponse> {
     let url = format!("{}/auth/refresh", api_url.trim_end_matches('/'));
@@ -386,7 +386,7 @@ fn clear_spinner_line() {
 ///
 /// # Arguments
 ///
-/// * `api_url` - Base URL of the Nexo API
+/// * `api_url` - Base URL of the Klaas API
 ///
 /// # Returns
 ///
@@ -395,7 +395,7 @@ fn clear_spinner_line() {
 /// # Example
 ///
 /// ```ignore
-/// let tokens = authenticate("https://api.nexo.dev").await?;
+/// let tokens = authenticate("https://api.klaas.sh").await?;
 /// println!("Authenticated! Access token: {}", tokens.access_token);
 /// ```
 pub async fn authenticate(api_url: &str) -> AuthResult<TokenResponse> {
@@ -424,7 +424,7 @@ mod tests {
         let json = r#"{
             "device_code": "01HQXK7V8G3N5M2R4P6T1W9Y0Z",
             "user_code": "ABCD-1234",
-            "verification_uri": "https://nexo.dev/device",
+            "verification_uri": "https://klaas.sh/device",
             "expires_in": 600,
             "interval": 5
         }"#;
@@ -432,7 +432,7 @@ mod tests {
         let response: DeviceFlowResponse = serde_json::from_str(json).unwrap();
         assert_eq!(response.device_code, "01HQXK7V8G3N5M2R4P6T1W9Y0Z");
         assert_eq!(response.user_code, "ABCD-1234");
-        assert_eq!(response.verification_uri, "https://nexo.dev/device");
+        assert_eq!(response.verification_uri, "https://klaas.sh/device");
         assert_eq!(response.expires_in, 600);
         assert_eq!(response.interval, 5);
         assert!(response.verification_uri_complete.is_none());
@@ -443,8 +443,8 @@ mod tests {
         let json = r#"{
             "device_code": "01HQXK7V8G3N5M2R4P6T1W9Y0Z",
             "user_code": "ABCD-1234",
-            "verification_uri": "https://nexo.dev/device",
-            "verification_uri_complete": "https://nexo.dev/device?code=ABCD-1234",
+            "verification_uri": "https://klaas.sh/device",
+            "verification_uri_complete": "https://klaas.sh/device?code=ABCD-1234",
             "expires_in": 600,
             "interval": 5
         }"#;
@@ -452,7 +452,7 @@ mod tests {
         let response: DeviceFlowResponse = serde_json::from_str(json).unwrap();
         assert_eq!(
             response.verification_uri_complete,
-            Some("https://nexo.dev/device?code=ABCD-1234".to_string())
+            Some("https://klaas.sh/device?code=ABCD-1234".to_string())
         );
     }
 

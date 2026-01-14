@@ -6,9 +6,9 @@ interface AppIconProps {
 }
 
 /**
- * Nexo Application Icon Component
+ * Klaas Application Icon Component
  *
- * The main logo/icon for the Nexo dashboard application.
+ * The main logo/icon for the Klaas dashboard application.
  * Terminal-inspired icon matching the favicon design.
  * Colors: Tailwind violet palette - violet-900 background (#4c1d95),
  * violet-600 title bar (#7c3aed), violet-100 terminal elements (#ede9fe).

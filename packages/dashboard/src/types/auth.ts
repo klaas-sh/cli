@@ -1,5 +1,5 @@
 /**
- * Authentication types for Nexo Dashboard
+ * Authentication types for Klaas Dashboard
  */
 
 /**

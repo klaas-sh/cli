@@ -1,5 +1,5 @@
 /**
- * Session type definitions for the Nexo Dashboard.
+ * Session type definitions for the Klaas Dashboard.
  */
 
 /**
@@ -12,7 +12,7 @@ export type SessionStatus = 'active' | 'idle' | 'disconnected'
 
 /**
  * Device type that started the session.
- * - cli: Started from the Nexo CLI
+ * - cli: Started from the Klaas CLI
  * - web: Started from the web dashboard
  */
 export type DeviceType = 'cli' | 'web'

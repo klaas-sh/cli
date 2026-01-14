@@ -1,5 +1,5 @@
 /**
- * Nexo API - Cloudflare Worker entry point.
+ * Klaas API - Cloudflare Worker entry point.
  *
  * Exports:
  * - default: Fetch handler for HTTP requests

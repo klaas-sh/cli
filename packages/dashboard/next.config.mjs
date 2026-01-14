@@ -1,5 +1,5 @@
 /**
- * Next.js configuration for the Nexo user dashboard
+ * Next.js configuration for the Klaas user dashboard
  * @type {import('next').NextConfig}
  */
 const nextConfig = {

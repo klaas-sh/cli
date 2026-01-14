@@ -171,7 +171,7 @@ mod tests {
     #[test]
     fn test_derive_ws_url_with_trailing_slash() {
         assert_eq!(
-            derive_ws_url("https://api.nexo.dev/"),
+            derive_ws_url("https://api.klaas.sh/"),
             "wss://api.klaas.sh/ws"
         );
     }

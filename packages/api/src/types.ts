@@ -1,5 +1,5 @@
 /**
- * Type definitions for Nexo API.
+ * Type definitions for Klaas API.
  *
  * All IDs use ULID format (26 characters, uppercase alphanumeric).
  */

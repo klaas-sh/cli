@@ -1,5 +1,5 @@
 /**
- * Date formatting utilities for the Nexo Dashboard.
+ * Date formatting utilities for the Klaas Dashboard.
  * Format: day.month.fullyear (e.g., 12.08.2024 or 12 August 2024)
  */
 

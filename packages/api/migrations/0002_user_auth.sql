@@ -1,4 +1,4 @@
--- User authentication tables for Nexo
+-- User authentication tables for Klaas
 -- All IDs use ULID format (26 characters, uppercase alphanumeric)
 
 -- User passwords for local auth (alternative to GitHub OAuth)

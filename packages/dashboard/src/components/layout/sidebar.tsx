@@ -9,7 +9,7 @@ import { AppIcon } from '../icons/app-icon'
 import { navigationItems, settingsItem } from './navigation-config'
 
 /**
- * Sidebar component for the Nexo dashboard
+ * Sidebar component for the Klaas dashboard
  *
  * Provides navigation with collapsible functionality.
  * Uses blue color scheme and minimal navigation items.
@@ -58,7 +58,7 @@ export function Sidebar(): React.JSX.Element {
                   'text-gray-900 dark:text-white'
                 )}
               >
-                Nexo
+                Klaas
               </span>
             </div>
           )}

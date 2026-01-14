@@ -102,13 +102,13 @@ The MVP enables a single user to:
 
 ```bash
 # Start Claude Code wrapped in Klaas (works offline, no network)
-nexo
+klaas
 
 # Start with a specific prompt
-nexo -p "Review this codebase"
+klaas -p "Review this codebase"
 
 # All claude flags pass through
-nexo --model sonnet --allowedTools Read,Write
+klaas --model sonnet --allowedTools Read,Write
 ```
 
 #### Commands (intercepted by Klaas, not passed to Claude)
@@ -143,7 +143,7 @@ nexo --model sonnet --allowedTools Read,Write
 
 ### 2. Web API (Cloudflare Workers + Durable Objects)
 
-**Base URL:** `https://api.nexo.dev` (placeholder)
+**Base URL:** `https://api.klaas.dev` (placeholder)
 
 #### Authentication
 
@@ -156,8 +156,8 @@ POST /auth/device
 Response: { 
   "device_code": "xxx",
   "user_code": "ABCD-1234",
-  "verification_uri": "https://nexo.dev/activate",
-  "verification_uri_complete": "https://nexo.dev/activate?code=ABCD-1234",
+  "verification_uri": "https://klaas.dev/activate",
+  "verification_uri_complete": "https://klaas.dev/activate?code=ABCD-1234",
   "expires_in": 900,
   "interval": 5
 }
@@ -190,7 +190,7 @@ Response: {
       "status": "attached",
       "started_at": "2025-01-13T10:00:00Z",
       "attached_at": "2025-01-13T10:05:00Z",
-      "cwd": "/Users/mark/projects/nexo"
+      "cwd": "/Users/mark/projects/klaas"
     }
   ]
 }
@@ -201,7 +201,7 @@ Response: { "id": "sess_abc123", ... }
 
 #### WebSocket Protocol
 
-**Endpoint:** `wss://api.nexo.dev/ws?session_id=xxx`
+**Endpoint:** `wss://api.klaas.dev/ws?session_id=xxx`
 
 ##### Connection
 
@@ -223,7 +223,7 @@ All messages are JSON with a `type` field.
   "session_id": "sess_abc123",
   "device_id": "dev_xyz",
   "device_name": "MacBook Pro",
-  "cwd": "/Users/mark/projects/nexo"
+  "cwd": "/Users/mark/projects/klaas"
 }
 
 // Terminal output (sent continuously)
@@ -345,7 +345,7 @@ All messages are JSON with a `type` field.
 ### 3. Web Client
 
 **Stack:** React + TypeScript + xterm.js  
-**Hosting:** Cloudflare Pages at `https://nexo.dev`
+**Hosting:** Cloudflare Pages at `https://klaas.dev`
 
 #### Pages
 
@@ -428,7 +428,7 @@ interface Session {
   device_id: string;
   status: "attached" | "detached";
   cwd: string;             // Working directory
-  started_at: string;      // When nexo was launched
+  started_at: string;      // When klaas was launched
   attached_at: string | null;
   detached_at: string | null;
 }
@@ -656,7 +656,7 @@ fn match_command(buffer: &str) -> Option<Command> {
    - POST /devices with public key and device name
 
 5. Connect WebSocket:
-   - URL: wss://api.nexo.dev/ws
+   - URL: wss://api.klaas.dev/ws
    - Headers: Authorization: Bearer {token}, X-Device-ID: {device_id}
    - On connect success:
      - Send session_attach message
@@ -686,7 +686,7 @@ fn match_command(buffer: &str) -> Option<Command> {
 1. Print "Session ID: {session_id}"
 2. Print "Status: {ATTACHED|DETACHED}"
 3. If attached:
-   - Print "Connected to: api.nexo.dev"
+   - Print "Connected to: api.klaas.dev"
    - Print "Device: {device_name}"
 4. Print "Working directory: {cwd}"
 ```
@@ -803,7 +803,7 @@ impl MessageQueue {
 
 ```rust
 // Keychain service name
-const SERVICE: &str = "dev.nexo.cli";
+const SERVICE: &str = "dev.klaas.cli";
 
 // Stored items:
 // - "access_token"  → JWT access token
@@ -841,14 +841,14 @@ On SIGINT, SIGTERM, or Claude Code exit:
 1. **Network errors** → Log warning, continue locally, attempt reconnection
 2. **PTY errors** → Fatal, print error, exit
 3. **Auth errors** → Print message, clear stored tokens, prompt re-auth on next /attach
-4. **Keychain errors** → Fall back to file-based storage in `~/.config/nexo/`
+4. **Keychain errors** → Fall back to file-based storage in `~/.config/klaas/`
 
 ---
 
 ## Appendix: File Structure
 
 ```
-nexo/
+klaas/
 ├── packages/
 │   ├── cli/                    # Rust CLI
 │   │   ├── Cargo.toml

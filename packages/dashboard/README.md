@@ -1,4 +1,4 @@
-# Nexo Dashboard
+# Klaas Dashboard
 
 Web dashboard for remote access and control of Claude Code sessions.
 

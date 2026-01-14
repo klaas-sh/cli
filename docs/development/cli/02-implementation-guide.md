@@ -66,13 +66,13 @@ packages/cli/
 
 ```toml
 [package]
-name = "nexo"
+name = "klaas"
 version = "0.2.0"
 edition = "2021"
 authors = ["Klaas Team"]
 description = "Remote access wrapper for Claude Code"
 license = "MIT"
-repository = "https://github.com/example/nexo"
+repository = "https://github.com/example/klaas"
 
 [dependencies]
 # Async runtime
@@ -252,13 +252,13 @@ pub type Result<T> = std::result::Result<T, KlaasError>;
 
 ```rust
 /// API base URL
-pub const API_BASE_URL: &str = "https://api.nexo.dev";
+pub const API_BASE_URL: &str = "https://api.klaas.dev";
 
 /// WebSocket URL
-pub const WS_URL: &str = "wss://api.nexo.dev/ws";
+pub const WS_URL: &str = "wss://api.klaas.dev/ws";
 
 /// Keychain service name
-pub const KEYCHAIN_SERVICE: &str = "dev.nexo.cli";
+pub const KEYCHAIN_SERVICE: &str = "dev.klaas.cli";
 
 /// Reconnection settings
 pub const RECONNECT_BASE_DELAY_MS: u64 = 500;
@@ -294,7 +294,7 @@ mod terminal;
 mod types;
 
 #[derive(Parser)]
-#[command(name = "nexo")]
+#[command(name = "klaas")]
 #[command(about = "Remote access wrapper for Claude Code")]
 #[command(version)]
 struct Cli {
@@ -309,7 +309,7 @@ async fn main() -> anyhow::Result<()> {
     tracing_subscriber::registry()
         .with(
             tracing_subscriber::EnvFilter::try_from_default_env()
-                .unwrap_or_else(|_| "nexo=info".into()),
+                .unwrap_or_else(|_| "klaas=info".into()),
         )
         .with(tracing_subscriber::fmt::layer().with_writer(std::io::stderr))
         .init();
@@ -848,7 +848,7 @@ impl RemoteClient {
             .header("Authorization", format!("Bearer {}", access_token))
             .header("X-Device-ID", device_id.as_str())
             .header("X-Session-ID", session_id.as_str())
-            .header("Host", "api.nexo.dev")
+            .header("Host", "api.klaas.dev")
             .header("Connection", "Upgrade")
             .header("Upgrade", "websocket")
             .header("Sec-WebSocket-Version", "13")
@@ -1323,7 +1323,7 @@ mod tests {
 
 ```rust
 // tests/integration/pty_test.rs
-use nexo::pty::PtyManager;
+use klaas::pty::PtyManager;
 
 #[tokio::test]
 async fn test_pty_spawn() {
@@ -1349,7 +1349,7 @@ cargo run -- -p "Hello"
 cargo test
 
 # Run with logging
-RUST_LOG=nexo=debug cargo run
+RUST_LOG=klaas=debug cargo run
 
 # Check formatting
 cargo fmt --check
@@ -1382,7 +1382,7 @@ echo "All checks passed!"
 2. `terminal.rs` - Raw mode handling
 3. `pty.rs` - Claude Code spawning
 4. `app.rs` - Basic I/O loop (stdin -> PTY, PTY -> stdout)
-5. Test: `nexo` works identically to `claude`
+5. Test: `klaas` works identically to `claude`
 
 ### Phase 2: Authentication
 1. `auth/keychain.rs` - Credential storage
