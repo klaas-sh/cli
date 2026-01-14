@@ -47,11 +47,6 @@ pub const KEYCHAIN_SERVICE: &str = "dev.nexo.cli";
 /// OAuth device flow timeout in seconds (15 minutes).
 pub const AUTH_TIMEOUT_SECS: u64 = 900;
 
-/// Command interception timeout in milliseconds.
-/// If a potential command is not completed within this time,
-/// the partial input forwards to Claude Code.
-pub const COMMAND_TIMEOUT_MS: u64 = 2000;
-
 /// Base delay for reconnection attempts in milliseconds.
 pub const RECONNECT_BASE_DELAY_MS: u64 = 500;
 
