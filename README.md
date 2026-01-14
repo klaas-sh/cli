@@ -1,110 +1,142 @@
 # Nexo
 
-## What Was Implemented
+Remote access wrapper for Claude Code sessions. Run Claude Code locally and
+view/interact with it from anywhere via a web browser.
 
-A Rust CLI that wraps Claude Code sessions with command interception 
-capabilities. This is Phase 1-2 of the MVP spec (local-only CLI).
+## Features
 
-### Core Features
-- PTY Wrapper: Spawns Claude Code in a pseudo-terminal, forwarding all I/O
-- Command Interception: Detects /commands typed at the start of a line
-- Session IDs: Each session gets a unique ULID identifier
+- **Transparent Wrapper**: Wraps Claude Code in a PTY without modifying its
+  behavior - all Claude Code commands work unchanged
+- **Remote Viewing**: Stream terminal output in real-time to a web dashboard
+- **Remote Input**: Type in the browser and have it sent to your local CLI
+- **OAuth Authentication**: Secure device-based authentication flow
+- **Auto-reconnect**: Handles connection drops gracefully
 
-## Available Commands (during a session)
+## Architecture
 
-| Command         | Description                                        |
-|-----------------|----------------------------------------------------|
-| `/nexo help`    | Shows available wrapper commands                   |
-| `/nexo status`  | Shows session ID, connection state, working dir    |
-| `/nexo attach`  | Connect session for remote access (not yet implemented) |
-| `/nexo detach`  | Disconnect from remote (not yet implemented)       |
-| `/nexo`         | Same as `/nexo help`                               |
+```
+┌─────────────┐     WebSocket      ┌─────────────┐     WebSocket     ┌─────────────┐
+│  Nexo CLI   │◄──────────────────►│ Cloudflare  │◄────────────────►│    Web      │
+│  (Rust)     │                    │  Workers    │                   │  Dashboard  │
+│             │                    │  + D1 + DO  │                   │  (Next.js)  │
+└─────────────┘                    └─────────────┘                   └─────────────┘
+      │
+      ▼
+┌─────────────┐
+│ Claude Code │
+│   (PTY)     │
+└─────────────┘
+```
 
-All Claude Code commands (`/help`, `/status`, `/compact`, etc.) pass through unchanged.
+## Quick Start
 
-## Not Implemented (future phases):
-- Remote connectivity (WebSocket, OAuth)
-- Cloud backend integration
-- Web dashboard
+### Prerequisites
 
+- [Rust](https://rustup.rs/) (for the CLI)
+- [Node.js](https://nodejs.org/) >= 18 (for API and dashboard)
+- [Claude Code](https://claude.ai/claude-code) installed and in PATH
 
-## How to Build & Run
+### 1. Install Dependencies
 
-## 1. Install Rust
-```shell
+```bash
+# Install Rust (if not already installed)
 curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
-```
-
-Follow the prompts (just press Enter for defaults). Then reload your shell:
-```shell
 source ~/.cargo/env
+
+# Install Node.js dependencies
+yarn install
 ```
 
-Verify it worked:
-```shell
-cargo --version
-# Should show something like: cargo 1.75.0
+### 2. Set Up Local Development
+
+```bash
+# Apply database migrations
+yarn db:migrate
+
+# Create a test user
+node packages/api/scripts/create-user.mjs
+
+# Start the API and dashboard
+yarn dev
 ```
 
-## 2. Build the CLI
+### 3. Run the CLI
 
-```shell
+```bash
 cd packages/cli
-cargo build
-```
-
-First build downloads dependencies and compiles (~1-2 minutes). Subsequent builds are faster.
-
-## 3. Run the CLI
-
-```shell
-# Run directly (wraps the `claude` command)
 cargo run
-
-# Pass arguments to Claude Code
-cargo run -- -p "Hello world"
-cargo run -- --help
 ```
 
-> The -- separates cargo arguments from arguments passed to your CLI.
+On first run, you'll be prompted to authenticate via the web dashboard.
 
-## 4. Run Tests
+### 4. View in Browser
 
-```shell
-cargo test
+Open [http://localhost:3001](http://localhost:3001), log in, and navigate to
+Sessions. You should see your active Claude Code session and can interact with
+it remotely.
+
+## Project Structure
+
 ```
-  
-#### What You Can Test
-
-1. Basic wrapping: Run `cargo run` - it should start Claude Code normally
-2. Wrapper commands: Type `/nexo help` - should show the wrapper help menu
-3. Status command: Type `/nexo status` - shows session ID and working directory
-4. Claude Code commands: Type `/help` or `/status` - should pass through to Claude Code
-5. Passthrough: Normal typing and all Claude Code features should work unchanged
-
-Note: You need claude (Claude Code CLI) installed and in your PATH for this 
-to work. If it's not installed, you'll see an error message.
-
-  
-Project Structure
-
-```text
-packages/cli/
-  ├── Cargo.toml          # Dependencies & config
-  └── src/
-    ├── main.rs         # Entry point
-    ├── lib.rs          # Library exports
-    ├── app.rs          # Main I/O loop
-    ├── pty.rs          # PTY management
-    ├── terminal.rs     # Raw mode handling
-    ├── interceptor.rs  # Command detection state machine
-    ├── types.rs        # SessionId, DeviceId, etc.
-    ├── config.rs       # Configuration constants
-    ├── error.rs        # Error types (CliError)
-    └── commands/
-        ├── mod.rs
-        ├── help.rs     # /help
-        ├── status.rs   # /status
-        ├── attach.rs   # /attach (stub)
-        └── detach.rs   # /detach (stub)
+packages/
+├── cli/                 # Rust CLI wrapper
+│   └── src/
+│       ├── main.rs      # Entry point
+│       ├── app.rs       # Main event loop
+│       ├── pty.rs       # PTY management
+│       ├── websocket.rs # WebSocket client
+│       ├── auth.rs      # OAuth device flow
+│       ├── credentials.rs # Keychain storage
+│       └── ...
+├── api/                 # Cloudflare Workers API
+│   ├── src/
+│   │   ├── index.ts     # Worker entry
+│   │   ├── routes/      # API endpoints
+│   │   └── durable-objects/
+│   │       └── session-hub.ts  # WebSocket hub
+│   └── migrations/      # D1 database migrations
+└── dashboard/           # Next.js web dashboard
+    └── src/
+        ├── app/         # App router pages
+        └── components/
+            └── sessions/
+                └── terminal.tsx  # xterm.js terminal
 ```
+
+## Development
+
+```bash
+# Run pre-commit checks (required before committing)
+yarn pre-commit
+
+# Run individual commands
+yarn dev:api        # Start API server
+yarn dev:dashboard  # Start dashboard
+yarn test           # Run all tests
+yarn lint           # Lint all packages
+yarn typecheck      # TypeScript type checking
+```
+
+### CLI Development
+
+```bash
+cd packages/cli
+
+cargo build         # Build
+cargo run           # Run (wraps claude command)
+cargo test          # Run tests
+cargo clippy        # Lint
+```
+
+## How It Works
+
+1. **CLI starts**: Spawns Claude Code in a PTY, authenticates via OAuth
+2. **WebSocket connects**: CLI connects to SessionHub Durable Object
+3. **I/O streaming**: All PTY output is base64-encoded and sent to the server
+4. **Web viewing**: Dashboard connects to same SessionHub, receives output
+5. **Remote input**: Browser keystrokes sent via WebSocket to CLI, injected
+   into PTY
+
+## License
+
+MIT
