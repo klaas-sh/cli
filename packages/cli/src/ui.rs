@@ -33,11 +33,13 @@ pub mod colors {
 }
 
 /// Star characters for the animated spinner.
-/// Selected for visual similarity to create smooth transitions.
-const STAR_FRAMES: &[char] = &['✦', '✧', '✶', '✷', '✸', '✹', '✺', '✧', '✦'];
+const STAR_FRAMES: &[char] = &['✢', '✣', '✤', '✻', '✼', '✽', '❉', '❈', '❊', '※'];
 
 /// Width of the shimmer highlight (number of characters).
 const SHIMMER_WIDTH: usize = 5;
+
+/// Number of frames to pause at each end of the shimmer.
+const SHIMMER_PAUSE_FRAMES: usize = 8;
 
 /// Generates ANSI escape code for 24-bit true color foreground.
 fn fg_color(r: u8, g: u8, b: u8) -> String {
@@ -78,11 +80,20 @@ pub fn show_cursor() {
     let _ = io::stdout().flush();
 }
 
+/// Shimmer direction.
+#[derive(Clone, Copy, PartialEq)]
+enum ShimmerDirection {
+    Forward,
+    Backward,
+}
+
 /// Animation state for the waiting spinner.
 pub struct WaitingAnimation {
     frame: usize,
-    shimmer_pos: usize,
+    shimmer_pos: isize,
     text_len: usize,
+    direction: ShimmerDirection,
+    pause_frames: usize,
 }
 
 impl WaitingAnimation {
@@ -91,15 +102,17 @@ impl WaitingAnimation {
         let text = "Waiting for authorisation...";
         Self {
             frame: 0,
-            shimmer_pos: 0,
+            shimmer_pos: -(SHIMMER_WIDTH as isize),
             text_len: text.chars().count(),
+            direction: ShimmerDirection::Forward,
+            pause_frames: 0,
         }
     }
 
     /// Renders a single frame of the "Waiting for authorization" animation.
     ///
     /// The star character cycles through different symbols, and a single
-    /// bright highlight moves through the amber-colored text.
+    /// bright highlight moves back and forth through the amber-colored text.
     pub fn render_frame(&mut self) {
         let star = STAR_FRAMES[self.frame % STAR_FRAMES.len()];
         let text = "Waiting for authorisation...";
@@ -120,7 +133,7 @@ impl WaitingAnimation {
         // Text with single moving highlight
         // Base color is amber, highlight fades to bright
         for (i, ch) in text.chars().enumerate() {
-            let distance = (i as isize - self.shimmer_pos as isize).unsigned_abs();
+            let distance = (i as isize - self.shimmer_pos).unsigned_abs();
 
             let color = if distance < SHIMMER_WIDTH {
                 // Within highlight range - interpolate from bright to base
@@ -139,10 +152,34 @@ impl WaitingAnimation {
         print!("{}", output);
         let _ = io::stdout().flush();
 
-        // Advance animation
+        // Advance star animation
         self.frame = (self.frame + 1) % STAR_FRAMES.len();
-        // Move shimmer position, wrapping around with extra space for smooth loop
-        self.shimmer_pos = (self.shimmer_pos + 1) % (self.text_len + SHIMMER_WIDTH * 2);
+
+        // Handle pause at ends
+        if self.pause_frames > 0 {
+            self.pause_frames -= 1;
+            return;
+        }
+
+        // Move shimmer position based on direction
+        match self.direction {
+            ShimmerDirection::Forward => {
+                self.shimmer_pos += 1;
+                // Check if we've reached the end
+                if self.shimmer_pos >= (self.text_len + SHIMMER_WIDTH) as isize {
+                    self.direction = ShimmerDirection::Backward;
+                    self.pause_frames = SHIMMER_PAUSE_FRAMES;
+                }
+            }
+            ShimmerDirection::Backward => {
+                self.shimmer_pos -= 1;
+                // Check if we've reached the start
+                if self.shimmer_pos <= -(SHIMMER_WIDTH as isize) {
+                    self.direction = ShimmerDirection::Forward;
+                    self.pause_frames = SHIMMER_PAUSE_FRAMES;
+                }
+            }
+        }
     }
 
     /// Clears the animation line.
@@ -158,25 +195,35 @@ impl Default for WaitingAnimation {
     }
 }
 
+/// ASCII art logo for klaas.
+const LOGO: &str = r#"
+    ╭─────╮
+    │ ▓▓▓ │
+    ╰──┬──╯
+       │
+"#;
+
 /// Displays the klaas startup banner.
 ///
 /// Shows a minimal, elegant header with the klaas branding.
 pub fn display_startup_banner() {
     let (ar, ag, ab) = colors::AMBER;
+    let (ad, adg, adb) = colors::AMBER_DARK;
     let (tr, tg, tb) = colors::TEXT_SECONDARY;
 
-    println!();
+    // Print ASCII art logo in amber
+    for line in LOGO.lines().skip(1) {
+        println!("  {}{}{}", fg_color(ad, adg, adb), line, RESET);
+    }
+
     println!(
-        "  {}{}klaas{} {}v{}{}",
+        "  {}{}klaas{} {}v{}{} {}~ Remote access for Claude Code{}",
         BOLD,
         fg_color(ar, ag, ab),
         RESET,
         fg_color(tr, tg, tb),
         env!("CARGO_PKG_VERSION"),
-        RESET
-    );
-    println!(
-        "  {}Remote access for Claude Code{}",
+        RESET,
         fg_color(tr, tg, tb),
         RESET
     );
@@ -286,7 +333,7 @@ mod tests {
     fn test_waiting_animation_new() {
         let anim = WaitingAnimation::new();
         assert_eq!(anim.frame, 0);
-        assert_eq!(anim.shimmer_pos, 0);
+        assert_eq!(anim.shimmer_pos, -(SHIMMER_WIDTH as isize));
     }
 
     #[test]
