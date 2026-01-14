@@ -2,8 +2,9 @@
 
 use crate::error::Result;
 use crossterm::{
-    event::{self, Event},
+    event::{self, DisableBracketedPaste, EnableBracketedPaste, Event},
     terminal::{self, disable_raw_mode, enable_raw_mode},
+    ExecutableCommand,
 };
 use std::io::{self, Write};
 use std::time::Duration;
@@ -24,9 +25,13 @@ impl TerminalManager {
 
     /// Enters raw mode for character-by-character input.
     /// Raw mode disables line buffering and echo.
+    /// Also enables bracketed paste mode for proper paste handling.
     pub fn enter_raw_mode(&mut self) -> Result<()> {
         if !self.was_raw {
             enable_raw_mode()?;
+            // Enable bracketed paste mode to receive paste events
+            // This allows proper handling of pasted text including emojis
+            io::stdout().execute(EnableBracketedPaste)?;
             self.was_raw = true;
         }
         Ok(())
@@ -35,6 +40,8 @@ impl TerminalManager {
     /// Exits raw mode, restoring normal terminal behavior.
     pub fn exit_raw_mode(&mut self) -> Result<()> {
         if self.was_raw {
+            // Disable bracketed paste mode first
+            let _ = io::stdout().execute(DisableBracketedPaste);
             disable_raw_mode()?;
             self.was_raw = false;
         }
