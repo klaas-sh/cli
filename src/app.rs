@@ -297,6 +297,10 @@ pub async fn run(claude_args: Vec<String>, new_session: bool) -> Result<i32> {
                                 let _ = pty_input_tx.send(bytes).await;
                             }
                         }
+                        Event::Paste(text) => {
+                            // Handle pasted text (including emojis and multi-byte UTF-8)
+                            let _ = pty_input_tx.send(text.into_bytes()).await;
+                        }
                         Event::Resize(cols, rows) => {
                             let _ = pty.resize(cols, rows).await;
                         }
