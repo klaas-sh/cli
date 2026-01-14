@@ -32,8 +32,9 @@ pub mod colors {
     pub const CYAN: (u8, u8, u8) = (34, 211, 238);
 }
 
-/// Star characters for the animated spinner.
-const STAR_FRAMES: &[char] = &['✢', '✣', '✤', '✻', '✼', '✽', '❉', '❈', '❊', '※'];
+/// Star characters for the animated spinner (matching Claude Code's sequence).
+/// Bounces: small → large → small
+const STAR_FRAMES: &[char] = &['✢', '✳', '✶', '✻', '✽', '✻', '✶', '✳'];
 
 /// Width of the shimmer highlight (number of characters).
 const SHIMMER_WIDTH: usize = 5;
