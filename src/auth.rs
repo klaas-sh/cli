@@ -10,6 +10,7 @@
 use std::time::{Duration, Instant};
 
 use crossterm::event::{self, Event, KeyCode, KeyModifiers};
+use crossterm::terminal;
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
 use tracing::{debug, info, warn};
@@ -219,6 +220,10 @@ pub async fn poll_for_token(
         url, interval, expires_in
     );
 
+    // Enable raw mode to capture all key input and block normal typing
+    // This prevents Enter from echoing and allows CTRL+C/ESC handling
+    let _ = terminal::enable_raw_mode();
+
     // Hide cursor during animation
     ui::hide_cursor();
 
@@ -226,6 +231,7 @@ pub async fn poll_for_token(
     let cleanup = |animation: &WaitingAnimation| {
         animation.clear();
         ui::show_cursor();
+        let _ = terminal::disable_raw_mode();
     };
 
     loop {
