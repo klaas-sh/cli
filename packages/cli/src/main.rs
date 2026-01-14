@@ -27,6 +27,7 @@ mod error;
 mod pty;
 mod terminal;
 mod types;
+mod ui;
 mod websocket;
 
 /// CLI arguments.

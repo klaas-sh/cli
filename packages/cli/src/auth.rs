@@ -7,12 +7,13 @@
 //! 3. CLI polls POST /auth/token with device_code until authorized
 //! 4. On success, CLI receives access_token and refresh_token
 
-use std::io::{self, Write};
-use std::time::{Duration, Instant};
+use std::time::Instant;
 
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
 use tracing::{debug, info, warn};
+
+use crate::ui::{self, WaitingAnimation};
 
 /// Errors that can occur during authentication.
 #[derive(Error, Debug)]
@@ -127,9 +128,6 @@ struct RefreshRequest {
     refresh_token: String,
 }
 
-/// Spinner characters for polling animation.
-const SPINNER_CHARS: &[char] = &['|', '/', '-', '\\'];
-
 /// Starts the OAuth Device Flow by requesting a device code.
 ///
 /// # Arguments
@@ -201,9 +199,11 @@ pub async fn poll_for_token(
     let client = reqwest::Client::new();
 
     let start_time = Instant::now();
-    let expiry_duration = Duration::from_secs(expires_in);
-    let mut current_interval = Duration::from_secs(interval);
-    let mut spinner_idx = 0;
+    let expiry_duration = std::time::Duration::from_secs(expires_in);
+    let mut current_interval_secs = interval;
+    let animation_interval = ui::animation_interval();
+    let mut animation = WaitingAnimation::new();
+    let mut ticks_until_poll = 0u64;
 
     debug!(
         "Polling for token at {}, interval: {}s, expires in: {}s",
@@ -213,16 +213,24 @@ pub async fn poll_for_token(
     loop {
         // Check if the device code has expired
         if start_time.elapsed() >= expiry_duration {
-            clear_spinner_line();
+            animation.clear();
             return Err(AuthError::ExpiredToken);
         }
 
-        // Display spinner
-        print_spinner(spinner_idx);
-        spinner_idx = (spinner_idx + 1) % SPINNER_CHARS.len();
+        // Render animation frame
+        animation.render_frame();
 
-        // Wait before polling
-        tokio::time::sleep(current_interval).await;
+        // Wait for animation interval
+        tokio::time::sleep(animation_interval).await;
+
+        // Count ticks until next poll (animation runs faster than polling)
+        let ticks_per_poll = (current_interval_secs * 1000) / animation_interval.as_millis() as u64;
+        ticks_until_poll += 1;
+
+        if ticks_until_poll < ticks_per_poll {
+            continue;
+        }
+        ticks_until_poll = 0;
 
         // Make the token request
         let request = TokenRequest {
@@ -233,7 +241,8 @@ pub async fn poll_for_token(
         let response = client.post(&url).json(&request).send().await?;
 
         if response.status().is_success() {
-            clear_spinner_line();
+            animation.clear();
+            ui::display_auth_success();
             let token_response: TokenResponse = response.json().await?;
             info!("Successfully obtained tokens");
             return Ok(token_response);
@@ -253,19 +262,19 @@ pub async fn poll_for_token(
             }
             "slow_down" => {
                 // Increase polling interval by 5 seconds
-                current_interval += Duration::from_secs(5);
+                current_interval_secs += 5;
                 warn!(
                     "Server requested slow down, new interval: {}s",
-                    current_interval.as_secs()
+                    current_interval_secs
                 );
                 continue;
             }
             "expired_token" => {
-                clear_spinner_line();
+                animation.clear();
                 return Err(AuthError::ExpiredToken);
             }
             "access_denied" => {
-                clear_spinner_line();
+                animation.clear();
                 return Err(AuthError::AccessDenied(
                     error_response
                         .error_description
@@ -273,7 +282,7 @@ pub async fn poll_for_token(
                 ));
             }
             _ => {
-                clear_spinner_line();
+                animation.clear();
                 return Err(AuthError::ServerError(format!(
                     "{}: {}",
                     error_response.error,
@@ -338,43 +347,12 @@ pub async fn refresh_token(api_url: &str, refresh_token: &str) -> AuthResult<Tok
 ///
 /// * `response` - The device flow response containing verification details
 pub fn display_auth_instructions(response: &DeviceFlowResponse) {
-    println!();
-
-    // Prefer the complete URL if available (more convenient for user)
-    if let Some(complete_uri) = &response.verification_uri_complete {
-        println!("  To connect this device, visit:");
-        println!();
-        println!("    {}", complete_uri);
-        println!();
-        println!("  The code {} will be pre-filled.", response.user_code);
-    } else {
-        println!("  To connect this device, visit:");
-        println!();
-        println!("    {}", response.verification_uri);
-        println!();
-        println!("  And enter the code:");
-        println!();
-        println!("    {}", response.user_code);
-    }
-
-    println!();
-    println!(
-        "  This code expires in {} minutes.",
-        response.expires_in / 60
+    ui::display_auth_instructions(
+        &response.verification_uri,
+        &response.user_code,
+        response.verification_uri_complete.as_deref(),
+        response.expires_in / 60,
     );
-    println!();
-}
-
-/// Prints a spinner character to show polling progress.
-fn print_spinner(idx: usize) {
-    print!("\r  {} Waiting for authorization...", SPINNER_CHARS[idx]);
-    let _ = io::stdout().flush();
-}
-
-/// Clears the spinner line.
-fn clear_spinner_line() {
-    print!("\r                                        \r");
-    let _ = io::stdout().flush();
 }
 
 /// Performs the complete device flow authentication.
@@ -399,6 +377,9 @@ fn clear_spinner_line() {
 /// println!("Authenticated! Access token: {}", tokens.access_token);
 /// ```
 pub async fn authenticate(api_url: &str) -> AuthResult<TokenResponse> {
+    // Display startup banner
+    ui::display_startup_banner();
+
     // Start the device flow
     let device_response = start_device_flow(api_url).await?;
 

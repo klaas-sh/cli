@@ -17,6 +17,7 @@ use crate::error::{CliError, Result};
 use crate::pty::PtyManager;
 use crate::terminal::TerminalManager;
 use crate::types::{ConnectionState, DeviceId, SessionId};
+use crate::ui;
 use crate::websocket::{IncomingMessage, WebSocketClient};
 
 /// Interval for checking WebSocket reconnection (milliseconds).
@@ -468,13 +469,7 @@ async fn try_authenticate(config: &ApiConfig, cred_store: &CredentialStore) -> O
     match ensure_authenticated(config, cred_store).await {
         Ok(token) => Some(token),
         Err(e) => {
-            // Print user-friendly warning
-            eprintln!(
-                "\x1b[33mWarning:\x1b[0m Unable to connect to Klaas server. \
-                 Running in offline mode - no remote sync."
-            );
-            eprintln!("\x1b[90m         Error: {}\x1b[0m", e);
-            eprintln!();
+            ui::display_offline_warning(&e.to_string());
             warn!(error = %e, "Starting in offline mode");
             None
         }
