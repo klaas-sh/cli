@@ -195,25 +195,20 @@ impl Default for WaitingAnimation {
     }
 }
 
-/// ASCII art logo for klaas.
-const LOGO: &str = r#"
-    ╭─────╮
-    │ ▓▓▓ │
-    ╰──┬──╯
-       │
-"#;
+/// ASCII art logo for klaas (terminal window icon).
+const LOGO: &[&str] = &["╭────────╮", "├────────┤", "│ ❯ __   │", "╰────────╯"];
 
 /// Displays the klaas startup banner.
 ///
 /// Shows a minimal, elegant header with the klaas branding.
 pub fn display_startup_banner() {
     let (ar, ag, ab) = colors::AMBER;
-    let (ad, adg, adb) = colors::AMBER_DARK;
     let (tr, tg, tb) = colors::TEXT_SECONDARY;
 
     // Print ASCII art logo in amber
-    for line in LOGO.lines().skip(1) {
-        println!("  {}{}{}", fg_color(ad, adg, adb), line, RESET);
+    println!();
+    for line in LOGO {
+        println!("  {}{}{}", fg_color(ar, ag, ab), line, RESET);
     }
 
     println!(
