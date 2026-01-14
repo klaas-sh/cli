@@ -5,18 +5,18 @@
 //! precedence over defaults.
 //!
 //! In debug builds, the CLI defaults to localhost:8787 for local development.
-//! In release builds, it defaults to api.nexo.dev.
+//! In release builds, it defaults to api.klaas.sh.
 
 use std::env;
 
 /// Default API base URL for remote services (production).
-pub const DEFAULT_API_URL_PROD: &str = "https://api.nexo.dev";
+pub const DEFAULT_API_URL_PROD: &str = "https://api.klaas.sh";
 
 /// Default API base URL for local development.
 pub const DEFAULT_API_URL_DEV: &str = "http://localhost:8787";
 
 /// Default WebSocket URL for real-time communication (production).
-pub const DEFAULT_WS_URL_PROD: &str = "wss://api.nexo.dev/ws";
+pub const DEFAULT_WS_URL_PROD: &str = "wss://api.klaas.sh/ws";
 
 /// Default WebSocket URL for local development.
 pub const DEFAULT_WS_URL_DEV: &str = "ws://localhost:8787/ws";
@@ -42,7 +42,7 @@ pub fn default_ws_url() -> &'static str {
 }
 
 /// Keychain service name for credential storage.
-pub const KEYCHAIN_SERVICE: &str = "dev.nexo.cli";
+pub const KEYCHAIN_SERVICE: &str = "sh.klaas.cli";
 
 /// OAuth device flow timeout in seconds (15 minutes).
 pub const AUTH_TIMEOUT_SECS: u64 = 900;
@@ -83,9 +83,9 @@ pub const CLAUDE_COMMAND: &str = "claude";
 /// Runtime configuration loaded from environment variables.
 #[derive(Debug, Clone)]
 pub struct ApiConfig {
-    /// API base URL (from NEXO_API_URL or default).
+    /// API base URL (from KLAAS_API_URL or default).
     pub api_url: String,
-    /// WebSocket URL (from NEXO_WS_URL or derived from api_url).
+    /// WebSocket URL (from KLAAS_WS_URL or derived from api_url).
     pub ws_url: String,
 }
 
@@ -99,23 +99,23 @@ impl ApiConfig {
     /// Load API configuration from environment variables.
     ///
     /// Environment variables:
-    /// - `NEXO_API_URL`: Override the default API URL
-    /// - `NEXO_WS_URL`: Override the WebSocket URL (if not set, derived from
+    /// - `KLAAS_API_URL`: Override the default API URL
+    /// - `KLAAS_WS_URL`: Override the WebSocket URL (if not set, derived from
     ///   API URL by replacing http(s) with ws(s))
     ///
     /// # Examples
     ///
     /// ```
-    /// use nexo::config::ApiConfig;
+    /// use klaas::config::ApiConfig;
     ///
     /// let config = ApiConfig::from_env();
     /// println!("API URL: {}", config.api_url);
     /// println!("WS URL: {}", config.ws_url);
     /// ```
     pub fn from_env() -> Self {
-        let api_url = env::var("NEXO_API_URL").unwrap_or_else(|_| default_api_url().to_string());
+        let api_url = env::var("KLAAS_API_URL").unwrap_or_else(|_| default_api_url().to_string());
 
-        let ws_url = env::var("NEXO_WS_URL").unwrap_or_else(|_| derive_ws_url(&api_url));
+        let ws_url = env::var("KLAAS_WS_URL").unwrap_or_else(|_| derive_ws_url(&api_url));
 
         Self { api_url, ws_url }
     }
@@ -155,8 +155,8 @@ mod tests {
     #[test]
     fn test_derive_ws_url_https() {
         assert_eq!(
-            derive_ws_url("https://api.nexo.dev"),
-            "wss://api.nexo.dev/ws"
+            derive_ws_url("https://api.klaas.sh"),
+            "wss://api.klaas.sh/ws"
         );
     }
 
@@ -172,20 +172,20 @@ mod tests {
     fn test_derive_ws_url_with_trailing_slash() {
         assert_eq!(
             derive_ws_url("https://api.nexo.dev/"),
-            "wss://api.nexo.dev/ws"
+            "wss://api.klaas.sh/ws"
         );
     }
 
     #[test]
     fn test_derive_ws_url_no_scheme() {
-        assert_eq!(derive_ws_url("api.nexo.dev"), "wss://api.nexo.dev/ws");
+        assert_eq!(derive_ws_url("api.klaas.sh"), "wss://api.klaas.sh/ws");
     }
 
     #[test]
     fn test_default_config() {
         // Clear env vars for deterministic test
-        env::remove_var("NEXO_API_URL");
-        env::remove_var("NEXO_WS_URL");
+        env::remove_var("KLAAS_API_URL");
+        env::remove_var("KLAAS_WS_URL");
 
         let config = ApiConfig::from_env();
         // In debug builds (tests), should use localhost
