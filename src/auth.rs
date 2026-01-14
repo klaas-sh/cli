@@ -461,7 +461,7 @@ mod tests {
             "device_code": "01HQXK7V8G3N5M2R4P6T1W9Y0Z",
             "user_code": "ABCD-1234",
             "verification_uri": "https://klaas.sh/device",
-            "verification_uri_complete": "https://klaas.sh/device?code=ABCD-1234",
+            "verification_uri_complete": "https://klaas.sh/device/ABCD-1234",
             "expires_in": 600,
             "interval": 5
         }"#;
@@ -469,7 +469,7 @@ mod tests {
         let response: DeviceFlowResponse = serde_json::from_str(json).unwrap();
         assert_eq!(
             response.verification_uri_complete,
-            Some("https://klaas.sh/device?code=ABCD-1234".to_string())
+            Some("https://klaas.sh/device/ABCD-1234".to_string())
         );
     }
 
