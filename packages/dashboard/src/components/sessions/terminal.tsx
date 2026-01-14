@@ -214,7 +214,13 @@ export function Terminal({
 
     // Close existing connection if any
     if (wsRef.current) {
-      wsRef.current.close()
+      try {
+        // Use code 4000 to indicate intentional replacement
+        wsRef.current.close(4000, 'Replaced by new connection')
+      } catch {
+        // Ignore close errors on already closed WebSocket
+      }
+      wsRef.current = null
     }
 
     const ws = new WebSocket(wsUrl)
@@ -301,14 +307,18 @@ export function Terminal({
           reconnectTimeoutRef.current = setTimeout(() => {
             connect()
           }, RECONNECT_DELAY_MS)
+          // Don't call onDisconnect during reconnection attempts
+          return
         } else {
           setConnectionState('disconnected')
+          // Only notify of disconnect when we've exhausted reconnection attempts
+          onDisconnect?.()
         }
       } else {
+        // Clean closure (code 1000 or 4000)
         setConnectionState('disconnected')
+        onDisconnect?.()
       }
-
-      onDisconnect?.()
     }
 
     ws.onerror = (): void => {
@@ -380,14 +390,18 @@ export function Terminal({
     fitAddonRef.current = fitAddon
 
     // Connect to WebSocket after terminal is ready
-    // Use requestAnimationFrame to ensure terminal is fully initialized
-    requestAnimationFrame(() => {
+    // Use setTimeout to allow React Strict Mode's mount/unmount cycle to complete
+    // This prevents "WebSocket is closed before the connection is established" errors
+    const connectTimeout = setTimeout(() => {
       if (isMountedRef.current) {
         connect()
         // Focus terminal for keyboard input
         term.focus()
       }
-    })
+    }, 50) // Small delay to survive Strict Mode double-mount
+
+    // Store timeout for cleanup
+    const connectTimeoutRef = connectTimeout
 
     // Handle terminal input - send as prompt message
     const inputDisposable = term.onData((data) => {
@@ -398,18 +412,23 @@ export function Terminal({
       })
     })
 
-    // Handle resize
+    // Handle resize with error handling for disposed terminals
     const handleResize = (): void => {
       if (!isMountedRef.current) return
-      fitAddon.fit()
-      // Only send resize if terminal has valid dimensions
-      if (term.cols > 0 && term.rows > 0) {
-        sendMessage({
-          type: 'resize',
-          session_id: sessionId,
-          cols: term.cols,
-          rows: term.rows
-        })
+
+      try {
+        fitAddon.fit()
+        // Only send resize if terminal has valid dimensions
+        if (term.cols > 0 && term.rows > 0) {
+          sendMessage({
+            type: 'resize',
+            session_id: sessionId,
+            cols: term.cols,
+            rows: term.rows
+          })
+        }
+      } catch {
+        // Terminal may have been disposed, ignore resize errors
       }
     }
 
@@ -419,6 +438,9 @@ export function Terminal({
     return (): void => {
       // Mark as unmounted first to prevent race conditions
       isMountedRef.current = false
+
+      // Clear connect timeout if pending (for Strict Mode)
+      clearTimeout(connectTimeoutRef)
 
       // Clear reconnect timeout if pending
       if (reconnectTimeoutRef.current) {
@@ -430,14 +452,23 @@ export function Terminal({
       window.removeEventListener('resize', handleResize)
       inputDisposable.dispose()
 
-      // Close WebSocket connection
+      // Close WebSocket connection - use try/catch to handle edge cases
       if (wsRef.current) {
-        wsRef.current.close(1000, 'Component unmounting')
+        try {
+          // Use code 1000 for clean shutdown
+          wsRef.current.close(1000, 'Component unmounting')
+        } catch {
+          // WebSocket may already be closed or in invalid state
+        }
         wsRef.current = null
       }
 
-      // Dispose terminal
-      term.dispose()
+      // Dispose terminal with error handling
+      try {
+        term.dispose()
+      } catch {
+        // Terminal may already be disposed
+      }
       xtermRef.current = null
       fitAddonRef.current = null
     }
