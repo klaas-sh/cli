@@ -167,6 +167,59 @@ export class SessionHub implements DurableObject {
   }
 
   /**
+   * Reconstruct socket references from persistent WebSocket storage.
+   * Called after hibernation to restore instance state.
+   */
+  private reconstructSocketRefs(): void {
+    // Get all CLI sockets (should be at most one)
+    const cliSockets = this.state.getWebSockets('cli');
+    if (cliSockets.length > 0 && this.cliSocket !== cliSockets[0]) {
+      console.log(
+        `[SessionHub] Reconstructing CLI socket ref from storage for ` +
+        `session ${this.sessionId}`
+      );
+      this.cliSocket = cliSockets[0];
+      this.cliLastPong = Date.now();
+    }
+
+    // Get all web client sockets
+    const webClientSockets = this.state.getWebSockets('web');
+    for (const ws of webClientSockets) {
+      if (!this.webSockets.has(ws)) {
+        this.webSockets.add(ws);
+        this.webLastPong.set(ws, Date.now());
+      }
+    }
+  }
+
+  /**
+   * Check if CLI is connected using hibernation-aware API.
+   * Reconstructs socket refs if needed.
+   */
+  private isCliConnected(): boolean {
+    // First check instance variable (fast path)
+    if (this.cliSocket) {
+      return true;
+    }
+
+    // Instance var is null - might be after hibernation
+    // Check persistent WebSocket storage
+    const cliSockets = this.state.getWebSockets('cli');
+    if (cliSockets.length > 0) {
+      // Reconstruct the reference
+      this.cliSocket = cliSockets[0];
+      this.cliLastPong = Date.now();
+      console.log(
+        `[SessionHub] Reconstructed CLI socket from getWebSockets for ` +
+        `session ${this.sessionId}`
+      );
+      return true;
+    }
+
+    return false;
+  }
+
+  /**
    * Handle CLI WebSocket connection.
    */
   private handleCliConnect(socket: WebSocket): void {
@@ -202,7 +255,9 @@ export class SessionHub implements DurableObject {
     this.webSockets.add(socket);
     this.webLastPong.set(socket, Date.now());
 
-    const cliStatus = this.cliSocket ? 'attached' : 'detached';
+    // Use hibernation-aware check for CLI status
+    const cliConnected = this.isCliConnected();
+    const cliStatus = cliConnected ? 'attached' : 'detached';
     console.log(
       `[SessionHub] Web client connected for session ${this.sessionId}, ` +
       `CLI status: ${cliStatus}, buffer size: ${this.outputBuffer.length}`
@@ -228,7 +283,7 @@ export class SessionHub implements DurableObject {
               device_name: this.deviceName,
               status: cliStatus,
               started_at: new Date().toISOString(),
-              attached_at: this.cliSocket ? new Date().toISOString() : null,
+              attached_at: cliConnected ? new Date().toISOString() : null,
               cwd: this.cwd,
             },
           ],
@@ -245,6 +300,7 @@ export class SessionHub implements DurableObject {
 
   /**
    * Handle incoming WebSocket messages.
+   * This is called after hibernation wake-up, so we must reconstruct socket refs.
    */
   async webSocketMessage(
     ws: WebSocket,
@@ -256,6 +312,28 @@ export class SessionHub implements DurableObject {
       typeof message === 'string'
         ? message
         : new TextDecoder().decode(message);
+
+    // After hibernation, instance variables are lost. Reconstruct socket refs.
+    // This ensures we track sockets correctly even after DO wakes from sleep.
+    if (clientType === 'cli') {
+      if (this.cliSocket !== ws) {
+        console.log(
+          `[SessionHub] Restoring CLI socket reference for session ` +
+          `${this.sessionId} (was ${this.cliSocket ? 'different' : 'null'})`
+        );
+        this.cliSocket = ws;
+        this.cliLastPong = Date.now();
+      }
+    } else {
+      if (!this.webSockets.has(ws)) {
+        console.log(
+          `[SessionHub] Restoring web socket reference for session ` +
+          `${this.sessionId}, total: ${this.webSockets.size + 1}`
+        );
+        this.webSockets.add(ws);
+        this.webLastPong.set(ws, Date.now());
+      }
+    }
 
     try {
       const parsed = JSON.parse(msgStr) as Record<string, unknown>;
@@ -388,15 +466,19 @@ export class SessionHub implements DurableObject {
     ws: WebSocket
   ): Promise<void> {
     switch (msg.type) {
-      case 'subscribe':
+      case 'subscribe': {
         // Web clients connect to specific session DO via session_id
         // The subscribe message confirms the subscription and can request
         // initial state. Send current status for all requested sessions.
         if (this.sessionId && msg.session_ids.includes(this.sessionId)) {
+          // Use hibernation-aware check for CLI status
+          const cliConnected = this.isCliConnected();
+          const cliStatus = cliConnected ? 'attached' : 'detached';
+
           const statusMsg: ServerToWebMessage = {
             type: 'session_status',
             session_id: this.sessionId,
-            status: this.cliSocket ? 'attached' : 'detached',
+            status: cliStatus,
           };
           ws.send(JSON.stringify(statusMsg));
 
@@ -409,9 +491,9 @@ export class SessionHub implements DurableObject {
                   session_id: this.sessionId,
                   device_id: this.deviceId || '',
                   device_name: this.deviceName,
-                  status: this.cliSocket ? 'attached' : 'detached',
+                  status: cliStatus,
                   started_at: new Date().toISOString(),
-                  attached_at: this.cliSocket ? new Date().toISOString() : null,
+                  attached_at: cliConnected ? new Date().toISOString() : null,
                   cwd: this.cwd,
                 },
               ],
@@ -420,6 +502,7 @@ export class SessionHub implements DurableObject {
           }
         }
         break;
+      }
 
       case 'prompt':
         // Verify session ID matches
@@ -498,24 +581,54 @@ export class SessionHub implements DurableObject {
 
   /**
    * Send message to CLI, or queue if disconnected.
+   * Uses hibernation-aware check to find CLI socket.
    */
   private sendToCli(msg: ServerToCliMessage): void {
-    if (this.cliSocket && this.cliSocket.readyState === WebSocket.OPEN) {
-      this.cliSocket.send(JSON.stringify(msg));
+    // Use hibernation-aware check to get CLI socket
+    if (this.isCliConnected() && this.cliSocket) {
+      try {
+        this.cliSocket.send(JSON.stringify(msg));
+        console.log(
+          `[SessionHub] Sent ${msg.type} message to CLI for session ` +
+          `${this.sessionId}`
+        );
+      } catch (error) {
+        console.error(
+          `[SessionHub] Failed to send to CLI, queueing message:`,
+          error
+        );
+        this.queueMessage(msg);
+      }
     } else {
       // Queue message for when CLI reconnects
+      console.log(
+        `[SessionHub] CLI not connected, queueing ${msg.type} message ` +
+        `for session ${this.sessionId}`
+      );
       this.queueMessage(msg);
     }
   }
 
   /**
    * Broadcast message to all connected web clients.
+   * Uses getWebSockets to ensure we reach all clients after hibernation.
    */
   private broadcastToWeb(msg: ServerToWebMessage): void {
     const msgStr = JSON.stringify(msg);
-    for (const ws of this.webSockets) {
-      if (ws.readyState === WebSocket.OPEN) {
+
+    // Get all web sockets from persistent storage (hibernation-aware)
+    const webClientSockets = this.state.getWebSockets('web');
+    for (const ws of webClientSockets) {
+      try {
         ws.send(msgStr);
+      } catch (error) {
+        console.error(
+          `[SessionHub] Failed to broadcast to web client:`,
+          error
+        );
+        // Clean up failed socket from tracking
+        this.webSockets.delete(ws);
+        this.webLastPong.delete(ws);
       }
     }
   }
@@ -524,13 +637,15 @@ export class SessionHub implements DurableObject {
    * Send error message to a specific web client.
    */
   private sendErrorToWeb(ws: WebSocket, code: string, message: string): void {
-    if (ws.readyState === WebSocket.OPEN) {
-      const errorMsg: ServerToWebMessage = {
-        type: 'error',
-        code,
-        message,
-      };
+    const errorMsg: ServerToWebMessage = {
+      type: 'error',
+      code,
+      message,
+    };
+    try {
       ws.send(JSON.stringify(errorMsg));
+    } catch (error) {
+      console.error('[SessionHub] Failed to send error to web client:', error);
     }
   }
 
@@ -627,19 +742,40 @@ export class SessionHub implements DurableObject {
 
   /**
    * Send all queued messages to CLI.
+   * Uses hibernation-aware check for CLI socket.
    */
   private drainMessageQueue(): void {
-    if (!this.cliSocket || this.cliSocket.readyState !== WebSocket.OPEN) {
+    // Use hibernation-aware check
+    if (!this.isCliConnected() || !this.cliSocket) {
       return;
     }
 
     const now = Date.now();
+    let sentCount = 0;
+
     for (const { message, timestamp } of this.messageQueue) {
       // Skip expired messages
       if (now - timestamp > MAX_QUEUE_AGE_MS) {
         continue;
       }
-      this.cliSocket.send(JSON.stringify(message));
+
+      try {
+        this.cliSocket.send(JSON.stringify(message));
+        sentCount++;
+      } catch (error) {
+        console.error(
+          '[SessionHub] Failed to send queued message to CLI:',
+          error
+        );
+        break; // Stop trying if send fails
+      }
+    }
+
+    if (sentCount > 0) {
+      console.log(
+        `[SessionHub] Drained ${sentCount} queued messages to CLI ` +
+        `for session ${this.sessionId}`
+      );
     }
 
     this.messageQueue = [];
@@ -647,15 +783,26 @@ export class SessionHub implements DurableObject {
 
   /**
    * Alarm handler for periodic tasks (heartbeat, cleanup).
+   * Reconstructs socket refs after hibernation wake-up.
    */
   async alarm(): Promise<void> {
     const now = Date.now();
 
-    // Check CLI connection health
-    if (this.cliSocket && this.cliSocket.readyState === WebSocket.OPEN) {
+    // Reconstruct socket references after potential hibernation
+    this.reconstructSocketRefs();
+
+    // Check CLI connection health using hibernation-aware check
+    if (this.isCliConnected() && this.cliSocket) {
       // Check if CLI has timed out
-      if (this.cliLastPong > 0 && now - this.cliLastPong > CONNECTION_TIMEOUT_MS) {
+      if (
+        this.cliLastPong > 0 &&
+        now - this.cliLastPong > CONNECTION_TIMEOUT_MS
+      ) {
         // CLI connection timed out
+        console.log(
+          `[SessionHub] CLI timed out for session ${this.sessionId}, ` +
+          `last pong: ${now - this.cliLastPong}ms ago`
+        );
         this.cliSocket.close(4001, 'Connection timeout');
         this.cliSocket = null;
 
@@ -669,24 +816,47 @@ export class SessionHub implements DurableObject {
         }
       } else {
         // Send ping to CLI
-        this.cliSocket.send(JSON.stringify({ type: 'ping' }));
+        try {
+          this.cliSocket.send(JSON.stringify({ type: 'ping' }));
+        } catch (error) {
+          console.error(
+            `[SessionHub] Failed to ping CLI for session ${this.sessionId}:`,
+            error
+          );
+        }
       }
     }
 
-    // Check web client connection health and send pings
-    for (const ws of this.webSockets) {
-      if (ws.readyState === WebSocket.OPEN) {
-        const lastPong = this.webLastPong.get(ws) ?? 0;
+    // Reconstruct web socket refs and send pings
+    const webClientSockets = this.state.getWebSockets('web');
+    for (const ws of webClientSockets) {
+      // Ensure socket is in our tracking set
+      if (!this.webSockets.has(ws)) {
+        this.webSockets.add(ws);
+        this.webLastPong.set(ws, Date.now());
+      }
 
-        // Check if web client has timed out
-        if (lastPong > 0 && now - lastPong > CONNECTION_TIMEOUT_MS) {
-          // Web client connection timed out
-          ws.close(4001, 'Connection timeout');
-          this.webSockets.delete(ws);
-          this.webLastPong.delete(ws);
-        } else {
-          // Send ping to web client
+      const lastPong = this.webLastPong.get(ws) ?? now;
+
+      // Check if web client has timed out
+      if (lastPong > 0 && now - lastPong > CONNECTION_TIMEOUT_MS) {
+        // Web client connection timed out
+        console.log(
+          `[SessionHub] Web client timed out for session ${this.sessionId}`
+        );
+        ws.close(4001, 'Connection timeout');
+        this.webSockets.delete(ws);
+        this.webLastPong.delete(ws);
+      } else {
+        // Send ping to web client
+        try {
           ws.send(JSON.stringify({ type: 'ping' }));
+        } catch (error) {
+          console.error(
+            `[SessionHub] Failed to ping web client for session ` +
+            `${this.sessionId}:`,
+            error
+          );
         }
       }
     }

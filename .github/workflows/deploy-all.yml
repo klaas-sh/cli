@@ -1,0 +1,877 @@
+name: Deploy Nexo
+
+on:
+  push:
+    branches:
+      - main
+      - '**'
+    paths:
+      - 'packages/**'
+      - '.github/workflows/deploy-all.yml'
+    tags:
+      - 'v*'
+  pull_request:
+    branches: [main]
+    paths:
+      - 'packages/**'
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: 'Environment to deploy to'
+        required: true
+        type: choice
+        default: 'staging'
+        options:
+          - staging
+          - production
+
+env:
+  NODE_VERSION: '20'
+  DEPLOY_DOMAIN: 'nexo.dev'
+
+jobs:
+  # Detect which packages have changed
+  detect-changes:
+    name: Detect Changes
+    runs-on: ubuntu-latest
+    outputs:
+      api: ${{ steps.changes.outputs.api }}
+      dashboard: ${{ steps.changes.outputs.dashboard }}
+      admin: ${{ steps.changes.outputs.admin }}
+      cli: ${{ steps.changes.outputs.cli }}
+      is_main: ${{ github.ref == 'refs/heads/main' }}
+      is_tag: ${{ startsWith(github.ref, 'refs/tags/v') }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 2
+
+      - uses: dorny/paths-filter@v2
+        id: changes
+        with:
+          filters: |
+            api:
+              - 'packages/api/**'
+            dashboard:
+              - 'packages/dashboard/**'
+            admin:
+              - 'packages/admin/**'
+            cli:
+              - 'packages/cli/**'
+
+  # ============================================================
+  # API
+  # ============================================================
+  test-api:
+    name: Test API
+    runs-on: ubuntu-latest
+    needs: detect-changes
+    if: |
+      needs.detect-changes.outputs.api == 'true' ||
+      github.event_name == 'workflow_dispatch'
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+
+      - name: Enable Corepack
+        run: corepack enable
+
+      - name: Install dependencies
+        run: yarn install --frozen-lockfile
+
+      - name: Build API
+        run: yarn workspace @nexo/api build || true
+
+      - name: Run linting
+        run: yarn workspace @nexo/api lint
+
+      - name: Run type checking
+        run: yarn workspace @nexo/api typecheck
+
+      - name: Run unit tests
+        run: yarn workspace @nexo/api test:once
+
+  deploy-api-staging:
+    name: Deploy API (Staging)
+    runs-on: ubuntu-latest
+    needs: [detect-changes, test-api]
+    if: |
+      github.event_name == 'push' &&
+      github.ref != 'refs/heads/main' &&
+      !startsWith(github.ref, 'refs/tags/') &&
+      (needs.detect-changes.outputs.api == 'true' ||
+       github.event_name == 'workflow_dispatch')
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+
+      - name: Enable Corepack
+        run: corepack enable
+
+      - name: Install dependencies
+        run: yarn install --frozen-lockfile
+
+      - name: Run D1 migrations
+        working-directory: packages/api
+        run: |
+          npx wrangler d1 migrations apply nexo-db-staging \
+            --remote --env staging
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+
+      - name: Deploy to Cloudflare Workers (Staging)
+        working-directory: packages/api
+        run: |
+          # First, deploy without custom domain by temporarily removing routes
+          cp wrangler.toml wrangler.toml.backup
+
+          # Remove routes section for initial deployment
+          sed -i '/^\[env\.staging\]/,/^\[/{/^routes = \[/,/^\]/d}' wrangler.toml
+
+          # Deploy the worker without custom domain
+          echo "Deploying API worker to staging..."
+          npx wrangler deploy --env staging
+
+          # Restore original wrangler.toml
+          mv wrangler.toml.backup wrangler.toml
+
+          echo "Worker deployed successfully to nexo-api-staging.workers.dev"
+
+          # Now handle custom domain DNS
+          echo "Configuring custom domain for staging API..."
+
+          # Get zone ID for the deploy domain
+          ZONE_ID=$(curl -s -X GET \
+            "https://api.cloudflare.com/client/v4/zones?name=${{ env.DEPLOY_DOMAIN }}" \
+            -H "Authorization: Bearer $CLOUDFLARE_API_TOKEN" \
+            -H "Content-Type: application/json" | jq -r '.result[0].id')
+
+          if [ -z "$ZONE_ID" ] || [ "$ZONE_ID" = "null" ]; then
+            echo "Failed to get zone ID for ${{ env.DEPLOY_DOMAIN }}"
+            exit 1
+          fi
+
+          echo "Zone ID: $ZONE_ID"
+
+          # Check for existing DNS records for api-staging subdomain
+          EXISTING_RECORDS=$(curl -s -X GET \
+            "https://api.cloudflare.com/client/v4/zones/$ZONE_ID/dns_records?name=api-staging.${{ env.DEPLOY_DOMAIN }}" \
+            -H "Authorization: Bearer $CLOUDFLARE_API_TOKEN" \
+            -H "Content-Type: application/json")
+
+          # Remove existing A/AAAA/CNAME records
+          echo "$EXISTING_RECORDS" | jq -r \
+            '.result[] | select(.type=="A" or .type=="AAAA" or .type=="CNAME") | .id' | \
+            while read -r RECORD_ID; do
+              if [ -n "$RECORD_ID" ]; then
+                echo "  Removing existing DNS record: $RECORD_ID"
+                curl -s -X DELETE \
+                  "https://api.cloudflare.com/client/v4/zones/$ZONE_ID/dns_records/$RECORD_ID" \
+                  -H "Authorization: Bearer $CLOUDFLARE_API_TOKEN" \
+                  -H "Content-Type: application/json" > /dev/null
+              fi
+            done
+
+          # Create A record with dummy IP (required for Workers Routes)
+          echo "  Creating A record: api-staging -> 192.0.2.1 (dummy IP for Workers)"
+          curl -s -X POST \
+            "https://api.cloudflare.com/client/v4/zones/$ZONE_ID/dns_records" \
+            -H "Authorization: Bearer $CLOUDFLARE_API_TOKEN" \
+            -H "Content-Type: application/json" \
+            --data '{
+              "type": "A",
+              "name": "api-staging",
+              "content": "192.0.2.1",
+              "proxied": true
+            }' > /dev/null
+
+          # Add Workers route for the domain
+          echo "  Adding Workers route for api-staging.${{ env.DEPLOY_DOMAIN }}..."
+          curl -s -X POST \
+            "https://api.cloudflare.com/client/v4/zones/$ZONE_ID/workers/routes" \
+            -H "Authorization: Bearer $CLOUDFLARE_API_TOKEN" \
+            -H "Content-Type: application/json" \
+            --data '{
+              "pattern": "api-staging.${{ env.DEPLOY_DOMAIN }}/*",
+              "script": "nexo-api-staging"
+            }' > /dev/null || true
+
+          echo "Custom domain api-staging.${{ env.DEPLOY_DOMAIN }} configured successfully"
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+
+  deploy-api-production:
+    name: Deploy API (Production)
+    runs-on: ubuntu-latest
+    needs: [detect-changes, test-api]
+    if: |
+      github.ref == 'refs/heads/main' &&
+      github.event_name == 'push' &&
+      (needs.detect-changes.outputs.api == 'true' ||
+       github.event_name == 'workflow_dispatch')
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+
+      - name: Enable Corepack
+        run: corepack enable
+
+      - name: Install dependencies
+        run: yarn install --frozen-lockfile
+
+      - name: Run D1 migrations
+        working-directory: packages/api
+        run: |
+          npx wrangler d1 migrations apply nexo-db-production \
+            --remote --env production
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+
+      - name: Deploy to Cloudflare Workers (Production)
+        working-directory: packages/api
+        run: |
+          # First, deploy without custom domain by temporarily removing routes
+          cp wrangler.toml wrangler.toml.backup
+
+          # Remove routes section for initial deployment
+          sed -i '/^\[env\.production\]/,/^\[/{/^routes = \[/,/^\]/d}' wrangler.toml
+
+          # Deploy the worker without custom domain
+          echo "Deploying API worker..."
+          npx wrangler deploy --env production
+
+          # Restore original wrangler.toml
+          mv wrangler.toml.backup wrangler.toml
+
+          echo "Worker deployed successfully to nexo-api-production.workers.dev"
+
+          # Now handle custom domain DNS
+          echo "Configuring custom domain for API..."
+
+          # Get zone ID for the deploy domain
+          ZONE_ID=$(curl -s -X GET \
+            "https://api.cloudflare.com/client/v4/zones?name=${{ env.DEPLOY_DOMAIN }}" \
+            -H "Authorization: Bearer $CLOUDFLARE_API_TOKEN" \
+            -H "Content-Type: application/json" | jq -r '.result[0].id')
+
+          if [ -z "$ZONE_ID" ] || [ "$ZONE_ID" = "null" ]; then
+            echo "Failed to get zone ID for ${{ env.DEPLOY_DOMAIN }}"
+            exit 1
+          fi
+
+          echo "Zone ID: $ZONE_ID"
+
+          # Check for existing DNS records for api subdomain
+          EXISTING_RECORDS=$(curl -s -X GET \
+            "https://api.cloudflare.com/client/v4/zones/$ZONE_ID/dns_records?name=api.${{ env.DEPLOY_DOMAIN }}" \
+            -H "Authorization: Bearer $CLOUDFLARE_API_TOKEN" \
+            -H "Content-Type: application/json")
+
+          # Remove existing A/AAAA/CNAME records
+          echo "$EXISTING_RECORDS" | jq -r \
+            '.result[] | select(.type=="A" or .type=="AAAA" or .type=="CNAME") | .id' | \
+            while read -r RECORD_ID; do
+              if [ -n "$RECORD_ID" ]; then
+                echo "  Removing existing DNS record: $RECORD_ID"
+                curl -s -X DELETE \
+                  "https://api.cloudflare.com/client/v4/zones/$ZONE_ID/dns_records/$RECORD_ID" \
+                  -H "Authorization: Bearer $CLOUDFLARE_API_TOKEN" \
+                  -H "Content-Type: application/json" > /dev/null
+              fi
+            done
+
+          # Create A record with dummy IP (required for Workers Routes)
+          echo "  Creating A record: api -> 192.0.2.1 (dummy IP for Workers)"
+          curl -s -X POST \
+            "https://api.cloudflare.com/client/v4/zones/$ZONE_ID/dns_records" \
+            -H "Authorization: Bearer $CLOUDFLARE_API_TOKEN" \
+            -H "Content-Type: application/json" \
+            --data '{
+              "type": "A",
+              "name": "api",
+              "content": "192.0.2.1",
+              "proxied": true
+            }' > /dev/null
+
+          # Add Workers route for the domain
+          echo "  Adding Workers route for api.${{ env.DEPLOY_DOMAIN }}..."
+          curl -s -X POST \
+            "https://api.cloudflare.com/client/v4/zones/$ZONE_ID/workers/routes" \
+            -H "Authorization: Bearer $CLOUDFLARE_API_TOKEN" \
+            -H "Content-Type: application/json" \
+            --data '{
+              "pattern": "api.${{ env.DEPLOY_DOMAIN }}/*",
+              "script": "nexo-api"
+            }' > /dev/null || true
+
+          echo "Custom domain api.${{ env.DEPLOY_DOMAIN }} configured successfully"
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+
+  # ============================================================
+  # Dashboard
+  # ============================================================
+  test-dashboard:
+    name: Test Dashboard
+    runs-on: ubuntu-latest
+    needs: detect-changes
+    if: |
+      needs.detect-changes.outputs.dashboard == 'true' ||
+      github.event_name == 'workflow_dispatch'
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+
+      - name: Enable Corepack
+        run: corepack enable
+
+      - name: Install dependencies
+        run: yarn install --frozen-lockfile
+
+      - name: Run linting
+        run: yarn workspace @nexo/dashboard lint
+        continue-on-error: true
+
+      - name: Run type checking
+        run: yarn workspace @nexo/dashboard typecheck
+        continue-on-error: true
+
+      - name: Build dashboard
+        run: yarn workspace @nexo/dashboard build
+        env:
+          NEXT_PUBLIC_API_URL: https://api.${{ env.DEPLOY_DOMAIN }}
+
+  deploy-dashboard-staging:
+    name: Deploy Dashboard (Staging)
+    runs-on: ubuntu-latest
+    needs: [detect-changes, test-dashboard]
+    if: |
+      github.event_name == 'push' &&
+      github.ref != 'refs/heads/main' &&
+      !startsWith(github.ref, 'refs/tags/') &&
+      (needs.detect-changes.outputs.dashboard == 'true' ||
+       github.event_name == 'workflow_dispatch')
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+
+      - name: Enable Corepack
+        run: corepack enable
+
+      - name: Install dependencies
+        run: yarn install --frozen-lockfile
+
+      - name: Build dashboard for Cloudflare
+        run: yarn workspace @nexo/dashboard build:cf
+        env:
+          NEXT_PUBLIC_API_URL: https://api-staging.${{ env.DEPLOY_DOMAIN }}
+
+      - name: Ensure R2 buckets exist
+        run: |
+          BUCKET_NAME="nexo-dashboard-cache-staging"
+          npx wrangler r2 bucket create "$BUCKET_NAME" 2>&1 || true
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+
+      - name: Deploy to Cloudflare Workers (Staging)
+        working-directory: packages/dashboard
+        run: |
+          # First, deploy without custom domain by temporarily removing routes
+          cp wrangler.toml wrangler.toml.backup
+
+          # Remove routes section for initial deployment
+          sed -i '/^\[env\.staging\]/,/^\[/{/^routes = \[/,/^\]/d}' wrangler.toml
+
+          # Deploy the worker without custom domain
+          echo "Deploying Dashboard worker to staging..."
+          npx wrangler deploy --env staging
+
+          # Restore original wrangler.toml
+          mv wrangler.toml.backup wrangler.toml
+
+          echo "Worker deployed successfully"
+
+          # Now handle custom domain DNS
+          echo "Configuring custom domain for staging Dashboard..."
+
+          # Get zone ID
+          ZONE_ID=$(curl -s -X GET \
+            "https://api.cloudflare.com/client/v4/zones?name=${{ env.DEPLOY_DOMAIN }}" \
+            -H "Authorization: Bearer $CLOUDFLARE_API_TOKEN" \
+            -H "Content-Type: application/json" | jq -r '.result[0].id')
+
+          if [ -z "$ZONE_ID" ] || [ "$ZONE_ID" = "null" ]; then
+            echo "Failed to get zone ID for ${{ env.DEPLOY_DOMAIN }}"
+            exit 1
+          fi
+
+          # Check for existing DNS records for app-staging subdomain
+          EXISTING_RECORDS=$(curl -s -X GET \
+            "https://api.cloudflare.com/client/v4/zones/$ZONE_ID/dns_records?name=app-staging.${{ env.DEPLOY_DOMAIN }}" \
+            -H "Authorization: Bearer $CLOUDFLARE_API_TOKEN" \
+            -H "Content-Type: application/json")
+
+          # Remove existing A/AAAA/CNAME records
+          echo "$EXISTING_RECORDS" | jq -r \
+            '.result[] | select(.type=="A" or .type=="AAAA" or .type=="CNAME") | .id' | \
+            while read -r RECORD_ID; do
+              if [ -n "$RECORD_ID" ]; then
+                echo "  Removing existing DNS record: $RECORD_ID"
+                curl -s -X DELETE \
+                  "https://api.cloudflare.com/client/v4/zones/$ZONE_ID/dns_records/$RECORD_ID" \
+                  -H "Authorization: Bearer $CLOUDFLARE_API_TOKEN" \
+                  -H "Content-Type: application/json" > /dev/null
+              fi
+            done
+
+          # Create A record with dummy IP
+          echo "  Creating A record: app-staging -> 192.0.2.1"
+          curl -s -X POST \
+            "https://api.cloudflare.com/client/v4/zones/$ZONE_ID/dns_records" \
+            -H "Authorization: Bearer $CLOUDFLARE_API_TOKEN" \
+            -H "Content-Type: application/json" \
+            --data '{
+              "type": "A",
+              "name": "app-staging",
+              "content": "192.0.2.1",
+              "proxied": true
+            }' > /dev/null
+
+          # Add Workers route
+          echo "  Adding Workers route for app-staging.${{ env.DEPLOY_DOMAIN }}..."
+          curl -s -X POST \
+            "https://api.cloudflare.com/client/v4/zones/$ZONE_ID/workers/routes" \
+            -H "Authorization: Bearer $CLOUDFLARE_API_TOKEN" \
+            -H "Content-Type: application/json" \
+            --data '{
+              "pattern": "app-staging.${{ env.DEPLOY_DOMAIN }}/*",
+              "script": "nexo-dashboard-staging"
+            }' > /dev/null || true
+
+          echo "Custom domain app-staging.${{ env.DEPLOY_DOMAIN }} configured successfully"
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+
+  deploy-dashboard-production:
+    name: Deploy Dashboard (Production)
+    runs-on: ubuntu-latest
+    needs: [detect-changes, test-dashboard]
+    if: |
+      github.ref == 'refs/heads/main' &&
+      github.event_name == 'push' &&
+      (needs.detect-changes.outputs.dashboard == 'true' ||
+       github.event_name == 'workflow_dispatch')
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+
+      - name: Enable Corepack
+        run: corepack enable
+
+      - name: Install dependencies
+        run: yarn install --frozen-lockfile
+
+      - name: Build dashboard for Cloudflare
+        run: yarn workspace @nexo/dashboard build:cf
+        env:
+          NEXT_PUBLIC_API_URL: https://api.${{ env.DEPLOY_DOMAIN }}
+
+      - name: Ensure R2 buckets exist
+        run: |
+          BUCKET_NAME="nexo-dashboard-cache-production"
+          npx wrangler r2 bucket create "$BUCKET_NAME" 2>&1 || true
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+
+      - name: Deploy to Cloudflare Workers (Production)
+        working-directory: packages/dashboard
+        run: |
+          # First, deploy without custom domain by temporarily removing routes
+          cp wrangler.toml wrangler.toml.backup
+
+          # Remove routes section for initial deployment
+          sed -i '/^\[env\.production\]/,/^\[/{/^routes = \[/,/^\]/d}' wrangler.toml
+
+          # Deploy the worker without custom domain
+          echo "Deploying Dashboard worker..."
+          npx wrangler deploy --env production
+
+          # Restore original wrangler.toml
+          mv wrangler.toml.backup wrangler.toml
+
+          echo "Worker deployed successfully"
+
+          # Now handle custom domain DNS
+          echo "Configuring custom domain..."
+
+          # Get zone ID
+          ZONE_ID=$(curl -s -X GET \
+            "https://api.cloudflare.com/client/v4/zones?name=${{ env.DEPLOY_DOMAIN }}" \
+            -H "Authorization: Bearer $CLOUDFLARE_API_TOKEN" \
+            -H "Content-Type: application/json" | jq -r '.result[0].id')
+
+          if [ -z "$ZONE_ID" ] || [ "$ZONE_ID" = "null" ]; then
+            echo "Failed to get zone ID for ${{ env.DEPLOY_DOMAIN }}"
+            exit 1
+          fi
+
+          # Check for existing DNS records for app subdomain
+          EXISTING_RECORDS=$(curl -s -X GET \
+            "https://api.cloudflare.com/client/v4/zones/$ZONE_ID/dns_records?name=app.${{ env.DEPLOY_DOMAIN }}" \
+            -H "Authorization: Bearer $CLOUDFLARE_API_TOKEN" \
+            -H "Content-Type: application/json")
+
+          # Remove existing A/AAAA/CNAME records
+          echo "$EXISTING_RECORDS" | jq -r \
+            '.result[] | select(.type=="A" or .type=="AAAA" or .type=="CNAME") | .id' | \
+            while read -r RECORD_ID; do
+              if [ -n "$RECORD_ID" ]; then
+                echo "  Removing existing DNS record: $RECORD_ID"
+                curl -s -X DELETE \
+                  "https://api.cloudflare.com/client/v4/zones/$ZONE_ID/dns_records/$RECORD_ID" \
+                  -H "Authorization: Bearer $CLOUDFLARE_API_TOKEN" \
+                  -H "Content-Type: application/json" > /dev/null
+              fi
+            done
+
+          # Create A record with dummy IP
+          echo "  Creating A record: app -> 192.0.2.1"
+          curl -s -X POST \
+            "https://api.cloudflare.com/client/v4/zones/$ZONE_ID/dns_records" \
+            -H "Authorization: Bearer $CLOUDFLARE_API_TOKEN" \
+            -H "Content-Type: application/json" \
+            --data '{
+              "type": "A",
+              "name": "app",
+              "content": "192.0.2.1",
+              "proxied": true
+            }' > /dev/null
+
+          # Add Workers route
+          echo "  Adding Workers route for app.${{ env.DEPLOY_DOMAIN }}..."
+          curl -s -X POST \
+            "https://api.cloudflare.com/client/v4/zones/$ZONE_ID/workers/routes" \
+            -H "Authorization: Bearer $CLOUDFLARE_API_TOKEN" \
+            -H "Content-Type: application/json" \
+            --data '{
+              "pattern": "app.${{ env.DEPLOY_DOMAIN }}/*",
+              "script": "nexo-dashboard"
+            }' > /dev/null || true
+
+          echo "Custom domain app.${{ env.DEPLOY_DOMAIN }} configured successfully"
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+
+  # ============================================================
+  # Admin (placeholder - package does not exist yet)
+  # ============================================================
+  # Uncomment when admin package is created:
+  #
+  # test-admin:
+  #   name: Test Admin
+  #   runs-on: ubuntu-latest
+  #   needs: detect-changes
+  #   if: |
+  #     needs.detect-changes.outputs.admin == 'true' ||
+  #     github.event_name == 'workflow_dispatch'
+  #   steps:
+  #     - uses: actions/checkout@v4
+  #     - name: Setup Node.js
+  #       uses: actions/setup-node@v4
+  #       with:
+  #         node-version: ${{ env.NODE_VERSION }}
+  #     - name: Enable Corepack
+  #       run: corepack enable
+  #     - name: Install dependencies
+  #       run: yarn install --frozen-lockfile
+  #     - name: Run linting
+  #       run: yarn workspace @nexo/admin lint
+  #       continue-on-error: true
+  #     - name: Run type checking
+  #       run: yarn workspace @nexo/admin typecheck
+  #       continue-on-error: true
+  #     - name: Build admin
+  #       run: yarn workspace @nexo/admin build
+  #       env:
+  #         NEXT_PUBLIC_API_URL: https://api.${{ env.DEPLOY_DOMAIN }}
+  #
+  # deploy-admin-staging:
+  #   name: Deploy Admin (Staging)
+  #   runs-on: ubuntu-latest
+  #   needs: [detect-changes, test-admin]
+  #   if: |
+  #     github.event_name == 'push' &&
+  #     github.ref != 'refs/heads/main' &&
+  #     !startsWith(github.ref, 'refs/tags/') &&
+  #     (needs.detect-changes.outputs.admin == 'true' ||
+  #      github.event_name == 'workflow_dispatch')
+  #   steps:
+  #     # Similar to dashboard staging deployment
+  #     # Deploy to admin-staging.${{ env.DEPLOY_DOMAIN }}
+  #
+  # deploy-admin-production:
+  #   name: Deploy Admin (Production)
+  #   runs-on: ubuntu-latest
+  #   needs: [detect-changes, test-admin]
+  #   if: |
+  #     github.ref == 'refs/heads/main' &&
+  #     github.event_name == 'push' &&
+  #     (needs.detect-changes.outputs.admin == 'true' ||
+  #      github.event_name == 'workflow_dispatch')
+  #   steps:
+  #     # Similar to dashboard production deployment
+  #     # Deploy to admin.${{ env.DEPLOY_DOMAIN }}
+
+  # ============================================================
+  # CLI - Rust Binary Builds
+  # ============================================================
+  test-cli:
+    name: Test CLI
+    runs-on: ubuntu-latest
+    needs: detect-changes
+    if: |
+      needs.detect-changes.outputs.cli == 'true' ||
+      startsWith(github.ref, 'refs/tags/v')
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache cargo
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: packages/cli
+
+      - name: Run clippy
+        working-directory: packages/cli
+        run: cargo clippy -- -D warnings
+
+      - name: Run tests
+        working-directory: packages/cli
+        run: cargo test
+
+      - name: Check formatting
+        working-directory: packages/cli
+        run: cargo fmt --check
+
+  build-cli:
+    name: Build CLI (${{ matrix.target }})
+    runs-on: ${{ matrix.os }}
+    needs: [detect-changes, test-cli]
+    if: startsWith(github.ref, 'refs/tags/v')
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          # macOS Intel
+          - target: x86_64-apple-darwin
+            os: macos-13
+            binary_name: nexo
+            asset_name: nexo-darwin-x64
+
+          # macOS ARM (Apple Silicon)
+          - target: aarch64-apple-darwin
+            os: macos-14
+            binary_name: nexo
+            asset_name: nexo-darwin-arm64
+
+          # Linux x64
+          - target: x86_64-unknown-linux-gnu
+            os: ubuntu-latest
+            binary_name: nexo
+            asset_name: nexo-linux-x64
+
+          # Linux ARM64
+          - target: aarch64-unknown-linux-gnu
+            os: ubuntu-latest
+            binary_name: nexo
+            asset_name: nexo-linux-arm64
+            cross: true
+
+          # Windows x64
+          - target: x86_64-pc-windows-msvc
+            os: windows-latest
+            binary_name: nexo.exe
+            asset_name: nexo-windows-x64.exe
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
+
+      - name: Cache cargo
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: packages/cli
+          key: ${{ matrix.target }}
+
+      # For Linux ARM64 cross-compilation
+      - name: Install cross-compilation tools
+        if: matrix.cross
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y gcc-aarch64-linux-gnu
+
+      - name: Build release binary
+        working-directory: packages/cli
+        run: cargo build --release --target ${{ matrix.target }}
+        env:
+          CARGO_TARGET_AARCH64_UNKNOWN_LINUX_GNU_LINKER: aarch64-linux-gnu-gcc
+
+      - name: Prepare artifact (Unix)
+        if: runner.os != 'Windows'
+        run: |
+          cd packages/cli/target/${{ matrix.target }}/release
+          chmod +x ${{ matrix.binary_name }}
+          tar -czvf ${{ matrix.asset_name }}.tar.gz ${{ matrix.binary_name }}
+          mv ${{ matrix.asset_name }}.tar.gz ../../../..
+
+      - name: Prepare artifact (Windows)
+        if: runner.os == 'Windows'
+        run: |
+          cd packages/cli/target/${{ matrix.target }}/release
+          Compress-Archive -Path ${{ matrix.binary_name }} `
+            -DestinationPath ../../../..${{ matrix.asset_name }}.zip
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.asset_name }}
+          path: |
+            packages/cli/${{ matrix.asset_name }}.tar.gz
+            packages/cli/${{ matrix.asset_name }}.zip
+          if-no-files-found: error
+
+  release-cli:
+    name: Create GitHub Release
+    runs-on: ubuntu-latest
+    needs: [build-cli]
+    if: startsWith(github.ref, 'refs/tags/v')
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+
+      - name: Display artifacts
+        run: ls -la artifacts/*/
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          draft: false
+          generate_release_notes: true
+          files: |
+            artifacts/**/*.tar.gz
+            artifacts/**/*.zip
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  # ============================================================
+  # Summary
+  # ============================================================
+  deployment-summary:
+    name: Deployment Summary
+    runs-on: ubuntu-latest
+    needs:
+      - detect-changes
+      - deploy-api-staging
+      - deploy-api-production
+      - deploy-dashboard-staging
+      - deploy-dashboard-production
+      - release-cli
+    if: always()
+    steps:
+      - name: Summary
+        run: |
+          echo "## Deployment Summary" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**Branch:** ${{ github.ref_name }}" >> $GITHUB_STEP_SUMMARY
+          echo "**Domain:** ${{ env.DEPLOY_DOMAIN }}" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+
+          # Determine environment
+          if [[ "${{ github.ref }}" == "refs/heads/main" ]]; then
+            ENV="Production"
+          elif [[ "${{ github.ref }}" == refs/tags/v* ]]; then
+            ENV="Release"
+          else
+            ENV="Staging"
+          fi
+          echo "**Environment:** $ENV" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+
+          echo "### API" >> $GITHUB_STEP_SUMMARY
+          if [[ "${{ needs.deploy-api-production.result }}" == "success" ]]; then
+            echo "- Production: https://api.${{ env.DEPLOY_DOMAIN }}" >> $GITHUB_STEP_SUMMARY
+          elif [[ "${{ needs.deploy-api-staging.result }}" == "success" ]]; then
+            echo "- Staging: https://api-staging.${{ env.DEPLOY_DOMAIN }}" >> $GITHUB_STEP_SUMMARY
+          elif [[ "${{ needs.deploy-api-production.result }}" == "skipped" ]] && \
+               [[ "${{ needs.deploy-api-staging.result }}" == "skipped" ]]; then
+            echo "- Skipped (no changes)" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "- Failed" >> $GITHUB_STEP_SUMMARY
+          fi
+
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "### Dashboard" >> $GITHUB_STEP_SUMMARY
+          if [[ "${{ needs.deploy-dashboard-production.result }}" == "success" ]]; then
+            echo "- Production: https://app.${{ env.DEPLOY_DOMAIN }}" >> $GITHUB_STEP_SUMMARY
+          elif [[ "${{ needs.deploy-dashboard-staging.result }}" == "success" ]]; then
+            echo "- Staging: https://app-staging.${{ env.DEPLOY_DOMAIN }}" >> $GITHUB_STEP_SUMMARY
+          elif [[ "${{ needs.deploy-dashboard-production.result }}" == "skipped" ]] && \
+               [[ "${{ needs.deploy-dashboard-staging.result }}" == "skipped" ]]; then
+            echo "- Skipped (no changes)" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "- Failed" >> $GITHUB_STEP_SUMMARY
+          fi
+
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "### CLI" >> $GITHUB_STEP_SUMMARY
+          if [[ "${{ needs.release-cli.result }}" == "success" ]]; then
+            echo "- Released: ${{ github.ref_name }}" >> $GITHUB_STEP_SUMMARY
+          elif [[ "${{ needs.release-cli.result }}" == "skipped" ]]; then
+            echo "- Skipped (not a version tag)" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "- Failed" >> $GITHUB_STEP_SUMMARY
+          fi
