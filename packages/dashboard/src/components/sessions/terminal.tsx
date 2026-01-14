@@ -379,6 +379,8 @@ export function Terminal({
     requestAnimationFrame(() => {
       if (isMountedRef.current) {
         connect()
+        // Focus terminal for keyboard input
+        term.focus()
       }
     })
 
@@ -521,7 +523,8 @@ export function Terminal({
       {/* Terminal container */}
       <div
         ref={terminalRef}
-        className="flex-1 min-h-0"
+        className="flex-1 min-h-0 cursor-text"
+        onClick={() => xtermRef.current?.focus()}
       />
     </div>
   )
