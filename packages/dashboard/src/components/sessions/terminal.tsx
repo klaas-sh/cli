@@ -108,6 +108,18 @@ export function Terminal({
   const reconnectTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const isMountedRef = useRef<boolean>(true)
 
+  // Store callbacks in refs to avoid triggering reconnections when they change
+  // This prevents the useEffect from re-running when parent re-renders with
+  // new inline callback functions
+  const onDisconnectRef = useRef(onDisconnect)
+  const onSessionStatusRef = useRef(onSessionStatus)
+
+  // Update refs when callbacks change (without triggering reconnection)
+  useEffect(() => {
+    onDisconnectRef.current = onDisconnect
+    onSessionStatusRef.current = onSessionStatus
+  }, [onDisconnect, onSessionStatus])
+
   const [connectionState, setConnectionState] =
     useState<ConnectionState>('connecting')
   const [sessionStatus, setSessionStatus] =
@@ -275,7 +287,7 @@ export function Terminal({
             // to terminal - status is shown in the status bar)
             if (message.session_id === sessionId) {
               setSessionStatus(message.status)
-              onSessionStatus?.(message.status)
+              onSessionStatusRef.current?.(message.status)
             }
             break
 
@@ -312,12 +324,12 @@ export function Terminal({
         } else {
           setConnectionState('disconnected')
           // Only notify of disconnect when we've exhausted reconnection attempts
-          onDisconnect?.()
+          onDisconnectRef.current?.()
         }
       } else {
         // Clean closure (code 1000 or 4000)
         setConnectionState('disconnected')
-        onDisconnect?.()
+        onDisconnectRef.current?.()
       }
     }
 
@@ -328,11 +340,11 @@ export function Terminal({
   }, [
     buildWebSocketUrl,
     decodeBase64,
-    onDisconnect,
-    onSessionStatus,
     sendMessage,
     sessionId
   ])
+  // Note: onDisconnect and onSessionStatus are accessed via refs to prevent
+  // reconnections when parent re-renders with new inline callbacks
 
   /**
    * Handles manual reconnection.
