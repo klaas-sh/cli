@@ -342,15 +342,18 @@ export function Terminal({
     const { Terminal: XTerm, FitAddon, WebLinksAddon } = xtermModules
 
     // Initialize xterm.js
+    // Hide xterm cursor since Claude Code renders its own cursor
     const term = new XTerm({
-      cursorBlink: true,
+      cursorBlink: false,
+      cursorInactiveStyle: 'none',
       fontSize: 14,
       fontFamily: 'Menlo, Monaco, "Courier New", monospace',
       theme: {
         background: '#1a1a1a',
         foreground: '#f0f0f0',
-        cursor: '#f0f0f0',
-        cursorAccent: '#1a1a1a',
+        // Make cursor transparent (same as background) to hide it
+        cursor: 'transparent',
+        cursorAccent: 'transparent',
         selectionBackground: 'rgba(255, 255, 255, 0.3)',
       },
       allowProposedApi: true,
