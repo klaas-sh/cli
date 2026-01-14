@@ -49,8 +49,8 @@ pub async fn run(claude_args: Vec<String>, new_session: bool) -> Result<i32> {
     let device_id = get_or_create_device_id(&cred_store)?;
     debug!(device_id = %device_id, "Using device ID");
 
-    // Ensure we have valid credentials (authenticate if needed)
-    let access_token = ensure_authenticated(&config, &cred_store).await?;
+    // Try to authenticate (non-blocking - returns None if API unreachable)
+    let access_token = try_authenticate(&config, &cred_store).await;
 
     // Get or create session ID (persisted for reconnection)
     let session_id = get_or_create_session_id(&cred_store, new_session)?;
@@ -93,15 +93,21 @@ pub async fn run(claude_args: Vec<String>, new_session: bool) -> Result<i32> {
     };
 
     // Try to connect to WebSocket (non-blocking, continue if fails)
-    let ws_client = connect_websocket(
-        &config,
-        &access_token,
-        session_id.as_str(),
-        device_id.as_str(),
-        &device_name,
-        &cwd,
-    )
-    .await;
+    // Skip if we don't have authentication
+    let ws_client = match &access_token {
+        Some(token) => {
+            connect_websocket(
+                &config,
+                token,
+                session_id.as_str(),
+                device_id.as_str(),
+                &device_name,
+                &cwd,
+            )
+            .await
+        }
+        None => None,
+    };
 
     // Track connection state
     let connection_state = Arc::new(Mutex::new(match &ws_client {
@@ -451,6 +457,28 @@ async fn ensure_authenticated(config: &ApiConfig, cred_store: &CredentialStore) 
     info!("Authentication successful");
 
     Ok(tokens.access_token)
+}
+
+/// Tries to authenticate, returning None if the API is unreachable.
+///
+/// This is a non-blocking wrapper around `ensure_authenticated` that allows
+/// the CLI to start in offline mode when the API server is unavailable.
+/// The user can still use Claude Code normally, just without remote sync.
+async fn try_authenticate(config: &ApiConfig, cred_store: &CredentialStore) -> Option<String> {
+    match ensure_authenticated(config, cred_store).await {
+        Ok(token) => Some(token),
+        Err(e) => {
+            // Print user-friendly warning
+            eprintln!(
+                "\x1b[33mWarning:\x1b[0m Unable to connect to Klaas server. \
+                 Running in offline mode - no remote sync."
+            );
+            eprintln!("\x1b[90m         Error: {}\x1b[0m", e);
+            eprintln!();
+            warn!(error = %e, "Starting in offline mode");
+            None
+        }
+    }
 }
 
 /// Connects to the WebSocket server.

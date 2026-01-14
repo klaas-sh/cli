@@ -7,6 +7,29 @@
 - history is not preserved
 - delete/archive old sessions
 
+### CLI Background Reconnection
+
+The CLI should periodically retry connecting to the API when offline, enabling
+seamless reconnection for approved devices.
+
+**Current behavior:**
+- CLI fails to start if API is unreachable during authentication
+- User must restart CLI to reconnect
+
+**Desired behavior:**
+1. CLI starts in offline mode if API is unreachable (show warning)
+2. Background task retries connection with exponential backoff (5s → 10s → 30s → 60s max)
+3. When connection succeeds:
+   - If device has stored valid token: reconnect transparently, show "Syncing resumed"
+   - If token expired/invalid: show new device code for re-approval
+4. If connection drops mid-session: automatic reconnection using same logic
+
+**Implementation:**
+- Add `try_authenticate()` that returns `Option<String>` instead of failing
+- Add background tokio task for periodic retry
+- Use existing `handle_reconnection()` infrastructure
+- Store backoff state in `ConnectionState` or separate struct
+
 ## v1.1
 
 ### Remote Image Paste from Browser

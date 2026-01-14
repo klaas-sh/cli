@@ -18,20 +18,20 @@
   "scripts": {
     "build": "yarn workspaces foreach -Aptv run build",
     "build:api": "yarn workspace @klaas/api build",
-    "build:cli": "cd packages/cli && cargo build --release",
+    "build:cli": "source ~/.cargo/env 2>/dev/null; cd packages/cli && cargo build --release",
     "db:migrate": "yarn workspace @klaas/api db:migrate",
     "deploy:api": "yarn workspace @klaas/api deploy",
     "deploy:api:production": "yarn workspace @klaas/api deploy:production",
     "deploy:api:staging": "yarn workspace @klaas/api deploy:staging",
     "dev": "concurrently -n api,cli -c blue,green \"yarn dev:api\" \"yarn dev:cli\"",
     "dev:api": "yarn workspace @klaas/api dev",
-    "dev:cli": "cd packages/cli && cargo run",
+    "dev:cli": "source ~/.cargo/env 2>/dev/null; cd packages/cli && cargo run",
     "dev:dashboard": "yarn workspace @klaas/dashboard clean && yarn workspace @klaas/dashboard dev",
     "lint": "yarn workspaces foreach -Aptv run lint",
     "pre-commit": "yarn install && yarn lint && yarn typecheck && yarn test && yarn build",
     "test": "yarn workspaces foreach -Aptv run test:once",
     "test:api": "yarn workspace @klaas/api test:once",
-    "test:cli": "cd packages/cli && cargo test",
+    "test:cli": "source ~/.cargo/env 2>/dev/null; cd packages/cli && cargo test",
     "typecheck": "yarn workspaces foreach -Aptv run typecheck"
   },
   "devDependencies": {

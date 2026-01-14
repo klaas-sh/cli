@@ -455,7 +455,7 @@ OPTIONS:
 
 All other options are passed through to Claude Code.
 
-NEXO COMMANDS (type during session):
+KLAAS COMMANDS (type during session):
     /attach  - Connect for remote access
     /detach  - Disconnect from remote
     /status  - Show connection status
