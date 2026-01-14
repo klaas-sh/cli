@@ -109,13 +109,23 @@ export function Terminal({
   const [sessionStatus, setSessionStatus] =
     useState<'attached' | 'detached' | null>(null)
   const [errorMessage, setErrorMessage] = useState<string | null>(null)
+  const [reconnectAttempt, setReconnectAttempt] = useState(0)
 
   /**
    * Decodes base64 data to string for terminal output.
+   * Uses TextDecoder to properly handle UTF-8 encoded content.
    */
   const decodeBase64 = useCallback((data: string): string => {
     try {
-      return atob(data)
+      // Decode base64 to binary string
+      const binaryString = atob(data)
+      // Convert binary string to Uint8Array
+      const bytes = new Uint8Array(binaryString.length)
+      for (let i = 0; i < binaryString.length; i++) {
+        bytes[i] = binaryString.charCodeAt(i)
+      }
+      // Decode UTF-8 bytes to string
+      return new TextDecoder('utf-8').decode(bytes)
     } catch {
       // If decoding fails, return the raw data
       return data
@@ -164,7 +174,6 @@ export function Terminal({
     if (!wsUrl) {
       setConnectionState('error')
       setErrorMessage('No authentication token found')
-      term.writeln('\x1b[31mError: No authentication token found\x1b[0m')
       return
     }
 
@@ -181,9 +190,8 @@ export function Terminal({
 
     ws.onopen = (): void => {
       reconnectAttemptRef.current = 0
+      setReconnectAttempt(0)
       setConnectionState('connected')
-      term.writeln('\x1b[32mConnected to session\x1b[0m')
-      term.writeln('')
 
       // Subscribe to the session
       sendMessage({
@@ -191,13 +199,15 @@ export function Terminal({
         session_ids: [sessionId]
       })
 
-      // Send initial resize
-      sendMessage({
-        type: 'resize',
-        session_id: sessionId,
-        cols: term.cols,
-        rows: term.rows
-      })
+      // Send initial resize (only if terminal has valid dimensions)
+      if (term.cols > 0 && term.rows > 0) {
+        sendMessage({
+          type: 'resize',
+          session_id: sessionId,
+          cols: term.cols,
+          rows: term.rows
+        })
+      }
     }
 
     ws.onmessage = (event): void => {
@@ -214,23 +224,17 @@ export function Terminal({
             break
 
           case 'session_status':
-            // Handle session status changes
+            // Handle session status changes (only update state, don't write
+            // to terminal - status is shown in the status bar)
             if (message.session_id === sessionId) {
               setSessionStatus(message.status)
               onSessionStatus?.(message.status)
-
-              if (message.status === 'attached') {
-                term.writeln('\x1b[32mCLI attached\x1b[0m')
-              } else if (message.status === 'detached') {
-                term.writeln('\x1b[33mCLI detached\x1b[0m')
-              }
             }
             break
 
           case 'error':
-            // Display error message
+            // Update error state (shown in status bar, not terminal)
             setErrorMessage(message.message)
-            term.writeln(`\x1b[31mError: ${message.message}\x1b[0m`)
             break
 
           case 'sessions_update':
@@ -243,25 +247,21 @@ export function Terminal({
     }
 
     ws.onclose = (event): void => {
-      setConnectionState('disconnected')
-      term.writeln('')
-      term.writeln('\x1b[31mDisconnected from session\x1b[0m')
-
       // Check if we should attempt to reconnect
       if (event.code !== 1000 && event.code !== 4000) {
         // Abnormal closure, attempt reconnect
         if (reconnectAttemptRef.current < MAX_RECONNECT_ATTEMPTS) {
           reconnectAttemptRef.current++
-          const msg = `Reconnecting in ${RECONNECT_DELAY_MS / 1000}s ` +
-            `(attempt ${reconnectAttemptRef.current}/${MAX_RECONNECT_ATTEMPTS})`
-          term.writeln(`\x1b[33m${msg}...\x1b[0m`)
-
+          setReconnectAttempt(reconnectAttemptRef.current)
+          setConnectionState('connecting')
           reconnectTimeoutRef.current = setTimeout(() => {
             connect()
           }, RECONNECT_DELAY_MS)
         } else {
-          term.writeln('\x1b[31mMax reconnection attempts reached\x1b[0m')
+          setConnectionState('disconnected')
         }
+      } else {
+        setConnectionState('disconnected')
       }
 
       onDisconnect?.()
@@ -269,7 +269,6 @@ export function Terminal({
 
     ws.onerror = (): void => {
       setConnectionState('error')
-      term.writeln('\x1b[31mConnection error\x1b[0m')
     }
   }, [
     buildWebSocketUrl,
@@ -318,9 +317,6 @@ export function Terminal({
     xtermRef.current = term
     fitAddonRef.current = fitAddon
 
-    // Display initial connecting message
-    term.writeln('\x1b[33mConnecting...\x1b[0m')
-
     // Connect to WebSocket
     connect()
 
@@ -336,12 +332,15 @@ export function Terminal({
     // Handle resize
     const handleResize = (): void => {
       fitAddon.fit()
-      sendMessage({
-        type: 'resize',
-        session_id: sessionId,
-        cols: term.cols,
-        rows: term.rows
-      })
+      // Only send resize if terminal has valid dimensions
+      if (term.cols > 0 && term.rows > 0) {
+        sendMessage({
+          type: 'resize',
+          session_id: sessionId,
+          cols: term.cols,
+          rows: term.rows
+        })
+      }
     }
 
     window.addEventListener('resize', handleResize)
@@ -371,6 +370,22 @@ export function Terminal({
     }
   }, [connect, sendMessage, sessionId])
 
+  /**
+   * Get connection status text for status bar.
+   */
+  const getConnectionText = (): string => {
+    if (connectionState === 'connecting') {
+      if (reconnectAttempt > 0) {
+        return `Reconnecting (${reconnectAttempt}/${MAX_RECONNECT_ATTEMPTS})...`
+      }
+      return 'Connecting...'
+    }
+    if (connectionState === 'connected') return 'Connected'
+    if (connectionState === 'disconnected') return 'Disconnected'
+    if (connectionState === 'error') return errorMessage || 'Error'
+    return ''
+  }
+
   return (
     <div className="flex flex-col h-full">
       {/* Connection status bar */}
@@ -386,14 +401,11 @@ export function Terminal({
                 : 'bg-red-500'
           }`} />
           <span className="text-zinc-400">
-            {connectionState === 'connecting' && 'Connecting...'}
-            {connectionState === 'connected' && 'Connected'}
-            {connectionState === 'disconnected' && 'Disconnected'}
-            {connectionState === 'error' && (errorMessage || 'Error')}
+            {getConnectionText()}
           </span>
 
-          {/* Session status */}
-          {sessionStatus && connectionState === 'connected' && (
+          {/* Session/CLI status - show whenever we have it */}
+          {sessionStatus && (
             <>
               <span className="text-zinc-600">|</span>
               <span className={`${
