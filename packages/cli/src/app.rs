@@ -50,8 +50,15 @@ pub async fn run(claude_args: Vec<String>, new_session: bool) -> Result<i32> {
     let device_id = get_or_create_device_id(&cred_store)?;
     debug!(device_id = %device_id, "Using device ID");
 
-    // Try to authenticate (non-blocking - returns None if API unreachable)
-    let access_token = try_authenticate(&config, &cred_store).await;
+    // Try to authenticate (handles cancellation gracefully)
+    let access_token = match try_authenticate(&config, &cred_store).await {
+        AuthAttemptResult::Success(token) => Some(token),
+        AuthAttemptResult::Cancelled => {
+            // User pressed CTRL+C - exit gracefully
+            return Ok(0);
+        }
+        AuthAttemptResult::Offline => None,
+    };
 
     // Get or create session ID (persisted for reconnection)
     let session_id = get_or_create_session_id(&cred_store, new_session)?;
@@ -449,9 +456,10 @@ async fn ensure_authenticated(config: &ApiConfig, cred_store: &CredentialStore) 
 
     // No valid tokens, run OAuth Device Flow
     info!("No valid credentials, starting authentication");
-    let tokens = authenticate(&config.api_url)
-        .await
-        .map_err(|e| CliError::AuthError(e.to_string()))?;
+    let tokens = authenticate(&config.api_url).await.map_err(|e| match e {
+        AuthError::Cancelled | AuthError::Skipped => CliError::AuthError(e.to_string()),
+        _ => CliError::AuthError(e.to_string()),
+    })?;
 
     // Store the new tokens
     cred_store.store_tokens(&tokens.access_token, &tokens.refresh_token)?;
@@ -460,18 +468,42 @@ async fn ensure_authenticated(config: &ApiConfig, cred_store: &CredentialStore) 
     Ok(tokens.access_token)
 }
 
-/// Tries to authenticate, returning None if the API is unreachable.
+/// Result of authentication attempt.
+pub enum AuthAttemptResult {
+    /// Successfully authenticated with access token.
+    Success(String),
+    /// User cancelled (CTRL+C) - should exit.
+    Cancelled,
+    /// User skipped (ESC) or offline - continue without sync.
+    Offline,
+}
+
+/// Tries to authenticate, handling cancellation and skip gracefully.
 ///
 /// This is a non-blocking wrapper around `ensure_authenticated` that allows
 /// the CLI to start in offline mode when the API server is unavailable.
 /// The user can still use Claude Code normally, just without remote sync.
-async fn try_authenticate(config: &ApiConfig, cred_store: &CredentialStore) -> Option<String> {
+async fn try_authenticate(config: &ApiConfig, cred_store: &CredentialStore) -> AuthAttemptResult {
     match ensure_authenticated(config, cred_store).await {
-        Ok(token) => Some(token),
+        Ok(token) => AuthAttemptResult::Success(token),
         Err(e) => {
-            ui::display_offline_warning(&e.to_string());
+            let error_str = e.to_string();
+
+            // Check if this was a user-initiated skip (ESC)
+            if error_str.contains("skipped") {
+                debug!("Auth skipped by user, continuing without sync");
+                return AuthAttemptResult::Offline;
+            }
+
+            // Check if this was a user cancellation (CTRL+C)
+            if error_str.contains("cancelled") {
+                return AuthAttemptResult::Cancelled;
+            }
+
+            // Other errors - show offline warning
+            ui::display_offline_warning(&error_str);
             warn!(error = %e, "Starting in offline mode");
-            None
+            AuthAttemptResult::Offline
         }
     }
 }

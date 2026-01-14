@@ -7,8 +7,9 @@
 //! 3. CLI polls POST /auth/token with device_code until authorized
 //! 4. On success, CLI receives access_token and refresh_token
 
-use std::time::Instant;
+use std::time::{Duration, Instant};
 
+use crossterm::event::{self, Event, KeyCode, KeyModifiers};
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
 use tracing::{debug, info, warn};
@@ -53,6 +54,14 @@ pub enum AuthError {
     /// Failed to parse server response.
     #[error("Failed to parse response: {0}")]
     ParseError(String),
+
+    /// User cancelled authentication (CTRL+C).
+    #[error("Authentication cancelled by user")]
+    Cancelled,
+
+    /// User skipped authentication (ESC) - continue without auth.
+    #[error("Authentication skipped")]
+    Skipped,
 }
 
 /// Result type for authentication operations.
@@ -199,7 +208,7 @@ pub async fn poll_for_token(
     let client = reqwest::Client::new();
 
     let start_time = Instant::now();
-    let expiry_duration = std::time::Duration::from_secs(expires_in);
+    let expiry_duration = Duration::from_secs(expires_in);
     let mut current_interval_secs = interval;
     let animation_interval = ui::animation_interval();
     let mut animation = WaitingAnimation::new();
@@ -210,10 +219,38 @@ pub async fn poll_for_token(
         url, interval, expires_in
     );
 
+    // Hide cursor during animation
+    ui::hide_cursor();
+
+    // Helper to cleanup and return
+    let cleanup = |animation: &WaitingAnimation| {
+        animation.clear();
+        ui::show_cursor();
+    };
+
     loop {
+        // Check for keyboard input (non-blocking)
+        if event::poll(Duration::ZERO).unwrap_or(false) {
+            if let Ok(Event::Key(key_event)) = event::read() {
+                match key_event.code {
+                    // CTRL+C - cancel and exit
+                    KeyCode::Char('c') if key_event.modifiers.contains(KeyModifiers::CONTROL) => {
+                        cleanup(&animation);
+                        return Err(AuthError::Cancelled);
+                    }
+                    // ESC - skip auth (hidden feature for development)
+                    KeyCode::Esc => {
+                        cleanup(&animation);
+                        return Err(AuthError::Skipped);
+                    }
+                    _ => {}
+                }
+            }
+        }
+
         // Check if the device code has expired
         if start_time.elapsed() >= expiry_duration {
-            animation.clear();
+            cleanup(&animation);
             return Err(AuthError::ExpiredToken);
         }
 
@@ -241,7 +278,7 @@ pub async fn poll_for_token(
         let response = client.post(&url).json(&request).send().await?;
 
         if response.status().is_success() {
-            animation.clear();
+            cleanup(&animation);
             ui::display_auth_success();
             let token_response: TokenResponse = response.json().await?;
             info!("Successfully obtained tokens");
@@ -270,11 +307,11 @@ pub async fn poll_for_token(
                 continue;
             }
             "expired_token" => {
-                animation.clear();
+                cleanup(&animation);
                 return Err(AuthError::ExpiredToken);
             }
             "access_denied" => {
-                animation.clear();
+                cleanup(&animation);
                 return Err(AuthError::AccessDenied(
                     error_response
                         .error_description
@@ -282,7 +319,7 @@ pub async fn poll_for_token(
                 ));
             }
             _ => {
-                animation.clear();
+                cleanup(&animation);
                 return Err(AuthError::ServerError(format!(
                     "{}: {}",
                     error_response.error,
@@ -351,7 +388,6 @@ pub fn display_auth_instructions(response: &DeviceFlowResponse) {
         &response.verification_uri,
         &response.user_code,
         response.verification_uri_complete.as_deref(),
-        response.expires_in / 60,
     );
 }
 

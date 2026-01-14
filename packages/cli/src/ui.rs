@@ -14,6 +14,8 @@ pub mod colors {
     pub const AMBER_LIGHT: (u8, u8, u8) = (251, 191, 36);
     /// Amber-300: Lighter accent #fcd34d
     pub const AMBER_LIGHTER: (u8, u8, u8) = (252, 211, 77);
+    /// Amber-200: Brightest highlight #fde68a
+    pub const AMBER_BRIGHT: (u8, u8, u8) = (253, 230, 138);
     /// Amber-700: Dark accent #b45309
     pub const AMBER_DARK: (u8, u8, u8) = (180, 83, 9);
     /// Text primary #fafafa
@@ -34,27 +36,22 @@ pub mod colors {
 /// Selected for visual similarity to create smooth transitions.
 const STAR_FRAMES: &[char] = &['✦', '✧', '✶', '✷', '✸', '✹', '✺', '✧', '✦'];
 
-/// Shimmer color sequence for the "Waiting for authorization" text.
-/// Creates a wave effect from dim to bright to dim.
-const SHIMMER_COLORS: &[(u8, u8, u8)] = &[
-    colors::TEXT_DIM,
-    colors::TEXT_MUTED,
-    colors::TEXT_SECONDARY,
-    colors::AMBER_DARK,
-    colors::AMBER,
-    colors::AMBER_LIGHT,
-    colors::AMBER_LIGHTER,
-    colors::AMBER_LIGHT,
-    colors::AMBER,
-    colors::AMBER_DARK,
-    colors::TEXT_SECONDARY,
-    colors::TEXT_MUTED,
-    colors::TEXT_DIM,
-];
+/// Width of the shimmer highlight (number of characters).
+const SHIMMER_WIDTH: usize = 5;
 
 /// Generates ANSI escape code for 24-bit true color foreground.
 fn fg_color(r: u8, g: u8, b: u8) -> String {
     format!("\x1b[38;2;{};{};{}m", r, g, b)
+}
+
+/// Interpolates between two colors based on a factor (0.0 to 1.0).
+fn lerp_color(from: (u8, u8, u8), to: (u8, u8, u8), t: f32) -> (u8, u8, u8) {
+    let t = t.clamp(0.0, 1.0);
+    (
+        (from.0 as f32 + (to.0 as f32 - from.0 as f32) * t) as u8,
+        (from.1 as f32 + (to.1 as f32 - from.1 as f32) * t) as u8,
+        (from.2 as f32 + (to.2 as f32 - from.2 as f32) * t) as u8,
+    )
 }
 
 /// ANSI reset code.
@@ -63,34 +60,55 @@ const RESET: &str = "\x1b[0m";
 /// Bold ANSI code.
 const BOLD: &str = "\x1b[1m";
 
+/// Hide cursor ANSI code.
+const HIDE_CURSOR: &str = "\x1b[?25l";
+
+/// Show cursor ANSI code.
+const SHOW_CURSOR: &str = "\x1b[?25h";
+
+/// Hides the terminal cursor.
+pub fn hide_cursor() {
+    print!("{}", HIDE_CURSOR);
+    let _ = io::stdout().flush();
+}
+
+/// Shows the terminal cursor.
+pub fn show_cursor() {
+    print!("{}", SHOW_CURSOR);
+    let _ = io::stdout().flush();
+}
+
 /// Animation state for the waiting spinner.
 pub struct WaitingAnimation {
     frame: usize,
-    shimmer_offset: usize,
+    shimmer_pos: usize,
+    text_len: usize,
 }
 
 impl WaitingAnimation {
     /// Creates a new waiting animation.
     pub fn new() -> Self {
+        let text = "Waiting for authorisation...";
         Self {
             frame: 0,
-            shimmer_offset: 0,
+            shimmer_pos: 0,
+            text_len: text.chars().count(),
         }
     }
 
     /// Renders a single frame of the "Waiting for authorization" animation.
     ///
-    /// The star character cycles through different symbols, and the text
-    /// has a shimmer effect that flows through the characters.
+    /// The star character cycles through different symbols, and a single
+    /// bright highlight moves through the amber-colored text.
     pub fn render_frame(&mut self) {
         let star = STAR_FRAMES[self.frame % STAR_FRAMES.len()];
         let text = "Waiting for authorisation...";
 
-        // Build the animated text with shimmer effect
+        // Build the animated text with single shimmer highlight
         let mut output = String::new();
 
-        // Animated star in amber
-        let (r, g, b) = colors::AMBER_LIGHT;
+        // Animated star in bright amber
+        let (r, g, b) = colors::AMBER_BRIGHT;
         output.push_str(&format!(
             "\r  {}{}{}{} ",
             BOLD,
@@ -99,10 +117,20 @@ impl WaitingAnimation {
             RESET
         ));
 
-        // Shimmer effect on the text
+        // Text with single moving highlight
+        // Base color is amber, highlight fades to bright
         for (i, ch) in text.chars().enumerate() {
-            let color_idx = (i + self.shimmer_offset) % SHIMMER_COLORS.len();
-            let (r, g, b) = SHIMMER_COLORS[color_idx];
+            let distance = (i as isize - self.shimmer_pos as isize).unsigned_abs();
+
+            let color = if distance < SHIMMER_WIDTH {
+                // Within highlight range - interpolate from bright to base
+                let t = distance as f32 / SHIMMER_WIDTH as f32;
+                lerp_color(colors::AMBER_BRIGHT, colors::AMBER, t)
+            } else {
+                colors::AMBER
+            };
+
+            let (r, g, b) = color;
             output.push_str(&fg_color(r, g, b));
             output.push(ch);
         }
@@ -113,7 +141,8 @@ impl WaitingAnimation {
 
         // Advance animation
         self.frame = (self.frame + 1) % STAR_FRAMES.len();
-        self.shimmer_offset = (self.shimmer_offset + 1) % SHIMMER_COLORS.len();
+        // Move shimmer position, wrapping around with extra space for smooth loop
+        self.shimmer_pos = (self.shimmer_pos + 1) % (self.text_len + SHIMMER_WIDTH * 2);
     }
 
     /// Clears the animation line.
@@ -151,74 +180,28 @@ pub fn display_startup_banner() {
         fg_color(tr, tg, tb),
         RESET
     );
-    println!();
 }
 
 /// Displays auth instructions with branded styling.
 pub fn display_auth_instructions(
-    verification_uri: &str,
-    user_code: &str,
+    _verification_uri: &str,
+    _user_code: &str,
     verification_uri_complete: Option<&str>,
-    expires_in_minutes: u64,
 ) {
-    let (ar, ag, ab) = colors::AMBER;
     let (al, alg, alb) = colors::AMBER_LIGHT;
     let (tr, tg, tb) = colors::TEXT_SECONDARY;
-    let (mr, mg, mb) = colors::TEXT_MUTED;
-
-    println!();
-
-    if let Some(complete_uri) = verification_uri_complete {
-        println!(
-            "  {}To connect this device, visit:{}",
-            fg_color(tr, tg, tb),
-            RESET
-        );
-        println!();
-        println!(
-            "    {}{}{}{}",
-            BOLD,
-            fg_color(al, alg, alb),
-            complete_uri,
-            RESET
-        );
-        println!();
-        println!(
-            "  {}The code {}{}{}{} will be pre-filled.{}",
-            fg_color(tr, tg, tb),
-            BOLD,
-            fg_color(ar, ag, ab),
-            user_code,
-            RESET,
-            RESET
-        );
-    } else {
-        println!(
-            "  {}To connect this device, visit:{}",
-            fg_color(tr, tg, tb),
-            RESET
-        );
-        println!();
-        println!(
-            "    {}{}{}{}",
-            BOLD,
-            fg_color(al, alg, alb),
-            verification_uri,
-            RESET
-        );
-        println!();
-        println!("  {}And enter the code:{}", fg_color(tr, tg, tb), RESET);
-        println!();
-        println!("    {}{}{}{}", BOLD, fg_color(ar, ag, ab), user_code, RESET);
-    }
 
     println!();
     println!(
-        "  {}This code expires in {} minutes.{}",
-        fg_color(mr, mg, mb),
-        expires_in_minutes,
+        "  {}To connect this device, visit:{}",
+        fg_color(tr, tg, tb),
         RESET
     );
+    println!();
+
+    // Prefer the complete URL (with code embedded)
+    let url = verification_uri_complete.unwrap_or(_verification_uri);
+    println!("    {}{}{}{}", BOLD, fg_color(al, alg, alb), url, RESET);
     println!();
 }
 
@@ -267,6 +250,7 @@ pub fn display_offline_warning(error: &str) {
     let (yr, yg, yb) = colors::AMBER;
     let (mr, mg, mb) = colors::TEXT_MUTED;
 
+    println!();
     println!(
         "  {}{}!{} Unable to connect to Klaas server.{}",
         BOLD,
@@ -302,7 +286,7 @@ mod tests {
     fn test_waiting_animation_new() {
         let anim = WaitingAnimation::new();
         assert_eq!(anim.frame, 0);
-        assert_eq!(anim.shimmer_offset, 0);
+        assert_eq!(anim.shimmer_pos, 0);
     }
 
     #[test]
@@ -311,7 +295,21 @@ mod tests {
     }
 
     #[test]
-    fn test_shimmer_colors_not_empty() {
-        assert!(!SHIMMER_COLORS.is_empty());
+    fn test_lerp_color() {
+        let from = (0, 0, 0);
+        let to = (255, 255, 255);
+        let mid = lerp_color(from, to, 0.5);
+        assert_eq!(mid, (127, 127, 127));
+    }
+
+    #[test]
+    fn test_lerp_color_clamped() {
+        let from = (100, 100, 100);
+        let to = (200, 200, 200);
+        // Values outside 0-1 should be clamped
+        let below = lerp_color(from, to, -0.5);
+        let above = lerp_color(from, to, 1.5);
+        assert_eq!(below, from);
+        assert_eq!(above, to);
     }
 }
