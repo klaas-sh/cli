@@ -1,0 +1,62 @@
+'use client'
+
+import { Suspense, type ReactElement } from 'react'
+import { DeviceAuthForm } from '@/components/auth/device-auth-form'
+import { AppIcon } from '@/components/icons/app-icon'
+
+interface DeviceCodePageClientProps {
+  code: string
+}
+
+/**
+ * Device auth form wrapper with Suspense for async operations.
+ */
+function DeviceAuthFormWrapper({ code }: { code: string }): ReactElement {
+  return (
+    <Suspense fallback={
+      <div className="bg-white dark:bg-gray-800 shadow rounded-lg p-6">
+        <div className="flex items-center justify-center py-8">
+          <div className="animate-spin rounded-full h-8 w-8 border-b-2
+            border-app-primary"></div>
+        </div>
+      </div>
+    }>
+      <DeviceAuthForm initialCode={code} />
+    </Suspense>
+  )
+}
+
+/**
+ * Client-side device authorization page with pre-filled code.
+ * Allows users to authorize their CLI device with the code from the URL.
+ */
+export default function DeviceCodePageClient({
+  code
+}: DeviceCodePageClientProps): ReactElement {
+  return (
+    <div className="device-page min-h-screen flex items-center justify-center
+      bg-gray-50 dark:bg-gray-900">
+      <div className="w-full max-w-xl px-4">
+        <div className="text-center mb-8">
+          <div className="flex items-center justify-center mb-4">
+            <AppIcon className="mr-3" size={40} />
+            <h1 className="text-3xl font-bold text-gray-900 dark:text-white">
+              Nexo
+            </h1>
+          </div>
+          <p className="text-gray-600 dark:text-gray-400">
+            Connect your CLI device
+          </p>
+        </div>
+
+        <DeviceAuthFormWrapper code={code} />
+
+        <div className="mt-6 text-center">
+          <p className="text-sm text-gray-600 dark:text-gray-400">
+            Confirm the code matches your terminal, then authorize.
+          </p>
+        </div>
+      </div>
+    </div>
+  )
+}

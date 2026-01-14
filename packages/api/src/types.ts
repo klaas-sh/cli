@@ -96,6 +96,8 @@ export interface DeviceCode {
   user_code: string;
   /** URL where user enters the code */
   verification_uri: string;
+  /** Complete URL with code pre-filled (optional) */
+  verification_uri_complete?: string;
   /** Expiration time in seconds */
   expires_in: number;
   /** Polling interval in seconds */

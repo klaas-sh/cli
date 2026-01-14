@@ -11,7 +11,11 @@
 import { Hono } from 'hono';
 import { ulid } from 'ulid';
 import type { Env, DeviceCode, TokenResponse } from '../types';
-import { generateTokens, verifyRefreshToken } from '../services/jwt';
+import {
+  generateTokens,
+  verifyAccessToken,
+  verifyRefreshToken
+} from '../services/jwt';
 
 export const authRoutes = new Hono<{ Bindings: Env }>();
 
@@ -64,11 +68,13 @@ authRoutes.post('/device', async (c) => {
       ? 'https://app.nexo.dev'
       : 'http://localhost:3001');
   const verificationUri = `${dashboardUrl}/device`;
+  const verificationUriComplete = `${dashboardUrl}/device/${userCode}`;
 
   const response: DeviceCode = {
     device_code: deviceCode,
     user_code: userCode,
     verification_uri: verificationUri,
+    verification_uri_complete: verificationUriComplete,
     expires_in: DEVICE_CODE_EXPIRES_IN,
     interval: POLLING_INTERVAL,
   };
@@ -178,14 +184,32 @@ authRoutes.post('/refresh', async (c) => {
 
 /**
  * POST /auth/authorize
- * Authorize a device code (called by web client after user logs in).
+ * Authorize a device code (called by dashboard after user logs in).
+ *
+ * Requires: Authorization header with valid JWT
  *
  * Request body:
- * - user_code: The user-facing code
- * - user_id: The authenticated user's ID
+ * - user_code: The user-facing code (e.g., "XXXX-XXXX")
  */
 authRoutes.post('/authorize', async (c) => {
-  const body = await c.req.json<{ user_code: string; user_id: string }>();
+  // Extract and verify JWT from Authorization header
+  const authHeader = c.req.header('Authorization');
+  if (!authHeader?.startsWith('Bearer ')) {
+    return c.json({ error: 'unauthorized' }, 401);
+  }
+
+  const token = authHeader.slice(7);
+  const jwtSecret = c.env.JWT_SECRET || 'dev-secret-change-in-production';
+
+  let userId: string;
+  try {
+    const payload = await verifyAccessToken(token, jwtSecret);
+    userId = payload.sub;
+  } catch {
+    return c.json({ error: 'invalid_token' }, 401);
+  }
+
+  const body = await c.req.json<{ user_code: string }>();
 
   // Look up device code by user code
   const deviceCode = await c.env.CACHE_KV.get(`user_code:${body.user_code}`);
@@ -202,11 +226,13 @@ authRoutes.post('/authorize', async (c) => {
   // Update with authorization
   const codeData = JSON.parse(codeDataStr);
   codeData.authorized = true;
-  codeData.user_id = body.user_id;
+  codeData.user_id = userId;
 
-  await c.env.CACHE_KV.put(`device_code:${deviceCode}`, JSON.stringify(codeData), {
-    expirationTtl: DEVICE_CODE_EXPIRES_IN,
-  });
+  await c.env.CACHE_KV.put(
+    `device_code:${deviceCode}`,
+    JSON.stringify(codeData),
+    { expirationTtl: DEVICE_CODE_EXPIRES_IN }
+  );
 
   return c.json({ success: true });
 });
