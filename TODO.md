@@ -1,5 +1,13 @@
 # TODO
 
+## MVP
+- cursor is visible in xtermjs again
+- history is not preserved
+- delete old sessions
+- often it says CLI detached in browser although from the terminal it still 
+  seems to work
+- 
+
 ## Future Features
 
 ### Full Session History (Premium Feature)
