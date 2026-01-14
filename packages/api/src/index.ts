@@ -45,12 +45,21 @@ async function handleWebSocketUpgrade(
   const url = new URL(request.url);
 
   // Validate JWT and extract user ID
+  // Accept token from Authorization header or query param (for browser WebSocket)
   const authHeader = request.headers.get('Authorization');
-  if (!authHeader?.startsWith('Bearer ')) {
+  let token: string | null = null;
+
+  if (authHeader?.startsWith('Bearer ')) {
+    token = authHeader.slice(7);
+  } else {
+    // Browser WebSocket can't set headers, so accept token from query param
+    token = url.searchParams.get('token');
+  }
+
+  if (!token) {
     return new Response('Unauthorized', { status: 401 });
   }
 
-  const token = authHeader.slice(7);
   const jwtSecret = env.JWT_SECRET || 'dev-secret-change-in-production';
 
   let userId: string;

@@ -22,6 +22,7 @@ export default function SessionDetailPage(): React.JSX.Element {
   const [session, setSession] = useState<Session | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
+  const [hasShownDisconnect, setHasShownDisconnect] = useState(false)
 
   const sessionId = params.id as string
 
@@ -161,11 +162,21 @@ export default function SessionDetailPage(): React.JSX.Element {
         <Terminal
           sessionId={sessionId}
           onDisconnect={() => {
-            addToast({
-              title: 'Disconnected',
-              description: 'Terminal connection lost',
-              type: 'warning'
-            })
+            // Only show toast once to avoid spam during reconnection attempts
+            if (!hasShownDisconnect) {
+              setHasShownDisconnect(true)
+              addToast({
+                title: 'Disconnected',
+                description: 'Terminal connection lost',
+                type: 'warning'
+              })
+            }
+          }}
+          onSessionStatus={(status) => {
+            // Reset disconnect toast flag when reconnected
+            if (status === 'attached') {
+              setHasShownDisconnect(false)
+            }
           }}
         />
       </div>
