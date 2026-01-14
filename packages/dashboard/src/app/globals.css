@@ -1,4 +1,5 @@
 @import "tailwindcss";
+@import "@xterm/xterm/css/xterm.css";
 
 /*
  * Configure dark mode to use the .dark class selector

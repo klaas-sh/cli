@@ -217,7 +217,8 @@ pub async fn run(claude_args: Vec<String>) -> Result<i32> {
     // Clone handles for main loop
     let ws_client_for_loop = Arc::clone(&ws_client);
     let connection_state_for_loop = Arc::clone(&connection_state);
-    let pty_for_resize = pty.clone();
+    // Note: pty_for_resize currently unused as web resize is disabled
+    let _pty_for_resize = pty.clone();
 
     // Main event loop - full duplex I/O
     let exit_code = 'main: loop {
@@ -249,11 +250,13 @@ pub async fn run(claude_args: Vec<String>) -> Result<i32> {
                         let _ = pty_input_tx.send(text.into_bytes()).await;
                     }
                     IncomingMessage::Resize { cols, rows, .. } => {
-                        // Resize PTY
-                        debug!(cols, rows, "Received resize request");
-                        if let Err(e) = pty_for_resize.resize(cols, rows).await {
-                            warn!(error = %e, "Failed to resize PTY");
-                        }
+                        // TODO: Resizing from web client breaks local terminal animations
+                        // because it changes PTY size mid-session. Need a better approach
+                        // where web client adapts to CLI size, not the other way around.
+                        debug!(
+                            cols, rows,
+                            "Ignoring resize from web client (would break local terminal)"
+                        );
                     }
                     IncomingMessage::Ping => {
                         // Respond with pong
