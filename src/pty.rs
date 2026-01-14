@@ -40,8 +40,11 @@ impl PtyManager {
             .openpty(size)
             .map_err(|e| CliError::SpawnError(format!("Failed to open PTY: {}", e)))?;
 
-        // Build command
+        // Build command with current working directory
         let mut cmd = CommandBuilder::new(command);
+        if let Ok(cwd) = std::env::current_dir() {
+            cmd.cwd(cwd);
+        }
         for arg in args {
             cmd.arg(arg);
         }
