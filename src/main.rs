@@ -39,6 +39,11 @@ mod websocket;
     All input is passed through to Claude Code. \
     All output is captured for remote streaming.")]
 struct Cli {
+    /// Start a new session instead of resuming the previous one.
+    /// Without this flag, nexo will resume the last session if it exists.
+    #[arg(long)]
+    new_session: bool,
+
     /// Arguments to pass through to Claude Code.
     /// All unrecognized arguments are forwarded.
     #[arg(trailing_var_arg = true, allow_hyphen_values = true)]
@@ -63,7 +68,7 @@ async fn main() -> anyhow::Result<()> {
     let cli = Cli::parse();
 
     // Run the application
-    let exit_code = match app::run(cli.claude_args).await {
+    let exit_code = match app::run(cli.claude_args, cli.new_session).await {
         Ok(code) => code,
         Err(e) => {
             eprintln!("Error: {}", e);

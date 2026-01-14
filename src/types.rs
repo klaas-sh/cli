@@ -14,6 +14,11 @@ impl SessionId {
         Self(Ulid::new().to_string())
     }
 
+    /// Creates a SessionId from an existing string.
+    pub fn from_string(s: String) -> Self {
+        Self(s)
+    }
+
     /// Returns the session ID as a string slice.
     pub fn as_str(&self) -> &str {
         &self.0

@@ -22,6 +22,7 @@ use crate::error::{CliError, Result};
 const ACCESS_TOKEN_KEY: &str = "access_token";
 const REFRESH_TOKEN_KEY: &str = "refresh_token";
 const DEVICE_ID_KEY: &str = "device_id";
+const SESSION_ID_KEY: &str = "session_id";
 
 /// Fallback credentials file name.
 const FALLBACK_CREDENTIALS_FILE: &str = "credentials.json";
@@ -32,6 +33,7 @@ struct FallbackCredentials {
     access_token: Option<String>,
     refresh_token: Option<String>,
     device_id: Option<String>,
+    session_id: Option<String>,
 }
 
 /// Credential storage manager.
@@ -205,6 +207,74 @@ impl CredentialStore {
         }
     }
 
+    /// Stores the current session ID.
+    ///
+    /// The session ID is persisted so the CLI can reconnect to the same session
+    /// across restarts. This allows the web dashboard to show the same session.
+    ///
+    /// # Arguments
+    ///
+    /// * `session_id` - ULID string identifying the session
+    ///
+    /// # Errors
+    ///
+    /// Returns `CliError::KeychainError` if storage fails.
+    pub fn store_session_id(&self, session_id: &str) -> Result<()> {
+        if self.use_keychain {
+            self.store_keychain_value(SESSION_ID_KEY, session_id)?;
+        } else {
+            self.update_fallback(|creds| {
+                creds.session_id = Some(session_id.to_string());
+            })?;
+        }
+
+        debug!("Stored session ID");
+        Ok(())
+    }
+
+    /// Retrieves the stored session ID.
+    ///
+    /// # Returns
+    ///
+    /// - `Ok(Some(session_id))` if a session ID is stored
+    /// - `Ok(None)` if no session ID is stored
+    /// - `Err(...)` if retrieval fails
+    pub fn get_session_id(&self) -> Result<Option<String>> {
+        if self.use_keychain {
+            let session_id = self.get_keychain_value(SESSION_ID_KEY)?;
+            if session_id.is_some() {
+                debug!("Retrieved session ID from keychain");
+            }
+            Ok(session_id)
+        } else {
+            let creds = self.read_fallback()?;
+            if creds.session_id.is_some() {
+                debug!("Retrieved session ID from fallback storage");
+            }
+            Ok(creds.session_id)
+        }
+    }
+
+    /// Clears the stored session ID.
+    ///
+    /// Use this when starting a new session explicitly.
+    ///
+    /// # Errors
+    ///
+    /// Returns `CliError::KeychainError` if deletion fails.
+    pub fn clear_session_id(&self) -> Result<()> {
+        if self.use_keychain {
+            let _ = self.delete_keychain_value(SESSION_ID_KEY);
+        } else {
+            self.update_fallback(|creds| {
+                creds.session_id = None;
+            })?;
+        }
+
+        debug!("Cleared session ID");
+        Ok(())
+    }
+
     /// Stores a value in the keychain.
     fn store_keychain_value(&self, key: &str, value: &str) -> Result<()> {
         let entry = Entry::new(KEYCHAIN_SERVICE, key)
@@ -369,6 +439,27 @@ pub fn get_device_id() -> Result<Option<String>> {
     CredentialStore::new().get_device_id()
 }
 
+/// Convenience function to store session ID.
+///
+/// Creates a temporary `CredentialStore` and stores the session ID.
+pub fn store_session_id(session_id: &str) -> Result<()> {
+    CredentialStore::new().store_session_id(session_id)
+}
+
+/// Convenience function to get session ID.
+///
+/// Creates a temporary `CredentialStore` and retrieves the session ID.
+pub fn get_session_id() -> Result<Option<String>> {
+    CredentialStore::new().get_session_id()
+}
+
+/// Convenience function to clear session ID.
+///
+/// Creates a temporary `CredentialStore` and clears the session ID.
+pub fn clear_session_id() -> Result<()> {
+    CredentialStore::new().clear_session_id()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -380,6 +471,7 @@ mod tests {
         assert!(creds.access_token.is_none());
         assert!(creds.refresh_token.is_none());
         assert!(creds.device_id.is_none());
+        assert!(creds.session_id.is_none());
     }
 
     /// Tests fallback credentials serialization round-trip.
@@ -389,6 +481,7 @@ mod tests {
             access_token: Some("test_access".to_string()),
             refresh_token: Some("test_refresh".to_string()),
             device_id: Some("01HQXK7V8G3N5M2R4P6T1W9Y0Z".to_string()),
+            session_id: Some("01HQXK8V8G3N5M2R4P6T1W9Y0Z".to_string()),
         };
 
         let json = serde_json::to_string(&creds).unwrap();
@@ -397,6 +490,7 @@ mod tests {
         assert_eq!(parsed.access_token, creds.access_token);
         assert_eq!(parsed.refresh_token, creds.refresh_token);
         assert_eq!(parsed.device_id, creds.device_id);
+        assert_eq!(parsed.session_id, creds.session_id);
     }
 
     /// Tests that get_fallback_path returns a valid path.

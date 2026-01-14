@@ -33,10 +33,11 @@ const WS_RECV_TIMEOUT_MS: u64 = 10;
 ///
 /// # Arguments
 /// * `claude_args` - Arguments to pass through to Claude Code.
+/// * `new_session` - If true, start a new session instead of resuming.
 ///
 /// # Returns
 /// Exit code from Claude Code.
-pub async fn run(claude_args: Vec<String>) -> Result<i32> {
+pub async fn run(claude_args: Vec<String>, new_session: bool) -> Result<i32> {
     // Load configuration from environment
     let config = get_api_config();
     info!(api_url = %config.api_url, ws_url = %config.ws_url, "Loaded configuration");
@@ -51,9 +52,13 @@ pub async fn run(claude_args: Vec<String>) -> Result<i32> {
     // Ensure we have valid credentials (authenticate if needed)
     let access_token = ensure_authenticated(&config, &cred_store).await?;
 
-    // Generate new session ID for this run
-    let session_id = SessionId::new();
-    info!(session_id = %session_id, "Starting session");
+    // Get or create session ID (persisted for reconnection)
+    let session_id = get_or_create_session_id(&cred_store, new_session)?;
+    if new_session {
+        info!(session_id = %session_id, "Starting new session");
+    } else {
+        info!(session_id = %session_id, "Resuming session");
+    }
 
     // Get current working directory and device name
     let cwd = std::env::current_dir()
@@ -360,6 +365,31 @@ fn get_or_create_device_id(cred_store: &CredentialStore) -> Result<DeviceId> {
             Ok(new_id)
         }
     }
+}
+
+/// Gets or creates a session ID.
+///
+/// If `new_session` is true, always creates a new session ID.
+/// Otherwise, attempts to reuse the stored session ID for reconnection.
+/// This allows the CLI to reconnect to the same session across restarts,
+/// which means the web dashboard will show the same session.
+fn get_or_create_session_id(cred_store: &CredentialStore, new_session: bool) -> Result<SessionId> {
+    if new_session {
+        // User explicitly requested a new session
+        cred_store.clear_session_id()?;
+    } else {
+        // Try to reuse existing session ID
+        if let Some(id) = cred_store.get_session_id()? {
+            debug!("Retrieved existing session ID");
+            return Ok(SessionId::from_string(id));
+        }
+    }
+
+    // Create and store new session ID
+    let new_id = SessionId::new();
+    cred_store.store_session_id(new_id.as_str())?;
+    debug!(session_id = %new_id, "Generated new session ID");
+    Ok(new_id)
 }
 
 /// Ensures the user is authenticated.
