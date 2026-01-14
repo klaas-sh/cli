@@ -5,6 +5,7 @@ import { LoginCredentials } from '@/types/auth'
  */
 const TOKEN_KEY = 'user-token'
 const REFRESH_TOKEN_KEY = 'user-refresh-token'
+const REFRESH_TOKEN_COOKIE = 'user-refresh-token'
 
 /**
  * Authentication response from login endpoint
@@ -94,16 +95,27 @@ class ApiClient {
         localStorage.setItem(REFRESH_TOKEN_KEY, result.data.refreshToken)
       }
 
-      // Also set a cookie for middleware authentication
-      const cookieValue = `${TOKEN_KEY}=${result.data.accessToken}`
+      // Also set cookies for middleware authentication
       // Use actual protocol to determine secure flag
       // This ensures cookie works when app is built in prod mode but served
       // over HTTP locally
       const isHttps = window.location.protocol === 'https:'
       const secureFlag = isHttps ? '; secure' : ''
-      const cookieOptions = `path=/; max-age=${60 * 60 * 24}; ` +
+
+      // Access token cookie (1 day, readable by JS for convenience)
+      const accessCookieOptions = `path=/; max-age=${60 * 60 * 24}; ` +
         `samesite=strict${secureFlag}`
-      document.cookie = `${cookieValue}; ${cookieOptions}`
+      document.cookie = `${TOKEN_KEY}=${result.data.accessToken}; ` +
+        accessCookieOptions
+
+      // Refresh token cookie (30 days, httpOnly would be better but we can't
+      // set httpOnly from JS - middleware will handle this on server side)
+      if (result.data.refreshToken) {
+        const refreshCookieOptions = `path=/; max-age=${60 * 60 * 24 * 30}; ` +
+          `samesite=strict${secureFlag}`
+        document.cookie = `${REFRESH_TOKEN_COOKIE}=${result.data.refreshToken}` +
+          `; ${refreshCookieOptions}`
+      }
 
       return {
         success: true,
@@ -125,12 +137,13 @@ class ApiClient {
     localStorage.removeItem(TOKEN_KEY)
     localStorage.removeItem(REFRESH_TOKEN_KEY)
 
-    // Remove cookie - use actual protocol for secure flag
+    // Remove cookies - use actual protocol for secure flag
     const isHttps = window.location.protocol === 'https:'
     const secureFlag = isHttps ? '; secure' : ''
-    const expiredCookie = `${TOKEN_KEY}=; path=/; ` +
-      `expires=Thu, 01 Jan 1970 00:00:01 GMT; samesite=strict${secureFlag}`
-    document.cookie = expiredCookie
+    const expireOptions = `path=/; expires=Thu, 01 Jan 1970 00:00:01 GMT; ` +
+      `samesite=strict${secureFlag}`
+    document.cookie = `${TOKEN_KEY}=; ${expireOptions}`
+    document.cookie = `${REFRESH_TOKEN_COOKIE}=; ${expireOptions}`
   }
 
   /**
@@ -169,12 +182,21 @@ class ApiClient {
       localStorage.setItem(TOKEN_KEY, result.access_token)
       localStorage.setItem(REFRESH_TOKEN_KEY, result.refresh_token)
 
-      // Update cookie for middleware
+      // Update cookies for middleware
       const isHttps = window.location.protocol === 'https:'
       const secureFlag = isHttps ? '; secure' : ''
-      const cookieOptions = `path=/; max-age=${60 * 60 * 24}; ` +
+
+      // Access token cookie
+      const accessCookieOptions = `path=/; max-age=${60 * 60 * 24}; ` +
         `samesite=strict${secureFlag}`
-      document.cookie = `${TOKEN_KEY}=${result.access_token}; ${cookieOptions}`
+      document.cookie = `${TOKEN_KEY}=${result.access_token}; ` +
+        accessCookieOptions
+
+      // Refresh token cookie
+      const refreshCookieOptions = `path=/; max-age=${60 * 60 * 24 * 30}; ` +
+        `samesite=strict${secureFlag}`
+      document.cookie = `${REFRESH_TOKEN_COOKIE}=${result.refresh_token}; ` +
+        refreshCookieOptions
 
       return true
     } catch {
