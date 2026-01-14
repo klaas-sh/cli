@@ -298,8 +298,15 @@ pub async fn run(claude_args: Vec<String>, new_session: bool) -> Result<i32> {
                             }
                         }
                         Event::Paste(text) => {
-                            // Handle pasted text (including emojis and multi-byte UTF-8)
-                            let _ = pty_input_tx.send(text.into_bytes()).await;
+                            // Send bracketed paste sequence so Claude Code knows a paste
+                            // happened. This is critical for image paste - Claude Code
+                            // checks the system clipboard directly when it detects a paste
+                            // event, even if the text content is empty.
+                            let mut bytes = Vec::new();
+                            bytes.extend_from_slice(b"\x1b[200~"); // Start bracketed paste
+                            bytes.extend_from_slice(text.as_bytes());
+                            bytes.extend_from_slice(b"\x1b[201~"); // End bracketed paste
+                            let _ = pty_input_tx.send(bytes).await;
                         }
                         Event::Resize(cols, rows) => {
                             let _ = pty.resize(cols, rows).await;
