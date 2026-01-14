@@ -348,6 +348,7 @@ export function Terminal({
       cursorInactiveStyle: 'none',
       fontSize: 14,
       lineHeight: 1.2,
+      scrollback: 10000,
       fontFamily: 'Menlo, Monaco, "Courier New", monospace',
       theme: {
         background: '#1a1a1a',
