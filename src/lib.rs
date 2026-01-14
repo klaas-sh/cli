@@ -10,4 +10,5 @@ pub mod error;
 pub mod pty;
 pub mod terminal;
 pub mod types;
+pub mod ui;
 pub mod websocket;
