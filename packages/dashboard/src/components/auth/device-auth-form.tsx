@@ -13,6 +13,7 @@ interface DeviceAuthFormProps {
 /**
  * Device authorization form component.
  * Allows users to enter a device code to authorize a CLI device.
+ * Uses multi-input PIN style matching redirme.com admin pattern.
  */
 export function DeviceAuthForm({
   initialCode = ''
@@ -105,19 +106,9 @@ export function DeviceAuthForm({
     }
   }, [code, isLoading, success, initialCode, handleSubmit])
 
-  // Common input class for code inputs - responsive sizing
-  // Mobile: 32px (w-8), sm+: 48px (w-12)
-  const inputClass = `
-    block w-8 h-8 sm:w-12 sm:h-12
-    text-center border-2 border-gray-300 rounded sm:rounded-lg
-    text-sm sm:text-xl font-mono font-medium uppercase
-    focus:border-app-primary focus:ring-2 focus:ring-app-border
-    focus:outline-none dark:bg-gray-800 dark:border-gray-600
-    dark:text-white dark:focus:border-app-primary-dark
-    dark:focus:ring-app-border-dark
-  `.trim()
-
-  // Handle input change
+  /**
+   * Handle input change with auto-focus to next input.
+   */
   const handleInputChange = (
     e: React.ChangeEvent<HTMLInputElement>,
     index: number
@@ -130,30 +121,30 @@ export function DeviceAuthForm({
 
       // Auto-focus next input
       if (value && index < 7) {
-        const nextIndex = index === 3 ? 4 : index + 1
-        const parent = e.target.closest('form')
-        const inputs = parent?.querySelectorAll('input')
-        const target = inputs?.[nextIndex] as HTMLInputElement
-        target?.focus()
+        const parent = (e.target as HTMLInputElement).parentElement
+        const nextInput = parent?.children[index + 1] as HTMLInputElement
+        nextInput?.focus()
       }
     }
   }
 
-  // Handle backspace navigation
+  /**
+   * Handle backspace navigation to previous input.
+   */
   const handleKeyDown = (
     e: React.KeyboardEvent<HTMLInputElement>,
     index: number
   ): void => {
     if (e.key === 'Backspace' && !code[index] && index > 0) {
-      const prevIndex = index === 4 ? 3 : index - 1
-      const parent = e.currentTarget.closest('form')
-      const inputs = parent?.querySelectorAll('input')
-      const prevInput = inputs?.[prevIndex] as HTMLInputElement
+      const parent = (e.target as HTMLInputElement).parentElement
+      const prevInput = parent?.children[index - 1] as HTMLInputElement
       prevInput?.focus()
     }
   }
 
-  // Handle paste
+  /**
+   * Handle paste to fill all inputs at once.
+   */
   const handlePaste = (e: React.ClipboardEvent<HTMLInputElement>): void => {
     e.preventDefault()
     const pastedText = e.clipboardData.getData('text')
@@ -163,12 +154,11 @@ export function DeviceAuthForm({
       .slice(0, 8)
     setCode(pastedData)
 
-    // Focus appropriate input
+    // Focus the last filled input or the next empty one
     const targetIndex = Math.min(pastedData.length, 7)
-    const parent = e.currentTarget.closest('form')
-    const inputs = parent?.querySelectorAll('input')
-    const target = inputs?.[targetIndex] as HTMLInputElement
-    target?.focus()
+    const parent = (e.target as HTMLInputElement).parentElement
+    const targetInput = parent?.children[targetIndex] as HTMLInputElement
+    targetInput?.focus()
   }
 
   if (success) {
@@ -222,8 +212,9 @@ export function DeviceAuthForm({
           >
             Device Code
           </label>
-          <div className="flex justify-center items-center gap-0.5 sm:gap-2">
-            {/* First 4 characters */}
+
+          {/* First 4 characters */}
+          <div className="flex justify-center space-x-2 sm:space-x-3 mb-2">
             {[0, 1, 2, 3].map((index) => (
               <input
                 key={index}
@@ -233,21 +224,31 @@ export function DeviceAuthForm({
                 autoComplete="off"
                 autoCapitalize="characters"
                 maxLength={1}
-                className={inputClass}
+                className="block w-10 h-10 sm:w-[52px] sm:h-[52px] text-center
+                  border-2 border-gray-300 rounded-lg text-lg sm:text-xl
+                  font-mono font-medium uppercase
+                  focus:border-app-primary focus:ring-2 focus:ring-app-border
+                  focus:outline-none dark:bg-gray-800 dark:border-gray-600
+                  dark:text-white dark:focus:border-app-primary-dark
+                  dark:focus:ring-app-border-dark"
                 value={code[index] || ''}
                 onChange={(e) => handleInputChange(e, index)}
                 onKeyDown={(e) => handleKeyDown(e, index)}
                 onPaste={handlePaste}
               />
             ))}
+          </div>
 
-            {/* Separator */}
-            <span className="flex items-center text-lg sm:text-2xl font-bold
-              text-gray-400 dark:text-gray-500 px-0.5 sm:px-1">
+          {/* Separator */}
+          <div className="flex justify-center mb-2">
+            <span className="text-2xl font-bold text-gray-400
+              dark:text-gray-500">
               -
             </span>
+          </div>
 
-            {/* Last 4 characters */}
+          {/* Last 4 characters */}
+          <div className="flex justify-center space-x-2 sm:space-x-3">
             {[4, 5, 6, 7].map((index) => (
               <input
                 key={index}
@@ -256,7 +257,13 @@ export function DeviceAuthForm({
                 autoComplete="off"
                 autoCapitalize="characters"
                 maxLength={1}
-                className={inputClass}
+                className="block w-10 h-10 sm:w-[52px] sm:h-[52px] text-center
+                  border-2 border-gray-300 rounded-lg text-lg sm:text-xl
+                  font-mono font-medium uppercase
+                  focus:border-app-primary focus:ring-2 focus:ring-app-border
+                  focus:outline-none dark:bg-gray-800 dark:border-gray-600
+                  dark:text-white dark:focus:border-app-primary-dark
+                  dark:focus:ring-app-border-dark"
                 value={code[index] || ''}
                 onChange={(e) => handleInputChange(e, index)}
                 onKeyDown={(e) => handleKeyDown(e, index)}
@@ -264,6 +271,7 @@ export function DeviceAuthForm({
               />
             ))}
           </div>
+
           <p className="text-xs text-gray-500 dark:text-gray-400 mt-3
             text-center">
             Enter the 8-character code from your terminal
