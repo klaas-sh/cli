@@ -1,10 +1,6 @@
 'use client'
 
 import React, { useEffect, useRef, useState, useCallback } from 'react'
-import { Terminal as XTerm } from '@xterm/xterm'
-import { FitAddon } from '@xterm/addon-fit'
-import { WebLinksAddon } from '@xterm/addon-web-links'
-import '@xterm/xterm/css/xterm.css'
 
 /** Token key for localStorage */
 const TOKEN_KEY = 'user-token'
@@ -97,12 +93,20 @@ export function Terminal({
   onDisconnect,
   onSessionStatus
 }: TerminalProps): React.JSX.Element {
+  // Dynamic imports for xterm (avoid SSR issues)
+  const [xtermModules, setXtermModules] = useState<{
+    Terminal: typeof import('@xterm/xterm').Terminal
+    FitAddon: typeof import('@xterm/addon-fit').FitAddon
+    WebLinksAddon: typeof import('@xterm/addon-web-links').WebLinksAddon
+  } | null>(null)
+
   const terminalRef = useRef<HTMLDivElement>(null)
-  const xtermRef = useRef<XTerm | null>(null)
+  const xtermRef = useRef<import('@xterm/xterm').Terminal | null>(null)
   const wsRef = useRef<WebSocket | null>(null)
-  const fitAddonRef = useRef<FitAddon | null>(null)
+  const fitAddonRef = useRef<import('@xterm/addon-fit').FitAddon | null>(null)
   const reconnectAttemptRef = useRef<number>(0)
   const reconnectTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const isMountedRef = useRef<boolean>(true)
 
   const [connectionState, setConnectionState] =
     useState<ConnectionState>('connecting')
@@ -110,6 +114,31 @@ export function Terminal({
     useState<'attached' | 'detached' | null>(null)
   const [errorMessage, setErrorMessage] = useState<string | null>(null)
   const [reconnectAttempt, setReconnectAttempt] = useState(0)
+
+  // Load xterm modules on mount (client-side only)
+  useEffect(() => {
+    let cancelled = false
+    const loadModules = async (): Promise<void> => {
+      try {
+        const [xtermModule, fitModule, linksModule] = await Promise.all([
+          import('@xterm/xterm'),
+          import('@xterm/addon-fit'),
+          import('@xterm/addon-web-links')
+        ])
+        if (!cancelled) {
+          setXtermModules({
+            Terminal: xtermModule.Terminal,
+            FitAddon: fitModule.FitAddon,
+            WebLinksAddon: linksModule.WebLinksAddon
+          })
+        }
+      } catch {
+        // xterm modules failed to load - user will see loading state
+      }
+    }
+    loadModules()
+    return (): void => { cancelled = true }
+  }, [])
 
   /**
    * Decodes base64 data to string for terminal output.
@@ -167,6 +196,9 @@ export function Terminal({
    * Connects to the WebSocket server.
    */
   const connect = useCallback((): void => {
+    // Don't connect if component is unmounted (React Strict Mode cleanup)
+    if (!isMountedRef.current) return
+
     const term = xtermRef.current
     if (!term) return
 
@@ -189,6 +221,12 @@ export function Terminal({
     wsRef.current = ws
 
     ws.onopen = (): void => {
+      // Check if still mounted before updating state
+      if (!isMountedRef.current) {
+        ws.close(1000, 'Component unmounted')
+        return
+      }
+
       reconnectAttemptRef.current = 0
       setReconnectAttempt(0)
       setConnectionState('connected')
@@ -211,6 +249,9 @@ export function Terminal({
     }
 
     ws.onmessage = (event): void => {
+      // Check if still mounted
+      if (!isMountedRef.current) return
+
       try {
         const message = JSON.parse(event.data as string) as ServerToWebMessage
 
@@ -247,6 +288,9 @@ export function Terminal({
     }
 
     ws.onclose = (event): void => {
+      // Check if still mounted
+      if (!isMountedRef.current) return
+
       // Check if we should attempt to reconnect
       if (event.code !== 1000 && event.code !== 4000) {
         // Abnormal closure, attempt reconnect
@@ -268,6 +312,7 @@ export function Terminal({
     }
 
     ws.onerror = (): void => {
+      if (!isMountedRef.current) return
       setConnectionState('error')
     }
   }, [
@@ -287,8 +332,14 @@ export function Terminal({
     connect()
   }, [connect])
 
+  // Initialize terminal once xterm modules are loaded
   useEffect(() => {
-    if (!terminalRef.current) return
+    if (!xtermModules || !terminalRef.current) return
+
+    // Mark as mounted (for React Strict Mode)
+    isMountedRef.current = true
+
+    const { Terminal: XTerm, FitAddon, WebLinksAddon } = xtermModules
 
     // Initialize xterm.js
     const term = new XTerm({
@@ -312,13 +363,24 @@ export function Terminal({
     term.loadAddon(webLinksAddon)
 
     term.open(terminalRef.current)
-    fitAddon.fit()
+
+    // Delay fit to ensure container has dimensions
+    requestAnimationFrame(() => {
+      if (isMountedRef.current) {
+        fitAddon.fit()
+      }
+    })
 
     xtermRef.current = term
     fitAddonRef.current = fitAddon
 
-    // Connect to WebSocket
-    connect()
+    // Connect to WebSocket after terminal is ready
+    // Use requestAnimationFrame to ensure terminal is fully initialized
+    requestAnimationFrame(() => {
+      if (isMountedRef.current) {
+        connect()
+      }
+    })
 
     // Handle terminal input - send as prompt message
     const inputDisposable = term.onData((data) => {
@@ -331,6 +393,7 @@ export function Terminal({
 
     // Handle resize
     const handleResize = (): void => {
+      if (!isMountedRef.current) return
       fitAddon.fit()
       // Only send resize if terminal has valid dimensions
       if (term.cols > 0 && term.rows > 0) {
@@ -347,6 +410,9 @@ export function Terminal({
 
     // Cleanup on unmount
     return (): void => {
+      // Mark as unmounted first to prevent race conditions
+      isMountedRef.current = false
+
       // Clear reconnect timeout if pending
       if (reconnectTimeoutRef.current) {
         clearTimeout(reconnectTimeoutRef.current)
@@ -368,7 +434,7 @@ export function Terminal({
       xtermRef.current = null
       fitAddonRef.current = null
     }
-  }, [connect, sendMessage, sessionId])
+  }, [xtermModules, connect, sendMessage, sessionId])
 
   /**
    * Get connection status text for status bar.
@@ -384,6 +450,27 @@ export function Terminal({
     if (connectionState === 'disconnected') return 'Disconnected'
     if (connectionState === 'error') return errorMessage || 'Error'
     return ''
+  }
+
+  // Show loading state while xterm modules are loading
+  if (!xtermModules) {
+    return (
+      <div className="flex flex-col h-full">
+        <div className="flex items-center justify-between px-3 py-1.5 bg-zinc-800
+          border-b border-zinc-700 text-xs">
+          <div className="flex items-center gap-2">
+            <span className="inline-block w-2 h-2 rounded-full
+              bg-yellow-500 animate-pulse" />
+            <span className="text-zinc-400">Loading terminal...</span>
+          </div>
+        </div>
+        <div className="flex-1 min-h-0 bg-[#1a1a1a] flex items-center
+          justify-center">
+          <div className="animate-spin h-6 w-6 border-2 border-zinc-600
+            border-t-zinc-400 rounded-full" />
+        </div>
+      </div>
+    )
   }
 
   return (
