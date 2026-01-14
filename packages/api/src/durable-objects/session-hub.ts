@@ -136,6 +136,14 @@ export class SessionHub implements DurableObject {
   async fetch(request: Request): Promise<Response> {
     const url = new URL(request.url);
 
+    // Get session_id from URL - this is how we know which session this DO manages
+    const sessionIdFromUrl = url.searchParams.get('session_id');
+    if (sessionIdFromUrl && !this.sessionId) {
+      // Initialize sessionId from URL if not already set
+      // This ensures we have a sessionId even before CLI sends session_attach
+      this.sessionId = sessionIdFromUrl;
+    }
+
     // Determine if this is a CLI or web client connection
     const clientType = url.searchParams.get('client') || 'cli';
 
@@ -164,11 +172,24 @@ export class SessionHub implements DurableObject {
   private handleCliConnect(socket: WebSocket): void {
     // Only allow one CLI connection per session
     if (this.cliSocket) {
+      console.log(`[SessionHub] Replacing existing CLI connection for session ${this.sessionId}`);
       this.cliSocket.close(4000, 'Replaced by new connection');
     }
 
     this.cliSocket = socket;
     this.cliLastPong = Date.now();
+
+    console.log(`[SessionHub] CLI connected for session ${this.sessionId}`);
+
+    // Immediately notify web clients that CLI is now attached
+    // This ensures status is correct even before session_attach message
+    if (this.sessionId) {
+      this.broadcastToWeb({
+        type: 'session_status',
+        session_id: this.sessionId,
+        status: 'attached',
+      });
+    }
 
     // Drain queued messages
     this.drainMessageQueue();
@@ -181,12 +202,18 @@ export class SessionHub implements DurableObject {
     this.webSockets.add(socket);
     this.webLastPong.set(socket, Date.now());
 
+    const cliStatus = this.cliSocket ? 'attached' : 'detached';
+    console.log(
+      `[SessionHub] Web client connected for session ${this.sessionId}, ` +
+      `CLI status: ${cliStatus}, buffer size: ${this.outputBuffer.length}`
+    );
+
     // Send current session status to new client
     if (this.sessionId) {
       const statusMsg: ServerToWebMessage = {
         type: 'session_status',
         session_id: this.sessionId,
-        status: this.cliSocket ? 'attached' : 'detached',
+        status: cliStatus,
       };
       socket.send(JSON.stringify(statusMsg));
 
@@ -199,7 +226,7 @@ export class SessionHub implements DurableObject {
               session_id: this.sessionId,
               device_id: this.deviceId || '',
               device_name: this.deviceName,
-              status: this.cliSocket ? 'attached' : 'detached',
+              status: cliStatus,
               started_at: new Date().toISOString(),
               attached_at: this.cliSocket ? new Date().toISOString() : null,
               cwd: this.cwd,
@@ -211,6 +238,8 @@ export class SessionHub implements DurableObject {
 
       // Send buffered output history so client can see recent terminal content
       this.sendBufferedOutput(socket);
+    } else {
+      console.log('[SessionHub] No sessionId set, cannot send status to web client');
     }
   }
 
@@ -516,6 +545,14 @@ export class SessionHub implements DurableObject {
     this.outputBuffer.push({ data, timestamp, size });
     this.outputBufferSize += size;
 
+    // Log occasionally (every 10 messages) to avoid spam
+    if (this.outputBuffer.length % 10 === 1) {
+      console.log(
+        `[SessionHub] Buffered output: ${this.outputBuffer.length} messages, ` +
+        `${this.outputBufferSize} bytes total`
+      );
+    }
+
     // Remove old entries if buffer exceeds max size
     while (
       this.outputBufferSize > OUTPUT_BUFFER_MAX_BYTES &&
@@ -533,13 +570,29 @@ export class SessionHub implements DurableObject {
    * Called when a new web client connects to provide scroll-back history.
    */
   private sendBufferedOutput(socket: WebSocket): void {
-    if (
-      !this.sessionId ||
-      socket.readyState !== WebSocket.OPEN ||
-      this.outputBuffer.length === 0
-    ) {
+    console.log(
+      `[SessionHub] sendBufferedOutput: sessionId=${this.sessionId}, ` +
+      `readyState=${socket.readyState}, bufferLength=${this.outputBuffer.length}, ` +
+      `bufferSize=${this.outputBufferSize} bytes`
+    );
+
+    if (!this.sessionId) {
+      console.log('[SessionHub] Skipping buffer send: no sessionId');
       return;
     }
+
+    if (this.outputBuffer.length === 0) {
+      console.log('[SessionHub] Skipping buffer send: buffer is empty');
+      return;
+    }
+
+    // Note: In CF Workers DO, socket should be ready after acceptWebSocket
+    // readyState check removed as it may not be accurate in DO context
+
+    console.log(
+      `[SessionHub] Sending ${this.outputBuffer.length} buffered messages ` +
+      `(${this.outputBufferSize} bytes)`
+    );
 
     // Send each buffered output message
     for (const { data, timestamp } of this.outputBuffer) {

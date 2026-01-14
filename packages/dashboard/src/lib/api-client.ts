@@ -1,9 +1,10 @@
 import { LoginCredentials } from '@/types/auth'
 
 /**
- * Token key for storing authentication token
+ * Token keys for storing authentication tokens
  */
 const TOKEN_KEY = 'user-token'
+const REFRESH_TOKEN_KEY = 'user-refresh-token'
 
 /**
  * Authentication response from login endpoint
@@ -87,8 +88,11 @@ class ApiClient {
 
     // Handle the nested data structure from API
     if (result.success && result.data?.accessToken) {
-      // Store token in localStorage
+      // Store tokens in localStorage
       localStorage.setItem(TOKEN_KEY, result.data.accessToken)
+      if (result.data.refreshToken) {
+        localStorage.setItem(REFRESH_TOKEN_KEY, result.data.refreshToken)
+      }
 
       // Also set a cookie for middleware authentication
       const cookieValue = `${TOKEN_KEY}=${result.data.accessToken}`
@@ -117,8 +121,9 @@ class ApiClient {
    * Logout user
    */
   async logout(): Promise<void> {
-    // Remove token from localStorage
+    // Remove tokens from localStorage
     localStorage.removeItem(TOKEN_KEY)
+    localStorage.removeItem(REFRESH_TOKEN_KEY)
 
     // Remove cookie - use actual protocol for secure flag
     const isHttps = window.location.protocol === 'https:'
@@ -126,6 +131,57 @@ class ApiClient {
     const expiredCookie = `${TOKEN_KEY}=; path=/; ` +
       `expires=Thu, 01 Jan 1970 00:00:01 GMT; samesite=strict${secureFlag}`
     document.cookie = expiredCookie
+  }
+
+  /**
+   * Refresh the access token using the refresh token
+   * @returns true if refresh succeeded, false otherwise
+   */
+  async refreshAccessToken(): Promise<boolean> {
+    const refreshToken = localStorage.getItem(REFRESH_TOKEN_KEY)
+    if (!refreshToken) {
+      return false
+    }
+
+    try {
+      const response = await fetch(
+        `${this.baseUrl}/auth/refresh`,
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ refresh_token: refreshToken })
+        }
+      )
+
+      if (!response.ok) {
+        // Refresh failed, clear tokens
+        localStorage.removeItem(TOKEN_KEY)
+        localStorage.removeItem(REFRESH_TOKEN_KEY)
+        return false
+      }
+
+      const result = await response.json() as {
+        access_token: string
+        refresh_token: string
+      }
+
+      // Store new tokens
+      localStorage.setItem(TOKEN_KEY, result.access_token)
+      localStorage.setItem(REFRESH_TOKEN_KEY, result.refresh_token)
+
+      // Update cookie for middleware
+      const isHttps = window.location.protocol === 'https:'
+      const secureFlag = isHttps ? '; secure' : ''
+      const cookieOptions = `path=/; max-age=${60 * 60 * 24}; ` +
+        `samesite=strict${secureFlag}`
+      document.cookie = `${TOKEN_KEY}=${result.access_token}; ${cookieOptions}`
+
+      return true
+    } catch {
+      localStorage.removeItem(TOKEN_KEY)
+      localStorage.removeItem(REFRESH_TOKEN_KEY)
+      return false
+    }
   }
 
   /**
@@ -152,22 +208,47 @@ class ApiClient {
         // The /dashboard/auth/check endpoint returns { success, data }
         // If we get a 200, the token is valid and user is authenticated
         return { authenticated: true }
-      } else {
-        localStorage.removeItem(TOKEN_KEY)
-        return { authenticated: false }
       }
+
+      // If 401, try to refresh the token
+      if (response.status === 401) {
+        const refreshed = await this.refreshAccessToken()
+        if (refreshed) {
+          // Retry with new token
+          const newToken = localStorage.getItem(TOKEN_KEY)
+          const retryResponse = await fetch(
+            `${this.baseUrl}/dashboard/auth/check`,
+            {
+              headers: {
+                'Authorization': `Bearer ${newToken}`
+              },
+              credentials: 'include'
+            }
+          )
+          if (retryResponse.ok) {
+            return { authenticated: true }
+          }
+        }
+      }
+
+      // Auth failed, clear tokens
+      localStorage.removeItem(TOKEN_KEY)
+      localStorage.removeItem(REFRESH_TOKEN_KEY)
+      return { authenticated: false }
     } catch {
       localStorage.removeItem(TOKEN_KEY)
+      localStorage.removeItem(REFRESH_TOKEN_KEY)
       return { authenticated: false }
     }
   }
 
   /**
-   * Make authenticated request to API
+   * Make authenticated request to API with auto-refresh on 401
    */
   async request<T = unknown>(
     endpoint: string,
-    options: RequestInit = {}
+    options: RequestInit = {},
+    _isRetry = false
   ): Promise<T> {
     const token = localStorage.getItem(TOKEN_KEY)
     const url = `${this.baseUrl}${endpoint}`
@@ -183,6 +264,15 @@ class ApiClient {
     })
 
     if (!response.ok) {
+      // If 401 and not already a retry, try to refresh token
+      if (response.status === 401 && !_isRetry) {
+        const refreshed = await this.refreshAccessToken()
+        if (refreshed) {
+          // Retry the request with new token
+          return this.request<T>(endpoint, options, true)
+        }
+      }
+
       const errorData = await response.json()
         .catch(() => ({})) as ApiErrorResponse
 
