@@ -28,9 +28,26 @@ const HEARTBEAT_INTERVAL_MS = 30_000;
 /** Connection timeout in milliseconds (90 seconds without pong) */
 const CONNECTION_TIMEOUT_MS = 90_000;
 
+/**
+ * Maximum size of the output buffer in bytes (256KB).
+ * This provides scroll-back for web clients connecting mid-session.
+ * Buffer is kept in memory and lost when the DO hibernates.
+ */
+const OUTPUT_BUFFER_MAX_BYTES = 256 * 1024;
+
 interface QueuedMessage {
   message: ServerToCliMessage;
   timestamp: number;
+}
+
+/** Buffered output message for replay to new web clients */
+interface BufferedOutput {
+  /** Base64-encoded terminal output */
+  data: string;
+  /** Timestamp of the output */
+  timestamp: string;
+  /** Approximate size in bytes (base64 data length) */
+  size: number;
 }
 
 /** Session metadata stored in Durable Object storage */
@@ -81,6 +98,15 @@ export class SessionHub implements DurableObject {
 
   /** Current working directory */
   private cwd: string | null = null;
+
+  /**
+   * Ring buffer of recent terminal output for replay to new web clients.
+   * Keeps approximately OUTPUT_BUFFER_MAX_BYTES of recent output.
+   */
+  private outputBuffer: BufferedOutput[] = [];
+
+  /** Current total size of output buffer in bytes */
+  private outputBufferSize: number = 0;
 
   constructor(state: DurableObjectState) {
     this.state = state;
@@ -182,6 +208,9 @@ export class SessionHub implements DurableObject {
         };
         socket.send(JSON.stringify(sessionsUpdate));
       }
+
+      // Send buffered output history so client can see recent terminal content
+      this.sendBufferedOutput(socket);
     }
   }
 
@@ -280,6 +309,9 @@ export class SessionHub implements DurableObject {
       }
 
       case 'output':
+        // Buffer output for replay to new web clients
+        this.bufferOutput(msg.data, msg.timestamp);
+
         // Forward terminal output (base64 encoded) to all web clients
         this.broadcastToWeb({
           type: 'output',
@@ -470,6 +502,54 @@ export class SessionHub implements DurableObject {
         message,
       };
       ws.send(JSON.stringify(errorMsg));
+    }
+  }
+
+  /**
+   * Buffer terminal output for replay to web clients connecting later.
+   * Maintains a ring buffer of approximately OUTPUT_BUFFER_MAX_BYTES.
+   */
+  private bufferOutput(data: string, timestamp: string): void {
+    const size = data.length;
+
+    // Add new output to buffer
+    this.outputBuffer.push({ data, timestamp, size });
+    this.outputBufferSize += size;
+
+    // Remove old entries if buffer exceeds max size
+    while (
+      this.outputBufferSize > OUTPUT_BUFFER_MAX_BYTES &&
+      this.outputBuffer.length > 1
+    ) {
+      const removed = this.outputBuffer.shift();
+      if (removed) {
+        this.outputBufferSize -= removed.size;
+      }
+    }
+  }
+
+  /**
+   * Send all buffered output to a specific web client.
+   * Called when a new web client connects to provide scroll-back history.
+   */
+  private sendBufferedOutput(socket: WebSocket): void {
+    if (
+      !this.sessionId ||
+      socket.readyState !== WebSocket.OPEN ||
+      this.outputBuffer.length === 0
+    ) {
+      return;
+    }
+
+    // Send each buffered output message
+    for (const { data, timestamp } of this.outputBuffer) {
+      const msg: ServerToWebMessage = {
+        type: 'output',
+        session_id: this.sessionId,
+        data,
+        timestamp,
+      };
+      socket.send(JSON.stringify(msg));
     }
   }
 
