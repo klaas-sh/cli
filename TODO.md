@@ -1,11 +1,35 @@
 # TODO
 
 ## MVP
+- sessions overview last active time in seconds/minutes/hours/days. it's not
+  accurate, current session already says 1 hour ago
 - cursor is visible in xtermjs again
 - history is not preserved
 - delete/archive old sessions
-- often it says CLI detached in browser although from the terminal it still
-  seems to work
+
+## v1.1
+
+### Remote Image Paste from Browser
+
+Currently, image paste only works when browser and CLI are on the same machine
+(they share the system clipboard). For true remote access, we need to send
+image data from browser to CLI.
+
+**Implementation:**
+1. Browser: Detect image paste via Clipboard API
+2. Browser: Read image data, base64 encode
+3. Browser → Server: Send via WebSocket as new `image` message type
+4. Server → CLI: Forward image data
+5. CLI: Save to temp file, copy to system clipboard
+6. CLI: Send bracketed paste sequence to Claude Code
+7. Claude Code: Checks clipboard, finds image → `[Image #N]`
+
+**Changes needed:**
+- Dashboard terminal component: Add paste event listener for images
+- WebSocket protocol: Add `image` message type to types
+- SessionHub DO: Forward image messages to CLI
+- CLI websocket.rs: Handle incoming image messages
+- CLI: Use `pbcopy` (macOS) / `xclip` (Linux) to copy image to clipboard
 
 ## Deployment Setup
 
