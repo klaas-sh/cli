@@ -1,6 +1,6 @@
 'use client'
 
-import React, { useState, useEffect, useCallback } from 'react'
+import React, { useState, useEffect, useCallback, useRef } from 'react'
 import { useRouter } from 'next/navigation'
 import { type ColumnDef, type SortingState } from '@tanstack/react-table'
 import { dashboardApi } from '@/lib/dashboard-api'
@@ -10,6 +10,7 @@ import {
   Smartphone,
   Eye,
   Trash2,
+  RefreshCw,
 } from 'lucide-react'
 import { Badge } from '@/components/ui/badge'
 import { useToast } from '@/components/ui/toast'
@@ -17,6 +18,9 @@ import { ErrorDisplay } from '@/components/ui/error-display'
 import { DataTable, DataTableColumnHeader } from '@/components/ui/data-table'
 import { formatDateTime, formatRelativeTime } from '@/lib/date-utils'
 import type { Session } from '@/types/session'
+
+/** Auto-refresh interval in milliseconds (5 seconds) */
+const AUTO_REFRESH_INTERVAL_MS = 5000
 
 /**
  * Sessions list page.
@@ -36,11 +40,25 @@ export default function SessionsPage(): React.JSX.Element {
   const [sorting, setSorting] = useState<SortingState>([
     { id: 'lastActivityAt', desc: true }
   ])
+  const [isRefreshing, setIsRefreshing] = useState(false)
+  const [autoRefreshEnabled, setAutoRefreshEnabled] = useState(true)
+  const refreshIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null)
 
   const pageSize = 20
 
-  const loadSessions = useCallback(async (): Promise<void> => {
-    setIsLoading(true)
+  /**
+   * Load sessions from API.
+   * @param showLoading - Whether to show loading state (false for background
+   *                      refresh)
+   */
+  const loadSessions = useCallback(async (
+    showLoading = true
+  ): Promise<void> => {
+    if (showLoading) {
+      setIsLoading(true)
+    } else {
+      setIsRefreshing(true)
+    }
     setError(null)
     try {
       const response = await dashboardApi.getSessions({
@@ -59,12 +77,30 @@ export default function SessionsPage(): React.JSX.Element {
       setSessions([])
     } finally {
       setIsLoading(false)
+      setIsRefreshing(false)
     }
   }, [pageIndex, searchTerm])
 
+  // Initial load
   useEffect(() => {
-    loadSessions()
+    loadSessions(true)
   }, [loadSessions])
+
+  // Auto-refresh polling
+  useEffect(() => {
+    if (autoRefreshEnabled) {
+      refreshIntervalRef.current = setInterval(() => {
+        loadSessions(false)
+      }, AUTO_REFRESH_INTERVAL_MS)
+    }
+
+    return (): void => {
+      if (refreshIntervalRef.current) {
+        clearInterval(refreshIntervalRef.current)
+        refreshIntervalRef.current = null
+      }
+    }
+  }, [autoRefreshEnabled, loadSessions])
 
   const handleDeleteSession = async (id: string): Promise<void> => {
     try {
@@ -198,6 +234,40 @@ export default function SessionsPage(): React.JSX.Element {
           <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">
             View and manage your Claude Code sessions
           </p>
+        </div>
+        <div className="flex items-center gap-3">
+          {/* Auto-refresh toggle */}
+          <button
+            onClick={() => setAutoRefreshEnabled(!autoRefreshEnabled)}
+            className={`flex items-center gap-2 px-3 py-1.5 rounded-lg text-sm
+              transition-colors ${
+                autoRefreshEnabled
+                  ? 'bg-app-primary/10 text-app-primary dark:text-app-primary-dark'
+                  : 'bg-gray-100 text-gray-500 dark:bg-gray-800 ' +
+                    'dark:text-gray-400'
+              }`}
+            title={autoRefreshEnabled
+              ? 'Auto-refresh enabled'
+              : 'Auto-refresh disabled'}
+          >
+            <RefreshCw className={`h-4 w-4 ${isRefreshing ? 'animate-spin' : ''
+              }`} />
+            <span className="hidden sm:inline">
+              {autoRefreshEnabled ? 'Live' : 'Paused'}
+            </span>
+          </button>
+          {/* Manual refresh button */}
+          <button
+            onClick={() => loadSessions(false)}
+            disabled={isRefreshing || isLoading}
+            className="p-2 text-gray-500 hover:text-gray-700 dark:text-gray-400
+              dark:hover:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700
+              rounded-lg transition-colors disabled:opacity-50"
+            title="Refresh now"
+          >
+            <RefreshCw className={`h-5 w-5 ${isRefreshing ? 'animate-spin' : ''
+              }`} />
+          </button>
         </div>
       </div>
 
