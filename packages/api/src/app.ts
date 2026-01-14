@@ -1,5 +1,5 @@
 /**
- * Hono application setup for Nexo API.
+ * Hono application setup for Klaas API.
  *
  * Routes:
  * - /v1/* - Public API endpoints
@@ -35,9 +35,9 @@ export function createApp(): AppType {
       origin: [
         'http://localhost:3000',
         'http://localhost:3001',
-        'https://nexo.dev',
-        'https://app.nexo.dev',
-        'https://admin.nexo.dev',
+        'https://klaas.sh',
+        'https://app.klaas.sh',
+        'https://admin.klaas.sh',
       ],
       allowMethods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
       allowHeaders: ['Content-Type', 'Authorization', 'X-Device-ID', 'X-Session-ID'],
@@ -60,7 +60,7 @@ export function createApp(): AppType {
   // Root endpoint
   app.get('/', (c) => {
     return c.json({
-      name: 'Nexo API',
+      name: 'Klaas API',
       version: c.env.API_VERSION,
       environment: c.env.ENVIRONMENT,
     });

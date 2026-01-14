@@ -1309,31 +1309,9 @@ __metadata:
   languageName: node
   linkType: hard
 
-"@napi-rs/wasm-runtime@npm:^0.2.11":
-  version: 0.2.12
-  resolution: "@napi-rs/wasm-runtime@npm:0.2.12"
-  dependencies:
-    "@emnapi/core": "npm:^1.4.3"
-    "@emnapi/runtime": "npm:^1.4.3"
-    "@tybys/wasm-util": "npm:^0.10.0"
-  checksum: 6d07922c0613aab30c6a497f4df297ca7c54e5b480e00035e0209b872d5c6aab7162fc49477267556109c2c7ed1eb9c65a174e27e9b87568106a87b0a6e3ca7d
-  languageName: node
-  linkType: hard
-
-"@napi-rs/wasm-runtime@npm:^1.1.0":
-  version: 1.1.1
-  resolution: "@napi-rs/wasm-runtime@npm:1.1.1"
-  dependencies:
-    "@emnapi/core": "npm:^1.7.1"
-    "@emnapi/runtime": "npm:^1.7.1"
-    "@tybys/wasm-util": "npm:^0.10.1"
-  checksum: 04d57b67e80736e41fe44674a011878db0a8ad893f4d44abb9d3608debb7c174224cba2796ed5b0c1d367368159f3ca6be45f1c59222f70e32ddc880f803d447
-  languageName: node
-  linkType: hard
-
-"@nexo/api@workspace:packages/api":
+"@klaas/api@workspace:packages/api":
   version: 0.0.0-use.local
-  resolution: "@nexo/api@workspace:packages/api"
+  resolution: "@klaas/api@workspace:packages/api"
   dependencies:
     "@cloudflare/workers-types": "npm:^4.20250109.0"
     "@types/node": "npm:^22.0.0"
@@ -1352,9 +1330,9 @@ __metadata:
   languageName: unknown
   linkType: soft
 
-"@nexo/dashboard@workspace:packages/dashboard":
+"@klaas/dashboard@workspace:packages/dashboard":
   version: 0.0.0-use.local
-  resolution: "@nexo/dashboard@workspace:packages/dashboard"
+  resolution: "@klaas/dashboard@workspace:packages/dashboard"
   dependencies:
     "@tailwindcss/postcss": "npm:^4.1.0"
     "@tanstack/react-table": "npm:^8.21.0"
@@ -1390,13 +1368,35 @@ __metadata:
   languageName: unknown
   linkType: soft
 
-"@nexo/monorepo@workspace:.":
+"@klaas/monorepo@workspace:.":
   version: 0.0.0-use.local
-  resolution: "@nexo/monorepo@workspace:."
+  resolution: "@klaas/monorepo@workspace:."
   dependencies:
     concurrently: "npm:^9.1.0"
   languageName: unknown
   linkType: soft
+
+"@napi-rs/wasm-runtime@npm:^0.2.11":
+  version: 0.2.12
+  resolution: "@napi-rs/wasm-runtime@npm:0.2.12"
+  dependencies:
+    "@emnapi/core": "npm:^1.4.3"
+    "@emnapi/runtime": "npm:^1.4.3"
+    "@tybys/wasm-util": "npm:^0.10.0"
+  checksum: 6d07922c0613aab30c6a497f4df297ca7c54e5b480e00035e0209b872d5c6aab7162fc49477267556109c2c7ed1eb9c65a174e27e9b87568106a87b0a6e3ca7d
+  languageName: node
+  linkType: hard
+
+"@napi-rs/wasm-runtime@npm:^1.1.0":
+  version: 1.1.1
+  resolution: "@napi-rs/wasm-runtime@npm:1.1.1"
+  dependencies:
+    "@emnapi/core": "npm:^1.7.1"
+    "@emnapi/runtime": "npm:^1.7.1"
+    "@tybys/wasm-util": "npm:^0.10.1"
+  checksum: 04d57b67e80736e41fe44674a011878db0a8ad893f4d44abb9d3608debb7c174224cba2796ed5b0c1d367368159f3ca6be45f1c59222f70e32ddc880f803d447
+  languageName: node
+  linkType: hard
 
 "@next/env@npm:15.3.3":
   version: 15.3.3

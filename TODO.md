@@ -49,10 +49,10 @@ Add these secrets to the GitHub repository (Settings > Secrets and variables):
 
 ```bash
 # Staging
-npx wrangler d1 create nexo-db-staging
+npx wrangler d1 create klaas-db-staging
 
 # Production
-npx wrangler d1 create nexo-db-production
+npx wrangler d1 create klaas-db-production
 ```
 
 Update `packages/api/wrangler.toml` with the returned database IDs.
@@ -88,7 +88,7 @@ Add staging routes to `packages/api/wrangler.toml`:
 ```toml
 [env.staging]
 routes = [
-  { pattern = "api-staging.nexo.dev/*", zone_name = "nexo.dev" }
+  { pattern = "api-staging.klaas.sh/*", zone_name = "klaas.sh" }
 ]
 ```
 
@@ -145,18 +145,18 @@ npx wrangler kv:namespace create SESSIONS --env production
 #### 5. Create R2 Buckets
 
 ```bash
-npx wrangler r2 bucket create nexo-dashboard-cache-staging
-npx wrangler r2 bucket create nexo-dashboard-cache-production
+npx wrangler r2 bucket create klaas-dashboard-cache-staging
+npx wrangler r2 bucket create klaas-dashboard-cache-production
 ```
 
 ### DNS Setup
 
-Ensure the `nexo.dev` domain is added to your Cloudflare account. The GitHub
+Ensure the `klaas.sh` domain is added to your Cloudflare account. The GitHub
 Actions workflow will automatically create DNS records and Worker routes for:
 
-- `api.nexo.dev` / `api-staging.nexo.dev`
-- `app.nexo.dev` / `app-staging.nexo.dev`
-- `admin.nexo.dev` / `admin-staging.nexo.dev` (when admin package exists)
+- `api.klaas.sh` / `api-staging.klaas.sh`
+- `app.klaas.sh` / `app-staging.klaas.sh`
+- `admin.klaas.sh` / `admin-staging.klaas.sh` (when admin package exists)
 
 ### CLI Release Process
 
@@ -170,6 +170,27 @@ git push --tags
 This triggers the workflow to:
 1. Build binaries for all platforms (macOS, Linux, Windows)
 2. Create a GitHub Release with the binaries attached
+
+### CLI Installation Script
+
+The `scripts/install.sh` script allows users to install klaas via curl:
+
+```bash
+curl -fsSL https://klaas.sh/install.sh | bash
+```
+
+**To set up the redirect from klaas.sh/install.sh:**
+
+Option 1: Cloudflare redirect rule (recommended)
+- In Cloudflare dashboard for klaas.sh
+- Add a redirect rule: `klaas.sh/install.sh` ->
+  `https://raw.githubusercontent.com/smoking-media/klaas/main/scripts/install.sh`
+
+Option 2: Hugo site redirect
+- In the hugo-sites project, add a redirect in `_redirects` or `netlify.toml`
+
+Option 3: API worker
+- Add a route in the API worker to serve the install script
 
 
 ## Future Features

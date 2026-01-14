@@ -1,8 +1,8 @@
 {
-  "name": "@nexo/dashboard",
+  "name": "@klaas/dashboard",
   "version": "0.1.0",
   "private": true,
-  "description": "Nexo User Dashboard",
+  "description": "Klaas User Dashboard",
   "scripts": {
     "build": "next build",
     "clean": "rm -rf .next .open-next",

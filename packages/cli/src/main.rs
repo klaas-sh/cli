@@ -7,13 +7,13 @@
 //!
 //! ```bash
 //! # Start Claude Code with remote access
-//! nexo
+//! klaas
 //!
 //! # Start with a prompt
-//! nexo -p "Review this codebase"
+//! klaas -p "Review this codebase"
 //!
 //! # Pass through Claude Code flags
-//! nexo --model sonnet --allowedTools Read,Write
+//! klaas --model sonnet --allowedTools Read,Write
 //! ```
 
 use clap::Parser;
@@ -31,7 +31,7 @@ mod websocket;
 
 /// CLI arguments.
 #[derive(Parser)]
-#[command(name = "nexo")]
+#[command(name = "klaas")]
 #[command(about = "Remote access wrapper for Claude Code")]
 #[command(version)]
 #[command(long_about = "Wraps Claude Code sessions and enables remote access \
@@ -40,7 +40,7 @@ mod websocket;
     All output is captured for remote streaming.")]
 struct Cli {
     /// Start a new session instead of resuming the previous one.
-    /// Without this flag, nexo will resume the last session if it exists.
+    /// Without this flag, klaas will resume the last session if it exists.
     #[arg(long)]
     new_session: bool,
 
@@ -60,7 +60,7 @@ async fn main() -> anyhow::Result<()> {
     tracing_subscriber::registry()
         .with(
             tracing_subscriber::EnvFilter::try_from_default_env()
-                .unwrap_or_else(|_| "nexo=warn".into()),
+                .unwrap_or_else(|_| "klaas=warn".into()),
         )
         .with(tracing_subscriber::fmt::layer().with_writer(std::io::stderr))
         .init();

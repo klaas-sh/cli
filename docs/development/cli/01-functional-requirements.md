@@ -1,4 +1,4 @@
-# Nexo CLI Functional Requirements
+# Klaas CLI Functional Requirements
 
 **Version:** 0.1.0
 **Status:** Draft
@@ -8,7 +8,7 @@
 
 ## 1. Overview
 
-The Nexo CLI is a cross-platform terminal application that wraps Claude Code
+The Klaas CLI is a cross-platform terminal application that wraps Claude Code
 sessions, providing seamless local usage with optional remote access
 capabilities. The CLI intercepts special commands while transparently proxying
 all other input/output to Claude Code.
@@ -16,7 +16,7 @@ all other input/output to Claude Code.
 ### 1.1 Core Principles
 
 - **Transparent Proxy:** All Claude Code functionality works identically
-  through Nexo
+  through Klaas
 - **Offline-First:** Zero network activity unless user explicitly attaches
 - **Minimal Footprint:** Single binary, no runtime dependencies
 - **Cross-Platform:** Windows, macOS, and Linux support
@@ -137,7 +137,7 @@ period, the partial input forwards to Claude Code.
 
 #### FR-2.3.1: `/help` Command
 
-**Description:** Displays available Nexo commands.
+**Description:** Displays available Klaas commands.
 
 **Acceptance Criteria:**
 - [ ] Lists all available commands with descriptions
@@ -146,7 +146,7 @@ period, the partial input forwards to Claude Code.
 
 **Output Format:**
 ```
-Nexo Commands:
+Klaas Commands:
   /attach  - Connect this session for remote access
   /detach  - Disconnect from remote (continue locally)
   /status  - Show connection status
@@ -185,7 +185,7 @@ Working directory: /Users/example/project
 
 #### FR-2.3.3: `/attach` Command
 
-**Description:** Initiates connection to Nexo cloud for remote access.
+**Description:** Initiates connection to Klaas cloud for remote access.
 
 **Acceptance Criteria:**
 - [ ] If already attached, displays message and session ID
@@ -211,7 +211,7 @@ Waiting for authorization...
 
 #### FR-2.3.4: `/detach` Command
 
-**Description:** Disconnects from Nexo cloud while continuing local session.
+**Description:** Disconnects from Klaas cloud while continuing local session.
 
 **Acceptance Criteria:**
 - [ ] If not attached, displays "Not attached." message

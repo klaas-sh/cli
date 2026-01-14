@@ -1,4 +1,4 @@
-# Nexo CLI Implementation Guide
+# Klaas CLI Implementation Guide
 
 **Version:** 0.2.0
 **Status:** Draft
@@ -8,7 +8,7 @@
 
 ## 1. Overview
 
-The Nexo CLI wraps Claude Code with automatic remote access. On startup, the CLI
+The Klaas CLI wraps Claude Code with automatic remote access. On startup, the CLI
 authenticates (if needed), connects to the SessionHub via WebSocket, and streams
 all PTY I/O bidirectionally. No user commands are required - the connection is
 always on.
@@ -69,7 +69,7 @@ packages/cli/
 name = "nexo"
 version = "0.2.0"
 edition = "2021"
-authors = ["Nexo Team"]
+authors = ["Klaas Team"]
 description = "Remote access wrapper for Claude Code"
 license = "MIT"
 repository = "https://github.com/example/nexo"
@@ -216,7 +216,7 @@ pub enum ConnectionState {
 use thiserror::Error;
 
 #[derive(Error, Debug)]
-pub enum NexoError {
+pub enum KlaasError {
     #[error("Failed to spawn Claude Code: {0}")]
     SpawnError(String),
 
@@ -245,7 +245,7 @@ pub enum NexoError {
     Other(String),
 }
 
-pub type Result<T> = std::result::Result<T, NexoError>;
+pub type Result<T> = std::result::Result<T, KlaasError>;
 ```
 
 ### 3.3 config.rs
@@ -336,7 +336,7 @@ main I/O loop. All remote connectivity happens automatically on startup.
 use crate::{
     auth::{device_flow, keychain, token},
     config,
-    error::{NexoError, Result},
+    error::{KlaasError, Result},
     pty::PtyManager,
     remote::RemoteClient,
     terminal::TerminalManager,
@@ -574,7 +574,7 @@ async fn run_io_loop(
 ### 6.1 pty.rs
 
 ```rust
-use crate::error::{NexoError, Result};
+use crate::error::{KlaasError, Result};
 use portable_pty::{native_pty_system, Child, CommandBuilder, MasterPty, PtySize};
 use std::io::{Read, Write};
 use std::sync::Arc;
@@ -596,7 +596,7 @@ impl PtyManager {
 
         let pair = pty_system
             .openpty(size)
-            .map_err(|e| NexoError::SpawnError(e.to_string()))?;
+            .map_err(|e| KlaasError::SpawnError(e.to_string()))?;
 
         let mut cmd = CommandBuilder::new(command);
         for arg in args {
@@ -606,16 +606,16 @@ impl PtyManager {
         let child = pair
             .slave
             .spawn_command(cmd)
-            .map_err(|e| NexoError::SpawnError(e.to_string()))?;
+            .map_err(|e| KlaasError::SpawnError(e.to_string()))?;
 
         let reader = pair
             .master
             .try_clone_reader()
-            .map_err(|e| NexoError::SpawnError(e.to_string()))?;
+            .map_err(|e| KlaasError::SpawnError(e.to_string()))?;
         let writer = pair
             .master
             .take_writer()
-            .map_err(|e| NexoError::SpawnError(e.to_string()))?;
+            .map_err(|e| KlaasError::SpawnError(e.to_string()))?;
 
         Ok(Self {
             master: Arc::new(Mutex::new(pair.master)),
@@ -650,7 +650,7 @@ impl PtyManager {
                 pixel_width: 0,
                 pixel_height: 0,
             })
-            .map_err(NexoError::PtyError)?;
+            .map_err(KlaasError::PtyError)?;
         Ok(())
     }
 
@@ -815,7 +815,7 @@ pub enum IncomingMessage {
 ```rust
 use crate::{
     config,
-    error::{NexoError, Result},
+    error::{KlaasError, Result},
     remote::messages::{IncomingMessage, OutgoingMessage},
     types::{DeviceId, SessionId},
 };
@@ -857,7 +857,7 @@ impl RemoteClient {
                 tokio_tungstenite::tungstenite::handshake::client::generate_key(),
             )
             .body(())
-            .map_err(|e| NexoError::WebSocketError(e.into()))?;
+            .map_err(|e| KlaasError::WebSocketError(e.into()))?;
 
         let (ws, _) = connect_async(request).await?;
 
@@ -904,7 +904,7 @@ impl RemoteClient {
         match self.ws.next().await {
             Some(Ok(Message::Text(text))) => {
                 let msg: IncomingMessage = serde_json::from_str(&text)
-                    .map_err(|e| NexoError::Other(e.to_string()))?;
+                    .map_err(|e| KlaasError::Other(e.to_string()))?;
 
                 // Handle ping automatically
                 if matches!(msg, IncomingMessage::Ping) {
@@ -923,7 +923,7 @@ impl RemoteClient {
 
     async fn send(&mut self, msg: OutgoingMessage) -> Result<()> {
         let json = serde_json::to_string(&msg)
-            .map_err(|e| NexoError::Other(e.to_string()))?;
+            .map_err(|e| KlaasError::Other(e.to_string()))?;
         self.ws.send(Message::Text(json)).await?;
         Ok(())
     }
@@ -1060,7 +1060,7 @@ pub mod token;
 ### 9.2 auth/device_flow.rs
 
 ```rust
-use crate::{config, error::{NexoError, Result}};
+use crate::{config, error::{KlaasError, Result}};
 use serde::Deserialize;
 use std::time::Duration;
 use tokio::time::sleep;
@@ -1137,13 +1137,13 @@ pub async fn poll_for_token(
                     continue;
                 }
                 "expired_token" => {
-                    return Err(NexoError::AuthError("Authorization expired".to_string()));
+                    return Err(KlaasError::AuthError("Authorization expired".to_string()));
                 }
                 "access_denied" => {
-                    return Err(NexoError::AuthError("Authorization denied".to_string()));
+                    return Err(KlaasError::AuthError("Authorization denied".to_string()));
                 }
                 _ => {
-                    return Err(NexoError::AuthError(format!(
+                    return Err(KlaasError::AuthError(format!(
                         "Unexpected error: {}",
                         error
                     )));
@@ -1152,31 +1152,31 @@ pub async fn poll_for_token(
         }
     }
 
-    Err(NexoError::AuthError("Authorization timed out".to_string()))
+    Err(KlaasError::AuthError("Authorization timed out".to_string()))
 }
 ```
 
 ### 9.3 auth/keychain.rs
 
 ```rust
-use crate::{config, error::{NexoError, Result}};
+use crate::{config, error::{KlaasError, Result}};
 
 fn entry(key: &str) -> Result<keyring::Entry> {
     keyring::Entry::new(config::KEYCHAIN_SERVICE, key)
-        .map_err(|e| NexoError::KeychainError(e.to_string()))
+        .map_err(|e| KlaasError::KeychainError(e.to_string()))
 }
 
 fn store(key: &str, value: &str) -> Result<()> {
     entry(key)?
         .set_password(value)
-        .map_err(|e| NexoError::KeychainError(e.to_string()))
+        .map_err(|e| KlaasError::KeychainError(e.to_string()))
 }
 
 fn get(key: &str) -> Result<Option<String>> {
     match entry(key)?.get_password() {
         Ok(v) => Ok(Some(v)),
         Err(keyring::Error::NoEntry) => Ok(None),
-        Err(e) => Err(NexoError::KeychainError(e.to_string())),
+        Err(e) => Err(KlaasError::KeychainError(e.to_string())),
     }
 }
 
@@ -1184,7 +1184,7 @@ fn delete(key: &str) -> Result<()> {
     match entry(key)?.delete_credential() {
         Ok(()) => Ok(()),
         Err(keyring::Error::NoEntry) => Ok(()),
-        Err(e) => Err(NexoError::KeychainError(e.to_string())),
+        Err(e) => Err(KlaasError::KeychainError(e.to_string())),
     }
 }
 

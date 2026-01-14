@@ -6,7 +6,7 @@
 //! - Linux: Secret Service (libsecret)
 //!
 //! When the keychain is unavailable, it falls back to file-based storage
-//! in `~/.config/nexo/`.
+//! in `~/.config/klaas/`.
 
 use std::fs;
 use std::path::PathBuf;
@@ -372,12 +372,12 @@ impl CredentialStore {
 
 /// Gets the fallback credentials file path.
 ///
-/// Uses `~/.config/nexo/credentials.json` on Unix systems and the appropriate
+/// Uses `~/.config/klaas/credentials.json` on Unix systems and the appropriate
 /// config directory on other platforms.
 fn get_fallback_path() -> PathBuf {
     dirs::config_dir()
         .unwrap_or_else(|| PathBuf::from("."))
-        .join("nexo")
+        .join("klaas")
         .join(FALLBACK_CREDENTIALS_FILE)
 }
 
@@ -385,7 +385,7 @@ fn get_fallback_path() -> PathBuf {
 ///
 /// Attempts to create and delete a test entry to verify keychain access.
 fn check_keychain_available() -> bool {
-    let test_key = "__nexo_keychain_test__";
+    let test_key = "__klaas_keychain_test__";
 
     // Try to create an entry
     let entry = match Entry::new(KEYCHAIN_SERVICE, test_key) {
@@ -497,6 +497,6 @@ mod tests {
     #[test]
     fn test_get_fallback_path() {
         let path = get_fallback_path();
-        assert!(path.ends_with("nexo/credentials.json"));
+        assert!(path.ends_with("klaas/credentials.json"));
     }
 }

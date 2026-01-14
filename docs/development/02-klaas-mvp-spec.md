@@ -1,4 +1,4 @@
-# Nexo MVP Specification
+# Klaas MVP Specification
 
 **Version:** 0.1.0  
 **Status:** Draft  
@@ -8,11 +8,11 @@
 
 ## Overview
 
-Nexo is a cross-platform tool that wraps Claude Code sessions, enabling remote access and control via a web interface. Users run `nexo` in their terminal instead of `claude`, and can optionally attach sessions to the Nexo cloud service for remote access from any browser.
+Klaas is a cross-platform tool that wraps Claude Code sessions, enabling remote access and control via a web interface. Users run `klaas` in their terminal instead of `claude`, and can optionally attach sessions to the Klaas cloud service for remote access from any browser.
 
 ### Core Principles
 
-- **Offline-first:** Running `nexo` works exactly like `claude` with zero network activity by default
+- **Offline-first:** Running `klaas` works exactly like `claude` with zero network activity by default
 - **Opt-in remote:** Users explicitly invoke `/attach` to connect a session to the cloud
 - **Frictionless:** No passwords, minimal setup, cross-platform (Windows, macOS, Linux)
 - **Secure:** End-to-end encryption for all remote traffic; relay server sees only encrypted blobs
@@ -22,7 +22,7 @@ Nexo is a cross-platform tool that wraps Claude Code sessions, enabling remote a
 The MVP enables a single user to:
 
 1. Wrap Claude Code in a PTY and use it normally
-2. Attach a session to Nexo cloud with `/attach`
+2. Attach a session to Klaas cloud with `/attach`
 3. View active sessions in a web dashboard
 4. See session output in real-time from the browser
 5. Send prompts to sessions from the browser
@@ -38,7 +38,7 @@ The MVP enables a single user to:
 │                           User's Machine                                │
 │                                                                         │
 │  ┌──────────────────────────────────────────────────────────────────┐  │
-│  │                     Nexo CLI (`nexo`)                            │  │
+│  │                     Klaas CLI (`klaas`)                            │  │
 │  │                                                                  │  │
 │  │  ┌─────────────┐    ┌─────────────┐    ┌─────────────────────┐  │  │
 │  │  │ PTY Manager │───▶│ Claude Code │    │ Command Interceptor │  │  │
@@ -93,7 +93,7 @@ The MVP enables a single user to:
 
 ## Components
 
-### 1. Nexo CLI
+### 1. Klaas CLI
 
 **Language:** Rust (using `portable-pty`)  
 **Distribution:** Single binary for Windows, macOS, Linux
@@ -101,7 +101,7 @@ The MVP enables a single user to:
 #### Basic Usage
 
 ```bash
-# Start Claude Code wrapped in Nexo (works offline, no network)
+# Start Claude Code wrapped in Klaas (works offline, no network)
 nexo
 
 # Start with a specific prompt
@@ -111,14 +111,14 @@ nexo -p "Review this codebase"
 nexo --model sonnet --allowedTools Read,Write
 ```
 
-#### Commands (intercepted by Nexo, not passed to Claude)
+#### Commands (intercepted by Klaas, not passed to Claude)
 
 | Command | Description |
 |---------|-------------|
-| `/attach` | Connect this session to Nexo cloud for remote access |
-| `/detach` | Disconnect from Nexo cloud (continue locally) |
+| `/attach` | Connect this session to Klaas cloud for remote access |
+| `/detach` | Disconnect from Klaas cloud (continue locally) |
 | `/status` | Show connection status and session ID |
-| `/help` | Show Nexo commands |
+| `/help` | Show Klaas commands |
 
 #### MVP CLI Features
 
@@ -512,8 +512,8 @@ interface Session {
 1. **Session persistence:** Should we store session output for later viewing, or is real-time only acceptable for MVP?
    - *Leaning:* Real-time only for MVP
 
-2. **Multiple sessions per device:** Should `nexo` support multiple simultaneous sessions on one machine?
-   - *Leaning:* No, one session per `nexo` process. User can run multiple terminals.
+2. **Multiple sessions per device:** Should `klaas` support multiple simultaneous sessions on one machine?
+   - *Leaning:* No, one session per `klaas` process. User can run multiple terminals.
 
 3. **Session naming:** Should users be able to name sessions, or auto-generate?
    - *Leaning:* Auto-generate for MVP (e.g., device name + timestamp)
@@ -695,7 +695,7 @@ fn match_command(buffer: &str) -> Option<Command> {
 
 ```
 Print:
-  Nexo Commands:
+  Klaas Commands:
     /attach  - Connect this session for remote access
     /detach  - Disconnect from remote (continue locally)  
     /status  - Show connection status

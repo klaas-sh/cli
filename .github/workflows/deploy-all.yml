@@ -1,4 +1,4 @@
-name: Deploy Nexo
+name: Deploy Klaas
 
 on:
   push:
@@ -27,7 +27,7 @@ on:
 
 env:
   NODE_VERSION: '20'
-  DEPLOY_DOMAIN: 'nexo.dev'
+  DEPLOY_DOMAIN: 'klaas.sh'
 
 jobs:
   # Detect which packages have changed
@@ -84,16 +84,16 @@ jobs:
         run: yarn install --frozen-lockfile
 
       - name: Build API
-        run: yarn workspace @nexo/api build || true
+        run: yarn workspace @klaas/api build || true
 
       - name: Run linting
-        run: yarn workspace @nexo/api lint
+        run: yarn workspace @klaas/api lint
 
       - name: Run type checking
-        run: yarn workspace @nexo/api typecheck
+        run: yarn workspace @klaas/api typecheck
 
       - name: Run unit tests
-        run: yarn workspace @nexo/api test:once
+        run: yarn workspace @klaas/api test:once
 
   deploy-api-staging:
     name: Deploy API (Staging)
@@ -122,7 +122,7 @@ jobs:
       - name: Run D1 migrations
         working-directory: packages/api
         run: |
-          npx wrangler d1 migrations apply nexo-db-staging \
+          npx wrangler d1 migrations apply klaas-db-staging \
             --remote --env staging
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
@@ -144,7 +144,7 @@ jobs:
           # Restore original wrangler.toml
           mv wrangler.toml.backup wrangler.toml
 
-          echo "Worker deployed successfully to nexo-api-staging.workers.dev"
+          echo "Worker deployed successfully to klaas-api-staging.workers.dev"
 
           # Now handle custom domain DNS
           echo "Configuring custom domain for staging API..."
@@ -202,7 +202,7 @@ jobs:
             -H "Content-Type: application/json" \
             --data '{
               "pattern": "api-staging.${{ env.DEPLOY_DOMAIN }}/*",
-              "script": "nexo-api-staging"
+              "script": "klaas-api-staging"
             }' > /dev/null || true
 
           echo "Custom domain api-staging.${{ env.DEPLOY_DOMAIN }} configured successfully"
@@ -236,7 +236,7 @@ jobs:
       - name: Run D1 migrations
         working-directory: packages/api
         run: |
-          npx wrangler d1 migrations apply nexo-db-production \
+          npx wrangler d1 migrations apply klaas-db-production \
             --remote --env production
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
@@ -258,7 +258,7 @@ jobs:
           # Restore original wrangler.toml
           mv wrangler.toml.backup wrangler.toml
 
-          echo "Worker deployed successfully to nexo-api-production.workers.dev"
+          echo "Worker deployed successfully to klaas-api-production.workers.dev"
 
           # Now handle custom domain DNS
           echo "Configuring custom domain for API..."
@@ -316,7 +316,7 @@ jobs:
             -H "Content-Type: application/json" \
             --data '{
               "pattern": "api.${{ env.DEPLOY_DOMAIN }}/*",
-              "script": "nexo-api"
+              "script": "klaas-api"
             }' > /dev/null || true
 
           echo "Custom domain api.${{ env.DEPLOY_DOMAIN }} configured successfully"
@@ -349,15 +349,15 @@ jobs:
         run: yarn install --frozen-lockfile
 
       - name: Run linting
-        run: yarn workspace @nexo/dashboard lint
+        run: yarn workspace @klaas/dashboard lint
         continue-on-error: true
 
       - name: Run type checking
-        run: yarn workspace @nexo/dashboard typecheck
+        run: yarn workspace @klaas/dashboard typecheck
         continue-on-error: true
 
       - name: Build dashboard
-        run: yarn workspace @nexo/dashboard build
+        run: yarn workspace @klaas/dashboard build
         env:
           NEXT_PUBLIC_API_URL: https://api.${{ env.DEPLOY_DOMAIN }}
 
@@ -386,13 +386,13 @@ jobs:
         run: yarn install --frozen-lockfile
 
       - name: Build dashboard for Cloudflare
-        run: yarn workspace @nexo/dashboard build:cf
+        run: yarn workspace @klaas/dashboard build:cf
         env:
           NEXT_PUBLIC_API_URL: https://api-staging.${{ env.DEPLOY_DOMAIN }}
 
       - name: Ensure R2 buckets exist
         run: |
-          BUCKET_NAME="nexo-dashboard-cache-staging"
+          BUCKET_NAME="klaas-dashboard-cache-staging"
           npx wrangler r2 bucket create "$BUCKET_NAME" 2>&1 || true
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
@@ -470,7 +470,7 @@ jobs:
             -H "Content-Type: application/json" \
             --data '{
               "pattern": "app-staging.${{ env.DEPLOY_DOMAIN }}/*",
-              "script": "nexo-dashboard-staging"
+              "script": "klaas-dashboard-staging"
             }' > /dev/null || true
 
           echo "Custom domain app-staging.${{ env.DEPLOY_DOMAIN }} configured successfully"
@@ -502,13 +502,13 @@ jobs:
         run: yarn install --frozen-lockfile
 
       - name: Build dashboard for Cloudflare
-        run: yarn workspace @nexo/dashboard build:cf
+        run: yarn workspace @klaas/dashboard build:cf
         env:
           NEXT_PUBLIC_API_URL: https://api.${{ env.DEPLOY_DOMAIN }}
 
       - name: Ensure R2 buckets exist
         run: |
-          BUCKET_NAME="nexo-dashboard-cache-production"
+          BUCKET_NAME="klaas-dashboard-cache-production"
           npx wrangler r2 bucket create "$BUCKET_NAME" 2>&1 || true
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
@@ -586,7 +586,7 @@ jobs:
             -H "Content-Type: application/json" \
             --data '{
               "pattern": "app.${{ env.DEPLOY_DOMAIN }}/*",
-              "script": "nexo-dashboard"
+              "script": "klaas-dashboard"
             }' > /dev/null || true
 
           echo "Custom domain app.${{ env.DEPLOY_DOMAIN }} configured successfully"
@@ -617,13 +617,13 @@ jobs:
   #     - name: Install dependencies
   #       run: yarn install --frozen-lockfile
   #     - name: Run linting
-  #       run: yarn workspace @nexo/admin lint
+  #       run: yarn workspace @klaas/admin lint
   #       continue-on-error: true
   #     - name: Run type checking
-  #       run: yarn workspace @nexo/admin typecheck
+  #       run: yarn workspace @klaas/admin typecheck
   #       continue-on-error: true
   #     - name: Build admin
-  #       run: yarn workspace @nexo/admin build
+  #       run: yarn workspace @klaas/admin build
   #       env:
   #         NEXT_PUBLIC_API_URL: https://api.${{ env.DEPLOY_DOMAIN }}
   #
@@ -699,33 +699,33 @@ jobs:
           # macOS Intel
           - target: x86_64-apple-darwin
             os: macos-13
-            binary_name: nexo
-            asset_name: nexo-darwin-x64
+            binary_name: klaas
+            asset_name: klaas-darwin-x64
 
           # macOS ARM (Apple Silicon)
           - target: aarch64-apple-darwin
             os: macos-14
-            binary_name: nexo
-            asset_name: nexo-darwin-arm64
+            binary_name: klaas
+            asset_name: klaas-darwin-arm64
 
           # Linux x64
           - target: x86_64-unknown-linux-gnu
             os: ubuntu-latest
-            binary_name: nexo
-            asset_name: nexo-linux-x64
+            binary_name: klaas
+            asset_name: klaas-linux-x64
 
           # Linux ARM64
           - target: aarch64-unknown-linux-gnu
             os: ubuntu-latest
-            binary_name: nexo
-            asset_name: nexo-linux-arm64
+            binary_name: klaas
+            asset_name: klaas-linux-arm64
             cross: true
 
           # Windows x64
           - target: x86_64-pc-windows-msvc
             os: windows-latest
-            binary_name: nexo.exe
-            asset_name: nexo-windows-x64.exe
+            binary_name: klaas.exe
+            asset_name: klaas-windows-x64.exe
 
     steps:
       - uses: actions/checkout@v4

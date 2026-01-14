@@ -65,7 +65,7 @@ authRoutes.post('/device', async (c) => {
   // Use DASHBOARD_URL from environment or fall back to defaults
   const dashboardUrl = c.env.DASHBOARD_URL
     || (c.env.ENVIRONMENT === 'production'
-      ? 'https://app.nexo.dev'
+      ? 'https://app.klaas.sh'
       : 'http://localhost:3001');
   const verificationUri = `${dashboardUrl}/device`;
   const verificationUriComplete = `${dashboardUrl}/device/${userCode}`;

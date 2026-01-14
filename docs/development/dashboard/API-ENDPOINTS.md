@@ -1,6 +1,6 @@
 # Dashboard API Endpoints
 
-This document defines the API endpoints required for the Nexo Dashboard.
+This document defines the API endpoints required for the Klaas Dashboard.
 All dashboard endpoints live under the `/dashboard` prefix.
 
 ## Authentication Endpoints
@@ -190,7 +190,7 @@ Real-time terminal connection for a session.
 
 **Connection URL:**
 ```
-wss://api.nexo.dev/dashboard/sessions/01HQXK7V8G3N5M2R4P6T1W9Y0Z/terminal?token=eyJhbG...
+wss://api.klaas.sh/dashboard/sessions/01HQXK7V8G3N5M2R4P6T1W9Y0Z/terminal?token=eyJhbG...
 ```
 
 **Message Types (Client to Server):**

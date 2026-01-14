@@ -1,4 +1,4 @@
--- Initial database schema for Nexo
+-- Initial database schema for Klaas
 -- All IDs use ULID format (26 characters, uppercase alphanumeric)
 
 -- Users table
@@ -29,7 +29,7 @@ CREATE TABLE IF NOT EXISTS devices (
 CREATE INDEX IF NOT EXISTS idx_devices_user_id ON devices(user_id);
 
 -- Sessions table
--- Stores CLI sessions (each nexo invocation creates a session)
+-- Stores CLI sessions (each klaas invocation creates a session)
 CREATE TABLE IF NOT EXISTS sessions (
     id TEXT PRIMARY KEY,
     user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,

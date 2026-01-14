@@ -1,5 +1,5 @@
-# Nexo API - Cloudflare Workers Configuration
-name = "nexo-api"
+# Klaas API - Cloudflare Workers Configuration
+name = "klaas-api"
 main = "src/index.ts"
 compatibility_date = "2025-01-13"
 compatibility_flags = ["nodejs_compat"]
@@ -7,7 +7,7 @@ compatibility_flags = ["nodejs_compat"]
 # Development environment (default)
 [[d1_databases]]
 binding = "DB"
-database_name = "nexo-db-local"
+database_name = "klaas-db-local"
 database_id = "local"
 migrations_dir = "migrations"
 
@@ -38,11 +38,11 @@ DASHBOARD_URL = "http://localhost:3001"
 
 # Staging environment
 [env.staging]
-name = "nexo-api-staging"
+name = "klaas-api-staging"
 
 [[env.staging.d1_databases]]
 binding = "DB"
-database_name = "nexo-db-staging"
+database_name = "klaas-db-staging"
 database_id = "placeholder-staging-db-id"
 migrations_dir = "migrations"
 
@@ -60,16 +60,16 @@ class_name = "SessionHub"
 
 [env.staging.vars]
 ENVIRONMENT = "staging"
-DASHBOARD_URL = "https://staging.nexo.dev"
+DASHBOARD_URL = "https://staging.klaas.sh"
 
 # Production environment
 [env.production]
-name = "nexo-api"
-routes = [{ pattern = "api.nexo.dev", custom_domain = true }]
+name = "klaas-api"
+routes = [{ pattern = "api.klaas.sh", custom_domain = true }]
 
 [[env.production.d1_databases]]
 binding = "DB"
-database_name = "nexo-db-production"
+database_name = "klaas-db-production"
 database_id = "placeholder-production-db-id"
 migrations_dir = "migrations"
 
@@ -87,4 +87,4 @@ class_name = "SessionHub"
 
 [env.production.vars]
 ENVIRONMENT = "production"
-DASHBOARD_URL = "https://app.nexo.dev"
+DASHBOARD_URL = "https://app.klaas.sh"

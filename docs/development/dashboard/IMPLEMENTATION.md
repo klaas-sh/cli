@@ -1,12 +1,12 @@
-# Nexo Dashboard Implementation Guide
+# Klaas Dashboard Implementation Guide
 
-This document provides a comprehensive implementation guide for the Nexo
+This document provides a comprehensive implementation guide for the Klaas
 Dashboard application. The dashboard is based on the RedirMe.com dashboard
 patterns and architecture.
 
 ## Overview
 
-The Nexo Dashboard allows users to:
+The Klaas Dashboard allows users to:
 - Log in to their account
 - View all their Claude Code sessions
 - Connect to active sessions via a terminal interface
@@ -110,10 +110,10 @@ cd packages/dashboard
 
 ```json
 {
-  "name": "@nexo/dashboard",
+  "name": "@klaas/dashboard",
   "version": "0.1.0",
   "private": true,
-  "description": "Nexo User Dashboard",
+  "description": "Klaas User Dashboard",
   "scripts": {
     "dev": "next dev -p 3001",
     "build": "next build",
@@ -180,9 +180,9 @@ Copy the login form from RedirMe.com verbatim. The login form handles:
 
 **Source**: `redirme.com/packages/dashboard/src/components/auth/login-form.tsx`
 
-Key changes for Nexo:
-- Replace `redirme-user-token` with `nexo-user-token`
-- Update branding/colors from purple to match Nexo theme
+Key changes for Klaas:
+- Replace `redirme-user-token` with `klaas-user-token`
+- Update branding/colors from purple to match Klaas theme
 - Remove tracking calls (`setUetUserIdentity`)
 - Remove guest user ID handling
 
@@ -254,7 +254,7 @@ export const useAuth = create<AuthState>()(set => ({
   },
 
   initialize: async (): Promise<void> => {
-    const hasToken = localStorage.getItem('nexo-user-token')
+    const hasToken = localStorage.getItem('klaas-user-token')
     if (!hasToken) {
       set({
         isAuthenticated: false,
@@ -351,14 +351,14 @@ class ApiClient {
     }
 
     if (result.success && result.data?.token) {
-      localStorage.setItem('nexo-user-token', result.data.token)
+      localStorage.setItem('klaas-user-token', result.data.token)
 
       // Set cookie for middleware
       const isHttps = window.location.protocol === 'https:'
       const secureFlag = isHttps ? '; secure' : ''
       const cookieOptions = `path=/; max-age=${60 * 60 * 24}; ` +
         `samesite=strict${secureFlag}`
-      document.cookie = `nexo-user-token=${result.data.token}; ${cookieOptions}`
+      document.cookie = `klaas-user-token=${result.data.token}; ${cookieOptions}`
 
       return { success: true, token: result.data.token }
     }
@@ -367,15 +367,15 @@ class ApiClient {
   }
 
   async logout(): Promise<void> {
-    localStorage.removeItem('nexo-user-token')
+    localStorage.removeItem('klaas-user-token')
     const isHttps = window.location.protocol === 'https:'
     const secureFlag = isHttps ? '; secure' : ''
-    document.cookie = 'nexo-user-token=; path=/; ' +
+    document.cookie = 'klaas-user-token=; path=/; ' +
       `expires=Thu, 01 Jan 1970 00:00:01 GMT; samesite=strict${secureFlag}`
   }
 
   async checkAuth(): Promise<AuthCheckResponse> {
-    const token = localStorage.getItem('nexo-user-token')
+    const token = localStorage.getItem('klaas-user-token')
     if (!token) {
       return { authenticated: false }
     }
@@ -392,16 +392,16 @@ class ApiClient {
       if (response.ok) {
         return { authenticated: true }
       }
-      localStorage.removeItem('nexo-user-token')
+      localStorage.removeItem('klaas-user-token')
       return { authenticated: false }
     } catch {
-      localStorage.removeItem('nexo-user-token')
+      localStorage.removeItem('klaas-user-token')
       return { authenticated: false }
     }
   }
 
   async request<T>(endpoint: string, options: RequestInit = {}): Promise<T> {
-    const token = localStorage.getItem('nexo-user-token')
+    const token = localStorage.getItem('klaas-user-token')
     const url = `${this.baseUrl}${endpoint}`
 
     const response = await fetch(url, {
@@ -453,7 +453,7 @@ export default function DashboardLayout({
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false)
 
   useEffect(() => {
-    const token = localStorage.getItem('nexo-user-token')
+    const token = localStorage.getItem('klaas-user-token')
     if (!token) {
       router.push('/login')
     }
@@ -503,7 +503,7 @@ export default function DashboardLayout({
 import React, { useState, useEffect } from 'react'
 import { Sun, Moon, User, ChevronDown, Menu } from 'lucide-react'
 
-const DARK_MODE_KEY = 'nexo-dashboard-dark-mode'
+const DARK_MODE_KEY = 'klaas-dashboard-dark-mode'
 
 interface HeaderProps {
   onMenuClick?: () => void
@@ -1031,7 +1031,7 @@ export function Terminal({
     // Connect to WebSocket
     const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8787'
     const wsUrl = apiUrl.replace(/^http/, 'ws')
-    const token = localStorage.getItem('nexo-user-token')
+    const token = localStorage.getItem('klaas-user-token')
 
     const ws = new WebSocket(
       `${wsUrl}/dashboard/sessions/${sessionId}/terminal?token=${token}`
@@ -1371,7 +1371,7 @@ ALTER TABLE sessions ADD COLUMN last_activity_at TEXT;
 
 1. **Token Storage**: Store JWT in localStorage and cookie for middleware
 2. **CORS**: Configure API to allow dashboard origin
-3. **Token Name**: Use `nexo-user-token` (not `redirme-user-token`)
+3. **Token Name**: Use `klaas-user-token` (not `redirme-user-token`)
 4. **Route Protection**: All `/dashboard/*` routes require valid JWT
 5. **WebSocket Auth**: Pass token as query parameter for WebSocket connections
 

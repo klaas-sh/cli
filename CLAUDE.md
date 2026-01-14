@@ -1,8 +1,8 @@
-# Nexo Project Instructions
+# Klaas Project Instructions
 
 ## Overview
 
-Nexo is a cross-platform CLI tool that wraps Claude Code sessions, enabling
+Klaas is a cross-platform CLI tool that wraps Claude Code sessions, enabling
 remote access and control via a web interface. The core CLI is built in Rust,
 the API backend runs on Cloudflare Workers.
 
@@ -19,7 +19,7 @@ the API backend runs on Cloudflare Workers.
 ## Project Structure
 
 ```
-nexo/
+klaas/
 ├── packages/
 │   ├── cli/              # Rust CLI wrapper
 │   │   ├── Cargo.toml
@@ -49,7 +49,7 @@ nexo/
 ├── docs/
 │   └── development/
 │       ├── 01-teleportation-dev-research.md
-│       ├── 02-nexo-mvp-spec.md
+│       ├── 02-klaas-mvp-spec.md
 │       └── cli/
 │           ├── 01-functional-requirements.md
 │           └── 02-implementation-guide.md
@@ -87,7 +87,7 @@ cargo run
 cargo run -- -p "Hello world"
 
 # Run with debug logging
-RUST_LOG=nexo=debug cargo run
+RUST_LOG=klaas=debug cargo run
 
 # Run tests
 cargo test
@@ -172,7 +172,7 @@ See redirme.com workflows for reference.
 
 - Functional requirements: `docs/development/cli/01-functional-requirements.md`
 - Implementation guide: `docs/development/cli/02-implementation-guide.md`
-- MVP specification: `docs/development/02-nexo-mvp-spec.md`
+- MVP specification: `docs/development/02-klaas-mvp-spec.md`
 
 ## Dashboard Theme Colors
 

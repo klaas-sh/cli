@@ -146,7 +146,7 @@ async function createUser() {
       console.error(
         yellow`\nThe users table doesn't exist. Please run migrations first:`
       );
-      console.error('   yarn workspace @nexo/api db:migrate');
+      console.error('   yarn workspace @klaas/api db:migrate');
     }
     if (error.message.includes('no such column: password_hash')) {
       console.error(

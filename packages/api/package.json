@@ -1,8 +1,8 @@
 {
-  "name": "@nexo/api",
+  "name": "@klaas/api",
   "version": "0.1.0",
   "private": true,
-  "description": "Nexo API - Cloudflare Workers backend",
+  "description": "Klaas API - Cloudflare Workers backend",
   "type": "module",
   "scripts": {
     "dev": "wrangler dev",

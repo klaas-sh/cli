@@ -71,7 +71,7 @@ const mockEnv: Env = {
   JWT_SECRET: 'test-secret',
 };
 
-describe('Nexo API', () => {
+describe('Klaas API', () => {
   let app: ReturnType<typeof createApp>;
 
   beforeEach(() => {
@@ -86,7 +86,7 @@ describe('Nexo API', () => {
       expect(response.status).toBe(200);
 
       const data = await response.json() as JsonResponse;
-      expect(data.name).toBe('Nexo API');
+      expect(data.name).toBe('Klaas API');
       expect(data.version).toBe('v1');
       expect(data.environment).toBe('development');
     });
