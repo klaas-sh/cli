@@ -339,22 +339,25 @@ pub async fn refresh_token(api_url: &str, refresh_token: &str) -> AuthResult<Tok
 /// * `response` - The device flow response containing verification details
 pub fn display_auth_instructions(response: &DeviceFlowResponse) {
     println!();
-    println!("  To connect this session, visit:");
-    println!();
-    println!("    {}", response.verification_uri);
-    println!();
-    println!("  And enter the code:");
-    println!();
-    println!("    {}", response.user_code);
-    println!();
 
+    // Prefer the complete URL if available (more convenient for user)
     if let Some(complete_uri) = &response.verification_uri_complete {
-        println!("  Or visit this URL directly:");
+        println!("  To connect this device, visit:");
         println!();
         println!("    {}", complete_uri);
         println!();
+        println!("  The code {} will be pre-filled.", response.user_code);
+    } else {
+        println!("  To connect this device, visit:");
+        println!();
+        println!("    {}", response.verification_uri);
+        println!();
+        println!("  And enter the code:");
+        println!();
+        println!("    {}", response.user_code);
     }
 
+    println!();
     println!(
         "  This code expires in {} minutes.",
         response.expires_in / 60
