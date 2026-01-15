@@ -21,6 +21,9 @@ RED='\033[0;31m'
 GREEN='\033[0;32m'
 YELLOW='\033[1;33m'
 BLUE='\033[0;34m'
+GRAY='\033[0;90m'
+# Amber (closest ANSI: 38;5;214)
+AMBER='\033[38;5;214m'
 NC='\033[0m' # No Color
 
 info() {
@@ -99,13 +102,12 @@ download() {
 # Main installation
 main() {
   echo ""
-  echo "  _    _                "
-  echo " | | _| | __ _  __ _ ___"
-  echo " | |/ / |/ _\` |/ _\` / __|"
-  echo " |   <| | (_| | (_| \\__ \\"
-  echo " |_|\\_\\_|\\__,_|\\__,_|___/"
+  echo -e "${AMBER}  ╭────────╮${NC}"
+  echo -e "${AMBER}  ├────────┤${NC}"
+  echo -e "${AMBER}  │ ❯ __   │${NC}"
+  echo -e "${AMBER}  ╰────────╯${NC}"
   echo ""
-  echo " Remote access for Claude Code"
+  echo -e "  ${YELLOW}klaas${NC} ${GRAY}~ Remote access for Claude Code${NC}"
   echo ""
 
   # Detect platform
