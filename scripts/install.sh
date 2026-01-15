@@ -12,7 +12,7 @@
 set -e
 
 # Configuration
-GITHUB_REPO="smoking-media/klaas"
+GITHUB_REPO="klaas-sh/cli"
 BINARY_NAME="klaas"
 INSTALL_DIR="${KLAAS_INSTALL_DIR:-/usr/local/bin}"
 
@@ -135,6 +135,31 @@ main() {
 
   # Download archive
   download "$download_url" "${tmp_dir}/${asset_name}"
+
+  # Download and verify checksum
+  local checksum_url="${download_url}.sha256"
+  if download "$checksum_url" "${tmp_dir}/${asset_name}.sha256" 2>/dev/null; then
+    info "Verifying checksum..."
+    cd "$tmp_dir"
+    if command -v sha256sum &> /dev/null; then
+      if sha256sum -c "${asset_name}.sha256" > /dev/null 2>&1; then
+        info "Checksum verified"
+      else
+        error "Checksum verification failed"
+      fi
+    elif command -v shasum &> /dev/null; then
+      if shasum -a 256 -c "${asset_name}.sha256" > /dev/null 2>&1; then
+        info "Checksum verified"
+      else
+        error "Checksum verification failed"
+      fi
+    else
+      warn "No checksum tool found, skipping verification"
+    fi
+    cd - > /dev/null
+  else
+    warn "Checksum file not available, skipping verification"
+  fi
 
   # Extract
   info "Extracting..."

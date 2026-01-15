@@ -761,13 +761,18 @@ jobs:
           chmod +x ${{ matrix.binary_name }}
           tar -czvf ${{ matrix.asset_name }}.tar.gz ${{ matrix.binary_name }}
           mv ${{ matrix.asset_name }}.tar.gz ../../../..
+          cd ../../../..
+          shasum -a 256 ${{ matrix.asset_name }}.tar.gz > ${{ matrix.asset_name }}.tar.gz.sha256
 
       - name: Prepare artifact (Windows)
         if: runner.os == 'Windows'
         run: |
           cd packages/cli/target/${{ matrix.target }}/release
           Compress-Archive -Path ${{ matrix.binary_name }} `
-            -DestinationPath ../../../..${{ matrix.asset_name }}.zip
+            -DestinationPath ../../../../${{ matrix.asset_name }}.zip
+          cd ../../../..
+          $hash = (Get-FileHash "${{ matrix.asset_name }}.zip" -Algorithm SHA256).Hash.ToLower()
+          "$hash  ${{ matrix.asset_name }}.zip" | Out-File -Encoding utf8 "${{ matrix.asset_name }}.zip.sha256"
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
@@ -775,7 +780,9 @@ jobs:
           name: ${{ matrix.asset_name }}
           path: |
             packages/cli/${{ matrix.asset_name }}.tar.gz
+            packages/cli/${{ matrix.asset_name }}.tar.gz.sha256
             packages/cli/${{ matrix.asset_name }}.zip
+            packages/cli/${{ matrix.asset_name }}.zip.sha256
           if-no-files-found: error
 
   release-cli:
@@ -804,6 +811,7 @@ jobs:
           files: |
             artifacts/**/*.tar.gz
             artifacts/**/*.zip
+            artifacts/**/*.sha256
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 

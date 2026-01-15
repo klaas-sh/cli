@@ -1,0 +1,32 @@
+{
+  "name": "klaas",
+  "version": "0.1.0",
+  "description": "Remote access wrapper for Claude Code - DEPRECATED: Use native installer instead",
+  "keywords": [
+    "claude",
+    "claude-code",
+    "cli",
+    "remote",
+    "terminal"
+  ],
+  "homepage": "https://klaas.sh",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/klaas-sh/cli.git"
+  },
+  "license": "MIT",
+  "author": "klaas-sh",
+  "bin": "./bin/klaas.js",
+  "scripts": {
+    "postinstall": "node postinstall.js"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "os": [
+    "darwin",
+    "linux",
+    "win32"
+  ],
+  "deprecated": "npm installation is deprecated. Please use the native installer: curl -fsSL https://klaas.sh/install.sh | bash"
+}

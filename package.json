@@ -5,7 +5,7 @@
   "description": "Remote access wrapper for Claude Code",
   "repository": {
     "type": "git",
-    "url": "https://github.com/smoking-media/klaas.git"
+    "url": "https://github.com/klaas-sh/platform.git"
   },
   "workspaces": [
     "packages/*"

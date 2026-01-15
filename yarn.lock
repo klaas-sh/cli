@@ -5178,6 +5178,14 @@ __metadata:
   languageName: node
   linkType: hard
 
+"klaas@workspace:packages/npm":
+  version: 0.0.0-use.local
+  resolution: "klaas@workspace:packages/npm"
+  bin:
+    klaas: ./bin/klaas.js
+  languageName: unknown
+  linkType: soft
+
 "kleur@npm:^4.1.5":
   version: 4.1.5
   resolution: "kleur@npm:4.1.5"

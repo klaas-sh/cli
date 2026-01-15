@@ -200,48 +200,7 @@ curl https://api.klaas.sh/health/db
 
 ## 6. CLI Distribution
 
-### Release Process
-
-1. **Update version** in `packages/cli/Cargo.toml`
-2. **Commit** the version change
-3. **Create and push a tag**:
-
-```bash
-git tag v0.1.0
-git push origin v0.1.0
-```
-
-4. GitHub Actions automatically:
-   - Runs tests
-   - Builds binaries for all platforms
-   - Creates a GitHub Release
-
-### Supported Platforms
-
-| Platform | Architecture | Artifact |
-|----------|--------------|----------|
-| macOS | Intel (x86_64) | `klaas-macos-x64.tar.gz` |
-| macOS | Apple Silicon (ARM64) | `klaas-macos-arm64.tar.gz` |
-| Linux | x64 | `klaas-linux-x64.tar.gz` |
-| Linux | ARM64 | `klaas-linux-arm64.tar.gz` |
-| Windows | x64 | `klaas-windows-x64.zip` |
-
-### Installation Script
-
-Users can install via:
-
-```bash
-curl -fsSL https://klaas.sh/install.sh | bash
-```
-
-The install script (`scripts/install.sh`) automatically:
-- Detects OS and architecture
-- Downloads the correct binary from GitHub Releases
-- Installs to `/usr/local/bin` (or `$KLAAS_INSTALL_DIR`)
-
-### Hosting the Install Script
-
-Add the install script to the klaas.sh website at `/install.sh`.
+See [CLI Distribution Guide](./01-cli-distribution.md) for the complete release process, cross-platform builds, package manager setup (Homebrew, Scoop, WinGet), and installer scripts.
 
 ---
 
