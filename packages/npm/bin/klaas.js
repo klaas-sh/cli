@@ -7,31 +7,29 @@
  * who installed via npm that they need to use the native installer.
  */
 
+import { red, cyan, bold } from 'barva';
+
 const isWindows = process.platform === 'win32';
 
-const RED = '\x1b[31m';
-const CYAN = '\x1b[36m';
-const BOLD = '\x1b[1m';
-const RESET = '\x1b[0m';
-
 console.error();
-console.error(`${RED}${BOLD}Error: npm installation of klaas is deprecated` +
-  `${RESET}`);
+console.error(red.bold`Error: npm installation of klaas is deprecated`);
 console.error();
-console.error('The npm package is a placeholder only. ' +
-  'Please install klaas using the native installer:');
+console.error(
+  'The npm package is a placeholder only. ' +
+    'Please install klaas using the native installer:'
+);
 console.error();
 
 if (isWindows) {
-  console.error(`${CYAN}Windows PowerShell:${RESET}`);
+  console.error(cyan`Windows PowerShell:`);
   console.error('  irm https://klaas.sh/install.ps1 | iex');
   console.error();
-  console.error(`${CYAN}Windows CMD:${RESET}`);
+  console.error(cyan`Windows CMD:`);
   console.error(
     '  curl -fsSL https://klaas.sh/install.cmd -o install.cmd && install.cmd'
   );
 } else {
-  console.error(`${CYAN}macOS / Linux / WSL:${RESET}`);
+  console.error(cyan`macOS / Linux / WSL:`);
   console.error('  curl -fsSL https://klaas.sh/install.sh | bash');
 }
 

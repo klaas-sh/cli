@@ -16,9 +16,13 @@
   },
   "license": "MIT",
   "author": "klaas-sh",
+  "type": "module",
   "bin": "./bin/klaas.js",
   "scripts": {
     "postinstall": "node postinstall.js"
+  },
+  "dependencies": {
+    "barva": "^1.0.0"
   },
   "engines": {
     "node": ">=18"
