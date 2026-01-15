@@ -143,7 +143,16 @@ pub async fn run(claude_args: Vec<String>, new_session: bool) -> Result<i32> {
     let shutdown_tx_reader = shutdown_tx.clone();
 
     // Spawn PTY reader task (reads output from Claude Code)
+    // Optional debug logging: set KLAAS_DEBUG_LOG=/path/to/file to capture output
+    let debug_log_path = std::env::var("KLAAS_DEBUG_LOG").ok();
     let reader_handle = tokio::task::spawn_blocking(move || {
+        use std::fs::OpenOptions;
+        use std::io::Write as IoWrite;
+
+        let mut debug_file = debug_log_path
+            .as_ref()
+            .and_then(|path| OpenOptions::new().create(true).append(true).open(path).ok());
+
         let mut buf = [0u8; 4096];
         loop {
             match pty_for_reader.read_blocking(&mut buf) {
@@ -153,6 +162,26 @@ pub async fn run(claude_args: Vec<String>, new_session: bool) -> Result<i32> {
                     break;
                 }
                 Ok(n) => {
+                    // Debug: log raw output to file
+                    if let Some(ref mut file) = debug_file {
+                        // Log each character individually
+                        let text = String::from_utf8_lossy(&buf[..n]);
+                        for ch in text.chars() {
+                            if ch == '\x1b' {
+                                let _ = writeln!(file, "print('ESC')");
+                            } else if ch == '\n' {
+                                let _ = writeln!(file, "print('\\n')");
+                            } else if ch == '\r' {
+                                let _ = writeln!(file, "print('\\r')");
+                            } else if ch.is_control() {
+                                let _ = writeln!(file, "print('0x{:02x}')", ch as u32);
+                            } else {
+                                let _ = writeln!(file, "print('{}')", ch);
+                            }
+                        }
+                        let _ = file.flush();
+                    }
+
                     if pty_output_tx.blocking_send(buf[..n].to_vec()).is_err() {
                         break;
                     }

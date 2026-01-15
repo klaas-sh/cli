@@ -212,7 +212,7 @@ pub async fn poll_for_token(
     let expiry_duration = Duration::from_secs(expires_in);
     let mut current_interval_secs = interval;
     let animation_interval = ui::animation_interval();
-    let mut animation = WaitingAnimation::new();
+    let mut animation = WaitingAnimation::new(expires_in);
     let mut ticks_until_poll = 0u64;
 
     debug!(

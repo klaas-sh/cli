@@ -4,7 +4,7 @@
 //! brand colors (amber palette).
 
 use std::io::{self, Write};
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 /// Amber color palette from klaas brand (matching landing page design).
 pub mod colors {
@@ -33,8 +33,11 @@ pub mod colors {
 }
 
 /// Star characters for the animated spinner (matching Claude Code's sequence).
-/// Bounces: small → large → small
-const STAR_FRAMES: &[char] = &['✢', '✳', '✶', '✻', '✽', '✻', '✶', '✳'];
+/// Uses middle dot as "off" state, lingers longer on larger stars.
+const STAR_FRAMES: &[char] = &[
+    '·', '·', '·', '·', '✢', '✳', '✶', '✻', '✻', '✻', '✽', '✽', '✽', '✽', '✽', '✻', '✻', '✻', '✶',
+    '✶', '✳', '✢', '·',
+];
 
 /// Width of the shimmer highlight (number of characters).
 const SHIMMER_WIDTH: usize = 5;
@@ -95,19 +98,34 @@ pub struct WaitingAnimation {
     text_len: usize,
     direction: ShimmerDirection,
     pause_frames: usize,
+    start_time: Instant,
+    expires_in_secs: u64,
 }
 
 impl WaitingAnimation {
-    /// Creates a new waiting animation.
-    pub fn new() -> Self {
-        let text = "Waiting for authorisation...";
+    /// Creates a new waiting animation with the given expiry time in seconds.
+    pub fn new(expires_in_secs: u64) -> Self {
+        let text = "Waiting for authorisation…";
         Self {
             frame: 0,
             shimmer_pos: -(SHIMMER_WIDTH as isize),
             text_len: text.chars().count(),
             direction: ShimmerDirection::Forward,
             pause_frames: 0,
+            start_time: Instant::now(),
+            expires_in_secs,
         }
+    }
+
+    /// Returns the remaining seconds until expiry.
+    pub fn remaining_secs(&self) -> u64 {
+        let elapsed = self.start_time.elapsed().as_secs();
+        self.expires_in_secs.saturating_sub(elapsed)
+    }
+
+    /// Returns true if the authorization has expired.
+    pub fn is_expired(&self) -> bool {
+        self.remaining_secs() == 0
     }
 
     /// Renders a single frame of the "Waiting for authorization" animation.
@@ -116,7 +134,7 @@ impl WaitingAnimation {
     /// bright highlight moves back and forth through the amber-colored text.
     pub fn render_frame(&mut self) {
         let star = STAR_FRAMES[self.frame % STAR_FRAMES.len()];
-        let text = "Waiting for authorisation...";
+        let text = "Waiting for authorisation…";
 
         // Build the animated text with single shimmer highlight
         let mut output = String::new();
@@ -149,6 +167,34 @@ impl WaitingAnimation {
             output.push(ch);
         }
         output.push_str(RESET);
+
+        // Add countdown timer
+        let remaining = self.remaining_secs();
+        let time_text = if remaining == 0 {
+            "0 seconds left".to_string()
+        } else if remaining <= 60 {
+            // Show seconds in the last minute
+            if remaining == 1 {
+                "1 second left".to_string()
+            } else {
+                format!("{} seconds left", remaining)
+            }
+        } else {
+            // Show minutes when > 1 minute
+            let minutes = remaining.div_ceil(60);
+            if minutes == 1 {
+                "1 minute left".to_string()
+            } else {
+                format!("{} minutes left", minutes)
+            }
+        };
+        let (mr, mg, mb) = colors::TEXT_MUTED;
+        output.push_str(&format!(
+            " {}({}){}",
+            fg_color(mr, mg, mb),
+            time_text,
+            RESET
+        ));
 
         print!("{}", output);
         let _ = io::stdout().flush();
@@ -192,7 +238,7 @@ impl WaitingAnimation {
 
 impl Default for WaitingAnimation {
     fn default() -> Self {
-        Self::new()
+        Self::new(600) // Default 10 minutes
     }
 }
 
@@ -327,9 +373,10 @@ mod tests {
 
     #[test]
     fn test_waiting_animation_new() {
-        let anim = WaitingAnimation::new();
+        let anim = WaitingAnimation::new(600);
         assert_eq!(anim.frame, 0);
         assert_eq!(anim.shimmer_pos, -(SHIMMER_WIDTH as isize));
+        assert_eq!(anim.expires_in_secs, 600);
     }
 
     #[test]
