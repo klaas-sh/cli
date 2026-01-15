@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="logo.svg" alt="klaas logo" width="80" height="80">
+  <img src="https://raw.githubusercontent.com/klaas-sh/cli/main/logo.svg" alt="klaas logo" width="80" height="80">
 </p>
 
 <h1 align="center">klaas</h1>
@@ -17,24 +17,20 @@
 
 <p align="center">
   <picture>
-    <source srcset="terminal-animation.avif" type="image/avif">
-    <img src="terminal-animation.webp" alt="klaas demo" width="700">
+    <source srcset="https://raw.githubusercontent.com/klaas-sh/cli/main/terminal-animation.avif" type="image/avif">
+    <img src="https://raw.githubusercontent.com/klaas-sh/cli/main/terminal-animation.webp" alt="klaas demo" width="700">
   </picture>
 </p>
 
 ---
 
-## What is klaas?
-
-**klaas** wraps your Claude Code sessions and streams them to the cloud, enabling remote access from any device via a web interface. Perfect for:
-
-- **Remote approval** - Approve tool calls from your phone when Claude needs permission
-- **Remote instructions** - Send new prompts and instructions to Claude from anywhere
-- **Monitor sessions** - Watch long-running coding sessions from any device
-- **Share with teammates** - Give others access to view your Claude Code session
-- **Stay in control** - Keep an eye on autonomous coding tasks wherever you are
+> **Warning**
+> This npm package is deprecated. Please use the native installer instead.
 
 ## Installation
+
+klaas is a native Rust binary. For the best experience, install using one of
+these methods:
 
 ### macOS / Linux / WSL
 
@@ -61,6 +57,29 @@ scoop bucket add klaas https://github.com/klaas-sh/scoop-bucket
 scoop install klaas
 ```
 
+## Why not npm?
+
+klaas is a native Rust binary that wraps Claude Code. Native installation
+provides:
+
+- **Better performance** - No Node.js overhead
+- **Proper system integration** - Uses system keychain for credentials
+- **Automatic updates** - Built-in update mechanism
+- **Smaller footprint** - Single binary, no dependencies
+
+## What is klaas?
+
+**klaas** wraps your Claude Code sessions and streams them to the cloud,
+enabling remote access from any device via a web interface. Perfect for:
+
+- **Remote approval** - Approve tool calls from your phone when Claude needs
+  permission
+- **Remote instructions** - Send new prompts and instructions to Claude from
+  anywhere
+- **Monitor sessions** - Watch long-running coding sessions from any device
+- **Share with teammates** - Give others access to view your Claude Code session
+- **Stay in control** - Keep an eye on autonomous coding tasks wherever you are
+
 ## Usage
 
 Simply replace `claude` with `klaas`:
@@ -79,7 +98,8 @@ klaas --new-session
 klaas --model sonnet --allowedTools Read,Write
 ```
 
-On first run, you'll be prompted to authenticate via your browser. Once authenticated, your session is automatically streamed to the klaas dashboard.
+On first run, you'll be prompted to authenticate via your browser. Once
+authenticated, your session is automatically streamed to the klaas dashboard.
 
 ## How It Works
 
@@ -105,47 +125,15 @@ On first run, you'll be prompted to authenticate via your browser. Once authenti
 3. Output is streamed to the klaas cloud in real-time
 4. Access your session from the web dashboard at [klaas.sh](https://klaas.sh)
 
-## Commands
-
-| Command | Description |
-|---------|-------------|
-| `klaas` | Start Claude Code with remote access |
-| `klaas update` | Update klaas to the latest version |
-| `klaas --version` | Show version |
-| `klaas --help` | Show help |
-
-## Configuration
-
-klaas stores credentials securely in your system keychain (macOS Keychain, Windows Credential Manager, or Linux Secret Service).
-
-### Environment Variables
-
-| Variable | Description | Default |
-|----------|-------------|---------|
-| `KLAAS_API_URL` | API server URL | `https://api.klaas.sh` |
-| `KLAAS_INSTALL_DIR` | Installation directory | Platform default |
-
-## Building from Source
-
-```bash
-# Clone the repository
-git clone https://github.com/klaas-sh/cli.git
-cd cli
-
-# Build
-cargo build --release
-
-# Run
-./target/release/klaas
-```
-
 ## License
 
-MIT License - see [LICENSE](LICENSE) for details.
+MIT License - see [LICENSE](https://github.com/klaas-sh/cli/blob/main/LICENSE)
+for details.
 
 ## Links
 
 - [Website](https://klaas.sh)
 - [Documentation](https://klaas.sh/docs)
 - [Dashboard](https://klaas.sh/sessions)
+- [GitHub](https://github.com/klaas-sh/cli)
 - [Report Issues](https://github.com/klaas-sh/cli/issues)

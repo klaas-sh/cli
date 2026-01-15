@@ -1,6 +1,6 @@
 {
   "name": "klaas",
-  "version": "0.1.0",
+  "version": "1.0.0",
   "description": "Remote access wrapper for Claude Code - DEPRECATED: Use native installer instead",
   "keywords": [
     "claude",
@@ -18,6 +18,12 @@
   "author": "klaas-sh",
   "type": "module",
   "bin": "./bin/klaas.js",
+  "files": [
+    "bin",
+    "postinstall.js",
+    "LICENSE",
+    "README.md"
+  ],
   "scripts": {
     "postinstall": "node postinstall.js"
   },

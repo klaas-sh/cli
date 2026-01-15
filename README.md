@@ -5,10 +5,13 @@ view/interact with it from anywhere via a web browser.
 
 ## Features
 
+- **Remote Approval**: Approve tool calls from your phone when Claude needs
+  permission - never miss a prompt while away from your desk
+- **Remote Instructions**: Send new prompts and instructions to Claude from
+  anywhere - keep your coding session moving forward
+- **Remote Viewing**: Stream terminal output in real-time to a web dashboard
 - **Transparent Wrapper**: Wraps Claude Code in a PTY without modifying its
   behavior - all Claude Code commands work unchanged
-- **Remote Viewing**: Stream terminal output in real-time to a web dashboard
-- **Remote Input**: Type in the browser and have it sent to your local CLI
 - **OAuth Authentication**: Secure device-based authentication flow
 - **Auto-reconnect**: Handles connection drops gracefully
 
