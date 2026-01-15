@@ -1,7 +1,7 @@
 # TODO
 
 
-so ## MVP
+## MVP
 - sessions overview last active time in seconds/minutes/hours/days. it's not
   accurate, current session already says 1 hour ago
 - cursor is visible in xtermjs again
@@ -11,6 +11,10 @@ so ## MVP
 plugin suggestions
 /plugin marketplace add anthropics/claude-code
 /plugin install frontend-design@claude-code-plugins
+
+## OTHERS
+https://dev.to/rajeshroyal/claude-code-remote-your-ai-anywhere-you-go-l94
+https://teleportation.dev/
 
 ### CLI Background Reconnection
 
