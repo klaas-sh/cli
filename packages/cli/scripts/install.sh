@@ -6,7 +6,7 @@
 #   curl -fsSL https://klaas.sh/install.sh | bash
 #
 # This script downloads and installs the klaas CLI binary.
-# Supported platforms: macOS (arm64, x64), Linux (arm64, x64)
+# Supported platforms: macOS (arm64, x64), Linux (arm64, x64, musl)
 #
 
 set -e
@@ -22,9 +22,8 @@ GREEN='\033[0;32m'
 YELLOW='\033[1;33m'
 BLUE='\033[0;34m'
 GRAY='\033[0;90m'
-# Amber (closest ANSI: 38;5;214)
 AMBER='\033[38;5;214m'
-NC='\033[0m' # No Color
+NC='\033[0m'
 
 info() {
   echo -e "${BLUE}[INFO]${NC} $1"
@@ -50,7 +49,9 @@ detect_os() {
   case "$os" in
     Darwin) echo "darwin" ;;
     Linux) echo "linux" ;;
-    MINGW*|MSYS*|CYGWIN*) error "Windows is not supported by this installer. Please download the binary manually from GitHub releases." ;;
+    MINGW*|MSYS*|CYGWIN*)
+      error "Use PowerShell installer: irm https://klaas.sh/install.ps1 | iex"
+      ;;
     *) error "Unsupported operating system: $os" ;;
   esac
 }
@@ -66,18 +67,46 @@ detect_arch() {
   esac
 }
 
-# Get the latest release version from GitHub
-get_latest_version() {
-  local version
+# Detect if running on musl (Alpine Linux, etc.)
+detect_musl() {
+  if [ -f /lib/libc.musl-x86_64.so.1 ] || \
+     [ -f /lib/libc.musl-aarch64.so.1 ] || \
+     [ -f /lib/ld-musl-x86_64.so.1 ] || \
+     [ -f /lib/ld-musl-aarch64.so.1 ] || \
+     (command -v ldd &> /dev/null && ldd /bin/ls 2>&1 | grep -q musl); then
+    echo "true"
+  else
+    echo "false"
+  fi
+}
+
+# Download to stdout or file
+download() {
+  local url="$1"
+  local output="$2"
+
   if command -v curl &> /dev/null; then
-    version=$(curl -fsSL "https://api.github.com/repos/${GITHUB_REPO}/releases/latest" | \
-      grep '"tag_name"' | sed -E 's/.*"([^"]+)".*/\1/')
+    if [ -n "$output" ]; then
+      curl -fsSL "$url" -o "$output"
+    else
+      curl -fsSL "$url"
+    fi
   elif command -v wget &> /dev/null; then
-    version=$(wget -qO- "https://api.github.com/repos/${GITHUB_REPO}/releases/latest" | \
-      grep '"tag_name"' | sed -E 's/.*"([^"]+)".*/\1/')
+    if [ -n "$output" ]; then
+      wget -q "$url" -O "$output"
+    else
+      wget -q "$url" -O -
+    fi
   else
     error "Neither curl nor wget found. Please install one of them."
   fi
+}
+
+# Get the latest release version from GitHub
+get_latest_version() {
+  local version
+  version=$(download "https://api.github.com/repos/${GITHUB_REPO}/releases/latest" | \
+    grep '"tag_name"' | sed -E 's/.*"([^"]+)".*/\1/')
 
   if [ -z "$version" ]; then
     error "Failed to get latest version from GitHub"
@@ -85,18 +114,21 @@ get_latest_version() {
   echo "$version"
 }
 
-# Download a file
-download() {
-  local url="$1"
-  local output="$2"
+# Extract checksum from manifest.json using pure bash (no jq dependency)
+get_checksum_from_manifest() {
+  local manifest="$1"
+  local platform="$2"
 
-  if command -v curl &> /dev/null; then
-    curl -fsSL "$url" -o "$output"
-  elif command -v wget &> /dev/null; then
-    wget -q "$url" -O "$output"
-  else
-    error "Neither curl nor wget found. Please install one of them."
+  # Normalize JSON to single line
+  manifest=$(echo "$manifest" | tr -d '\n\r\t' | sed 's/ \+/ /g')
+
+  # Extract checksum for platform using bash regex
+  if [[ $manifest =~ \"$platform\"[^}]*\"checksum\"[[:space:]]*:[[:space:]]*\"([a-f0-9]{64})\" ]]; then
+    echo "${BASH_REMATCH[1]}"
+    return 0
   fi
+
+  return 1
 }
 
 # Main installation
@@ -111,10 +143,21 @@ main() {
   echo ""
 
   # Detect platform
-  local os arch platform
+  local os arch is_musl platform
   os=$(detect_os)
   arch=$(detect_arch)
-  platform="${os}-${arch}"
+
+  # Check for musl on Linux
+  if [ "$os" = "linux" ]; then
+    is_musl=$(detect_musl)
+    if [ "$is_musl" = "true" ]; then
+      platform="${os}-${arch}-musl"
+    else
+      platform="${os}-${arch}"
+    fi
+  else
+    platform="${os}-${arch}"
+  fi
 
   info "Detected platform: $platform"
 
@@ -123,6 +166,24 @@ main() {
   local version
   version=$(get_latest_version)
   info "Latest version: $version"
+
+  # Download manifest.json
+  info "Downloading manifest..."
+  local manifest_url="https://github.com/${GITHUB_REPO}/releases/download/${version}/manifest.json"
+  local manifest
+  manifest=$(download "$manifest_url")
+
+  if [ -z "$manifest" ]; then
+    error "Failed to download manifest.json"
+  fi
+
+  # Extract checksum from manifest
+  local checksum
+  checksum=$(get_checksum_from_manifest "$manifest" "$platform")
+
+  if [ -z "$checksum" ] || [[ ! "$checksum" =~ ^[a-f0-9]{64}$ ]]; then
+    error "Platform $platform not found in manifest"
+  fi
 
   # Build download URL
   local asset_name="klaas-${platform}.tar.gz"
@@ -136,32 +197,26 @@ main() {
   trap "rm -rf '$tmp_dir'" EXIT
 
   # Download archive
-  download "$download_url" "${tmp_dir}/${asset_name}"
-
-  # Download and verify checksum
-  local checksum_url="${download_url}.sha256"
-  if download "$checksum_url" "${tmp_dir}/${asset_name}.sha256" 2>/dev/null; then
-    info "Verifying checksum..."
-    cd "$tmp_dir"
-    if command -v sha256sum &> /dev/null; then
-      if sha256sum -c "${asset_name}.sha256" > /dev/null 2>&1; then
-        info "Checksum verified"
-      else
-        error "Checksum verification failed"
-      fi
-    elif command -v shasum &> /dev/null; then
-      if shasum -a 256 -c "${asset_name}.sha256" > /dev/null 2>&1; then
-        info "Checksum verified"
-      else
-        error "Checksum verification failed"
-      fi
-    else
-      warn "No checksum tool found, skipping verification"
-    fi
-    cd - > /dev/null
-  else
-    warn "Checksum file not available, skipping verification"
+  if ! download "$download_url" "${tmp_dir}/${asset_name}"; then
+    error "Download failed"
   fi
+
+  # Verify checksum
+  info "Verifying checksum..."
+  local actual_checksum
+  if command -v sha256sum &> /dev/null; then
+    actual_checksum=$(sha256sum "${tmp_dir}/${asset_name}" | cut -d' ' -f1)
+  elif command -v shasum &> /dev/null; then
+    actual_checksum=$(shasum -a 256 "${tmp_dir}/${asset_name}" | cut -d' ' -f1)
+  else
+    warn "No checksum tool found, skipping verification"
+    actual_checksum="$checksum"  # Skip verification
+  fi
+
+  if [ "$actual_checksum" != "$checksum" ]; then
+    error "Checksum verification failed"
+  fi
+  info "Checksum verified"
 
   # Extract
   info "Extracting..."

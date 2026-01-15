@@ -708,18 +708,33 @@ jobs:
             binary_name: klaas
             asset_name: klaas-darwin-arm64
 
-          # Linux x64
+          # Linux x64 (glibc)
           - target: x86_64-unknown-linux-gnu
             os: ubuntu-latest
             binary_name: klaas
             asset_name: klaas-linux-x64
 
-          # Linux ARM64
+          # Linux ARM64 (glibc)
           - target: aarch64-unknown-linux-gnu
             os: ubuntu-latest
             binary_name: klaas
             asset_name: klaas-linux-arm64
             cross: true
+
+          # Linux x64 (musl - for Alpine etc.)
+          - target: x86_64-unknown-linux-musl
+            os: ubuntu-latest
+            binary_name: klaas
+            asset_name: klaas-linux-x64-musl
+            musl: true
+
+          # Linux ARM64 (musl - for Alpine etc.)
+          - target: aarch64-unknown-linux-musl
+            os: ubuntu-latest
+            binary_name: klaas
+            asset_name: klaas-linux-arm64-musl
+            cross: true
+            musl: true
 
           # Windows x64
           - target: x86_64-pc-windows-msvc
@@ -743,16 +758,33 @@ jobs:
 
       # For Linux ARM64 cross-compilation
       - name: Install cross-compilation tools
-        if: matrix.cross
+        if: matrix.cross && !matrix.musl
         run: |
           sudo apt-get update
           sudo apt-get install -y gcc-aarch64-linux-gnu
+
+      # For musl builds
+      - name: Install musl tools
+        if: matrix.musl
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y musl-tools
+          # For ARM64 musl cross-compilation
+          if [ "${{ matrix.cross }}" = "true" ]; then
+            sudo apt-get install -y gcc-aarch64-linux-gnu musl-dev
+            # Install aarch64-linux-musl-gcc via musl-cross
+            wget -q https://musl.cc/aarch64-linux-musl-cross.tgz
+            tar -xzf aarch64-linux-musl-cross.tgz
+            sudo mv aarch64-linux-musl-cross /opt/
+            echo "/opt/aarch64-linux-musl-cross/bin" >> $GITHUB_PATH
+          fi
 
       - name: Build release binary
         working-directory: packages/cli
         run: cargo build --release --target ${{ matrix.target }}
         env:
           CARGO_TARGET_AARCH64_UNKNOWN_LINUX_GNU_LINKER: aarch64-linux-gnu-gcc
+          CARGO_TARGET_AARCH64_UNKNOWN_LINUX_MUSL_LINKER: aarch64-linux-musl-gcc
 
       - name: Prepare artifact (Unix)
         if: runner.os != 'Windows'
@@ -762,7 +794,8 @@ jobs:
           tar -czvf ${{ matrix.asset_name }}.tar.gz ${{ matrix.binary_name }}
           mv ${{ matrix.asset_name }}.tar.gz ../../../..
           cd ../../../..
-          shasum -a 256 ${{ matrix.asset_name }}.tar.gz > ${{ matrix.asset_name }}.tar.gz.sha256
+          # Store checksum in a file for manifest generation
+          shasum -a 256 ${{ matrix.asset_name }}.tar.gz | cut -d' ' -f1 > ${{ matrix.asset_name }}.checksum
 
       - name: Prepare artifact (Windows)
         if: runner.os == 'Windows'
@@ -771,8 +804,9 @@ jobs:
           Compress-Archive -Path ${{ matrix.binary_name }} `
             -DestinationPath ../../../../${{ matrix.asset_name }}.zip
           cd ../../../..
+          # Store checksum in a file for manifest generation
           $hash = (Get-FileHash "${{ matrix.asset_name }}.zip" -Algorithm SHA256).Hash.ToLower()
-          "$hash  ${{ matrix.asset_name }}.zip" | Out-File -Encoding utf8 "${{ matrix.asset_name }}.zip.sha256"
+          $hash | Out-File -Encoding utf8 -NoNewline "${{ matrix.asset_name }}.checksum"
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
@@ -780,9 +814,8 @@ jobs:
           name: ${{ matrix.asset_name }}
           path: |
             packages/cli/${{ matrix.asset_name }}.tar.gz
-            packages/cli/${{ matrix.asset_name }}.tar.gz.sha256
             packages/cli/${{ matrix.asset_name }}.zip
-            packages/cli/${{ matrix.asset_name }}.zip.sha256
+            packages/cli/${{ matrix.asset_name }}.checksum
           if-no-files-found: error
 
   release-cli:
@@ -803,6 +836,52 @@ jobs:
       - name: Display artifacts
         run: ls -la artifacts/*/
 
+      - name: Generate manifest.json
+        run: |
+          # Extract version from tag
+          VERSION="${GITHUB_REF_NAME#v}"
+
+          # Start building manifest
+          echo '{' > manifest.json
+          echo '  "version": "'$VERSION'",' >> manifest.json
+          echo '  "platforms": {' >> manifest.json
+
+          # Process each platform
+          first=true
+          for checksum_file in artifacts/*/*.checksum; do
+            if [ -f "$checksum_file" ]; then
+              # Extract platform name from path
+              dir=$(dirname "$checksum_file")
+              asset_name=$(basename "$dir")
+              platform=$(echo "$asset_name" | sed 's/^klaas-//')
+              checksum=$(cat "$checksum_file" | tr -d '\n\r')
+
+              # Determine archive extension
+              if [[ "$asset_name" == *"windows"* ]]; then
+                archive="${asset_name}.zip"
+              else
+                archive="${asset_name}.tar.gz"
+              fi
+
+              # Add comma for previous entry
+              if [ "$first" = true ]; then
+                first=false
+              else
+                echo ',' >> manifest.json
+              fi
+
+              # Write platform entry
+              printf '    "%s": {"archive": "%s", "checksum": "%s"}' "$platform" "$archive" "$checksum" >> manifest.json
+            fi
+          done
+
+          echo '' >> manifest.json
+          echo '  }' >> manifest.json
+          echo '}' >> manifest.json
+
+          echo "Generated manifest.json:"
+          cat manifest.json
+
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
         with:
@@ -811,7 +890,7 @@ jobs:
           files: |
             artifacts/**/*.tar.gz
             artifacts/**/*.zip
-            artifacts/**/*.sha256
+            manifest.json
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 

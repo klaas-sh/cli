@@ -80,10 +80,25 @@ if not defined VERSION (
 
 echo %BLUE%[INFO]%NC% Latest version: %VERSION%
 
+:: Download manifest.json
+echo %BLUE%[INFO]%NC% Downloading manifest...
+set "MANIFEST_URL=https://github.com/%GITHUB_REPO%/releases/download/%VERSION%/manifest.json"
+curl -fsSL "%MANIFEST_URL%" -o "%TEMP_DIR%\manifest.json"
+if errorlevel 1 (
+    echo %RED%[ERROR]%NC% Failed to download manifest
+    goto :cleanup
+)
+
+:: Extract checksum from manifest using PowerShell
+for /f "delims=" %%a in ('powershell -Command "$m = Get-Content '%TEMP_DIR%\manifest.json' | ConvertFrom-Json; $m.platforms.'%PLATFORM%'.checksum"') do set "EXPECTED_HASH=%%a"
+if not defined EXPECTED_HASH (
+    echo %RED%[ERROR]%NC% Platform %PLATFORM% not found in manifest
+    goto :cleanup
+)
+
 :: Build download URL
-set "ASSET_NAME=klaas-%PLATFORM%.exe.zip"
+set "ASSET_NAME=klaas-%PLATFORM%.zip"
 set "DOWNLOAD_URL=https://github.com/%GITHUB_REPO%/releases/download/%VERSION%/%ASSET_NAME%"
-set "CHECKSUM_URL=%DOWNLOAD_URL%.sha256"
 
 :: Download binary
 echo %BLUE%[INFO]%NC% Downloading %ASSET_NAME%...
@@ -93,29 +108,21 @@ if errorlevel 1 (
     goto :cleanup
 )
 
-:: Download and verify checksum (optional)
-curl -fsSL "%CHECKSUM_URL%" -o "%TEMP_DIR%\%ASSET_NAME%.sha256" 2>nul
-if not errorlevel 1 (
-    echo %BLUE%[INFO]%NC% Verifying checksum...
+:: Verify checksum
+echo %BLUE%[INFO]%NC% Verifying checksum...
 
-    :: Get expected hash from file
-    for /f "tokens=1" %%a in (%TEMP_DIR%\%ASSET_NAME%.sha256) do set "EXPECTED_HASH=%%a"
+:: Calculate actual hash
+for /f "skip=1 tokens=*" %%a in ('certutil -hashfile "%TEMP_DIR%\%ASSET_NAME%" SHA256') do (
+    if not defined ACTUAL_HASH set "ACTUAL_HASH=%%a"
+)
+set "ACTUAL_HASH=!ACTUAL_HASH: =!"
 
-    :: Calculate actual hash
-    for /f "skip=1 tokens=*" %%a in ('certutil -hashfile "%TEMP_DIR%\%ASSET_NAME%" SHA256') do (
-        if not defined ACTUAL_HASH set "ACTUAL_HASH=%%a"
-    )
-    set "ACTUAL_HASH=!ACTUAL_HASH: =!"
-
-    :: Compare (case-insensitive)
-    if /i "!EXPECTED_HASH!"=="!ACTUAL_HASH!" (
-        echo %BLUE%[INFO]%NC% Checksum verified
-    ) else (
-        echo %RED%[ERROR]%NC% Checksum verification failed
-        goto :cleanup
-    )
+:: Compare (case-insensitive)
+if /i "!EXPECTED_HASH!"=="!ACTUAL_HASH!" (
+    echo %BLUE%[INFO]%NC% Checksum verified
 ) else (
-    echo %YELLOW%[WARN]%NC% Checksum file not available, skipping verification
+    echo %RED%[ERROR]%NC% Checksum verification failed
+    goto :cleanup
 )
 
 :: Extract
