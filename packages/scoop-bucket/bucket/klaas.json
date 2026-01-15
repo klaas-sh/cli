@@ -1,0 +1,23 @@
+{
+    "version": "0.1.0",
+    "description": "Remote access CLI for Claude Code - control your sessions from anywhere",
+    "homepage": "https://klaas.sh",
+    "license": "MIT",
+    "architecture": {
+        "64bit": {
+            "url": "https://github.com/klaas-sh/cli/releases/download/v0.1.0/klaas-windows-x64.zip",
+            "hash": "PLACEHOLDER_WINDOWS_X64_SHA256"
+        }
+    },
+    "bin": "klaas.exe",
+    "checkver": {
+        "github": "https://github.com/klaas-sh/cli"
+    },
+    "autoupdate": {
+        "architecture": {
+            "64bit": {
+                "url": "https://github.com/klaas-sh/cli/releases/download/v$version/klaas-windows-x64.zip"
+            }
+        }
+    }
+}
