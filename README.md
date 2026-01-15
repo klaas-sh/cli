@@ -31,7 +31,6 @@
 - **Remote approval** - Approve tool calls from any device when Claude needs permission
 - **Remote instructions** - Send new prompts and instructions to Claude from anywhere
 - **Monitor sessions** - Watch long-running coding sessions from any device
-- **Share with teammates** - Give others access to view your Claude Code session
 - **Stay in control** - Keep an eye on autonomous coding tasks wherever you are
 
 ## Installation
