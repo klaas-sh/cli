@@ -16,7 +16,10 @@
 </p>
 
 <p align="center">
-  <img src="https://klaas.sh/demo.gif" alt="klaas demo" width="600">
+  <picture>
+    <source srcset="terminal-animation.avif" type="image/avif">
+    <img src="terminal-animation.webp" alt="klaas demo" width="700">
+  </picture>
 </p>
 
 ---
