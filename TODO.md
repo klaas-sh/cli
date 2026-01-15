@@ -1,6 +1,7 @@
 # TODO
 
-## MVP
+
+so ## MVP
 - sessions overview last active time in seconds/minutes/hours/days. it's not
   accurate, current session already says 1 hour ago
 - cursor is visible in xtermjs again

@@ -13,13 +13,13 @@ migrations_dir = "migrations"
 
 [[kv_namespaces]]
 binding = "RATE_LIMIT_KV"
-id = "placeholder-rate-limit"
-preview_id = "placeholder-rate-limit-preview"
+id = "f636296cef0945b684f476d008d6d1ff"
+preview_id = "f636296cef0945b684f476d008d6d1ff"
 
 [[kv_namespaces]]
 binding = "CACHE_KV"
-id = "placeholder-cache"
-preview_id = "placeholder-cache-preview"
+id = "4608c1f35c4745328ec3bf5196eb7e90"
+preview_id = "4608c1f35c4745328ec3bf5196eb7e90"
 
 # Durable Objects for WebSocket management
 [[durable_objects.bindings]]
@@ -39,20 +39,24 @@ DASHBOARD_URL = "http://localhost:3001"
 # Staging environment
 [env.staging]
 name = "klaas-api-staging"
+routes = [
+  { pattern = "api-staging.klaas.sh", custom_domain = true },
+  { pattern = "app-staging.klaas.sh", custom_domain = true }
+]
 
 [[env.staging.d1_databases]]
 binding = "DB"
 database_name = "klaas-db-staging"
-database_id = "placeholder-staging-db-id"
+database_id = "c673aec4-1103-401e-b5e3-66f541317e2a"
 migrations_dir = "migrations"
 
 [[env.staging.kv_namespaces]]
 binding = "RATE_LIMIT_KV"
-id = "placeholder-staging-rate-limit"
+id = "f636296cef0945b684f476d008d6d1ff"
 
 [[env.staging.kv_namespaces]]
 binding = "CACHE_KV"
-id = "placeholder-staging-cache"
+id = "4608c1f35c4745328ec3bf5196eb7e90"
 
 [[env.staging.durable_objects.bindings]]
 name = "SESSION_HUB"
@@ -60,26 +64,29 @@ class_name = "SessionHub"
 
 [env.staging.vars]
 ENVIRONMENT = "staging"
-DASHBOARD_URL = "https://staging.klaas.sh"
+DASHBOARD_URL = "https://app-staging.klaas.sh"
 
 # Production environment
 [env.production]
-name = "klaas-api"
-routes = [{ pattern = "api.klaas.sh", custom_domain = true }]
+name = "klaas-api-production"
+routes = [
+  { pattern = "api.klaas.sh", custom_domain = true },
+  { pattern = "app.klaas.sh", custom_domain = true }
+]
 
 [[env.production.d1_databases]]
 binding = "DB"
 database_name = "klaas-db-production"
-database_id = "placeholder-production-db-id"
+database_id = "d1b9e170-1302-4f63-9605-094b699569d5"
 migrations_dir = "migrations"
 
 [[env.production.kv_namespaces]]
 binding = "RATE_LIMIT_KV"
-id = "placeholder-production-rate-limit"
+id = "932890ed6e24497d9c845aa329ab6d32"
 
 [[env.production.kv_namespaces]]
 binding = "CACHE_KV"
-id = "placeholder-production-cache"
+id = "5863e355f0a44a629dbe4c31421d93be"
 
 [[env.production.durable_objects.bindings]]
 name = "SESSION_HUB"
