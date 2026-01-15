@@ -28,10 +28,11 @@
 
 **klaas** wraps your Claude Code sessions and streams them to the cloud, enabling remote access from any device via a web interface. Perfect for:
 
-- Monitoring long-running coding sessions from your phone
-- Sharing your Claude Code session with teammates
-- Accessing your development environment from anywhere
-- Keeping an eye on autonomous coding tasks
+- **Remote approval** - Approve tool calls from your phone when Claude needs permission
+- **Remote instructions** - Send new prompts and instructions to Claude from anywhere
+- **Monitor sessions** - Watch long-running coding sessions from any device
+- **Share with teammates** - Give others access to view your Claude Code session
+- **Stay in control** - Keep an eye on autonomous coding tasks wherever you are
 
 ## Installation
 
