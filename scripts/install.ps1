@@ -83,15 +83,15 @@ function Get-LatestVersion {
 }
 
 function Install-Klaas {
-    # Show banner
+    # Show banner (terminal window logo in amber)
     Write-Host ""
-    Write-Host "  _    _                " -ForegroundColor Magenta
-    Write-Host " | | _| | __ _  __ _ ___" -ForegroundColor Magenta
-    Write-Host " | |/ / |/ _`` |/ _`` / __|" -ForegroundColor Magenta
-    Write-Host " |   <| | (_| | (_| \__ \" -ForegroundColor Magenta
-    Write-Host " |_|\_\_|\__,_|\__,_|___/" -ForegroundColor Magenta
+    Write-Host "  ╭────────╮" -ForegroundColor DarkYellow
+    Write-Host "  ├────────┤" -ForegroundColor DarkYellow
+    Write-Host "  │ ❯ __   │" -ForegroundColor DarkYellow
+    Write-Host "  ╰────────╯" -ForegroundColor DarkYellow
     Write-Host ""
-    Write-Host " Remote access for Claude Code" -ForegroundColor Gray
+    Write-Host "  klaas" -ForegroundColor Yellow -NoNewline
+    Write-Host " ~ Remote access for Claude Code" -ForegroundColor Gray
     Write-Host ""
 
     # Detect platform

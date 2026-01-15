@@ -25,19 +25,18 @@ set "GREEN=%ESC%[32m"
 set "YELLOW=%ESC%[33m"
 set "BLUE=%ESC%[34m"
 set "RED=%ESC%[31m"
-set "MAGENTA=%ESC%[35m"
+set "AMBER=%ESC%[38;5;214m"
 set "GRAY=%ESC%[90m"
 set "NC=%ESC%[0m"
 
-:: Banner
+:: Banner (terminal window logo in amber)
 echo.
-echo %MAGENTA%  _    _                %NC%
-echo %MAGENTA% ^| ^| _^| ^| __ _  __ _ ___%NC%
-echo %MAGENTA% ^| ^|/ / ^|/ _` ^|/ _` / __^|%NC%
-echo %MAGENTA% ^|   ^<^| ^| (_^| ^| (_^| \__ \%NC%
-echo %MAGENTA% ^|_^|\_\_^|\__,_^|\__,_^|___/%NC%
+echo %AMBER%  ╭────────╮%NC%
+echo %AMBER%  ├────────┤%NC%
+echo %AMBER%  │ ❯ __   │%NC%
+echo %AMBER%  ╰────────╯%NC%
 echo.
-echo %GRAY% Remote access for Claude Code%NC%
+echo   %YELLOW%klaas%NC% %GRAY%~ Remote access for Claude Code%NC%
 echo.
 
 :: Check architecture
