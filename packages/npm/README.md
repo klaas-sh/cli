@@ -72,7 +72,7 @@ provides:
 **klaas** wraps your Claude Code sessions and streams them to the cloud,
 enabling remote access from any device via a web interface. Perfect for:
 
-- **Remote approval** - Approve tool calls from your phone when Claude needs
+- **Remote approval** - Approve tool calls from any device when Claude needs
   permission
 - **Remote instructions** - Send new prompts and instructions to Claude from
   anywhere

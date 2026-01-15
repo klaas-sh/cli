@@ -5,7 +5,7 @@ view/interact with it from anywhere via a web browser.
 
 ## Features
 
-- **Remote Approval**: Approve tool calls from your phone when Claude needs
+- **Remote Approval**: Approve tool calls from any device when Claude needs
   permission - never miss a prompt while away from your desk
 - **Remote Instructions**: Send new prompts and instructions to Claude from
   anywhere - keep your coding session moving forward
