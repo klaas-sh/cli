@@ -7,6 +7,10 @@
 - history is not preserved
 - delete/archive old sessions
 
+plugin suggestions
+/plugin marketplace add anthropics/claude-code
+/plugin install frontend-design@claude-code-plugins
+
 ### CLI Background Reconnection
 
 The CLI should periodically retry connecting to the API when offline, enabling
