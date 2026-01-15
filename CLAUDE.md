@@ -123,6 +123,10 @@ yarn typecheck
 yarn dev
 ```
 
+## Package.json Scripts
+
+Scripts in `package.json` files must be **alphabetically sorted** by key name.
+
 ## Pre-commit Checks
 
 Always run before committing:
