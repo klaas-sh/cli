@@ -102,10 +102,30 @@ function Install-Klaas {
     $version = Get-LatestVersion
     Write-Info "Latest version: $version"
 
-    # Build URLs
-    $assetName = "klaas-$platform.exe.zip"
+    # Download manifest.json
+    Write-Info "Downloading manifest..."
+    $manifestUrl = "https://github.com/$GitHubRepo/releases/download/$version/manifest.json"
+    try {
+        $manifest = Invoke-RestMethod -Uri $manifestUrl -UseBasicParsing
+    }
+    catch {
+        Write-Err "Failed to download manifest: $_"
+    }
+
+    # Get checksum from manifest
+    $platformKey = $platform -replace "\.exe$", ""
+    $platformInfo = $manifest.platforms.$platformKey
+    if (-not $platformInfo) {
+        Write-Err "Platform $platform not found in manifest"
+    }
+    $expectedHash = $platformInfo.checksum.ToUpper()
+
+    # Build download URL
+    $assetName = $platformInfo.archive
+    if (-not $assetName) {
+        $assetName = "klaas-$platform.zip"
+    }
     $downloadUrl = "https://github.com/$GitHubRepo/releases/download/$version/$assetName"
-    $checksumUrl = "$downloadUrl.sha256"
 
     # Create temp directory
     $tmpDir = New-Item -ItemType Directory -Path (
@@ -114,31 +134,19 @@ function Install-Klaas {
 
     try {
         $zipPath = Join-Path $tmpDir "klaas.zip"
-        $checksumPath = Join-Path $tmpDir "klaas.zip.sha256"
 
         # Download binary
         Write-Info "Downloading $assetName..."
         Invoke-WebRequest -Uri $downloadUrl -OutFile $zipPath -UseBasicParsing
 
-        # Download and verify checksum
-        try {
-            Invoke-WebRequest `
-                -Uri $checksumUrl `
-                -OutFile $checksumPath `
-                -UseBasicParsing
+        # Verify checksum
+        Write-Info "Verifying checksum..."
+        $actualHash = (Get-FileHash $zipPath -Algorithm SHA256).Hash.ToUpper()
 
-            Write-Info "Verifying checksum..."
-            $expectedHash = (Get-Content $checksumPath).Split()[0].ToUpper()
-            $actualHash = (Get-FileHash $zipPath -Algorithm SHA256).Hash.ToUpper()
-
-            if ($expectedHash -ne $actualHash) {
-                Write-Err "Checksum verification failed"
-            }
-            Write-Info "Checksum verified"
+        if ($expectedHash -ne $actualHash) {
+            Write-Err "Checksum verification failed"
         }
-        catch {
-            Write-Warn "Checksum file not available, skipping verification"
-        }
+        Write-Info "Checksum verified"
 
         # Extract
         Write-Info "Extracting..."
