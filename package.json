@@ -35,13 +35,14 @@
     "push:platform": "git push origin main",
     "push:public": "yarn push:cli && yarn push:github-profile && yarn push:homebrew-tap && yarn push:scoop-bucket",
     "push:scoop-bucket": "git subtree push --prefix=packages/scoop-bucket scoop-bucket main",
+    "release:cli": "node scripts/release-cli.js",
     "test": "yarn workspaces foreach -Aptv run test:once",
     "test:api": "yarn workspace @klaas/api test:once",
     "test:cli": "source ~/.cargo/env 2>/dev/null; cd packages/cli && cargo test",
-    "typecheck": "yarn workspaces foreach -Aptv run typecheck",
-    "version:cli": "cd packages/cli && sed -i '' \"s/^version = \\\".*\\\"/version = \\\"$npm_config_ver\\\"/\" Cargo.toml && cargo check"
+    "typecheck": "yarn workspaces foreach -Aptv run typecheck"
   },
   "devDependencies": {
+    "barva": "^1.0.0",
     "concurrently": "^9.1.0"
   }
 }

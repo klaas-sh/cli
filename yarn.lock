@@ -1372,6 +1372,7 @@ __metadata:
   version: 0.0.0-use.local
   resolution: "@klaas/monorepo@workspace:."
   dependencies:
+    barva: "npm:^1.0.0"
     concurrently: "npm:^9.1.0"
   languageName: unknown
   linkType: soft
