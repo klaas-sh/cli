@@ -23,6 +23,7 @@
     "deploy:api": "yarn workspace @klaas/api deploy",
     "deploy:api:production": "yarn workspace @klaas/api deploy:production",
     "deploy:api:staging": "yarn workspace @klaas/api deploy:staging",
+    "push:platform": "git push origin main",
     "push:cli": "git subtree push --prefix=packages/cli cli main",
     "push:github-profile": "git subtree push --prefix=packages/github-profile github-profile main",
     "push:homebrew-tap": "git subtree push --prefix=packages/homebrew-tap homebrew-tap main",
