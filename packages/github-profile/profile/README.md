@@ -28,7 +28,6 @@
 - Stream terminal output in real-time
 - Access sessions from phone, tablet, or another computer
 - Monitor long-running autonomous coding tasks
-- Share sessions with teammates
 
 ### Install
 
@@ -54,11 +53,11 @@ brew install klaas-sh/tap/klaas
 scoop bucket add klaas https://github.com/klaas-sh/scoop-bucket
 scoop install klaas
 ```
-
+. 
 </details>
 
 ### Usage
 
 ```bash
-klaas  # that's it — replaces 'claude'
+klaas  # that's it, this replaces `claude`
 ```
