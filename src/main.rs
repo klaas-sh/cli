@@ -16,7 +16,7 @@
 //! klaas --model sonnet --allowedTools Read,Write
 //! ```
 
-use clap::Parser;
+use clap::{Parser, Subcommand};
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
 
 mod app;
@@ -28,6 +28,7 @@ mod pty;
 mod terminal;
 mod types;
 mod ui;
+mod update;
 mod websocket;
 
 /// CLI arguments.
@@ -40,6 +41,10 @@ mod websocket;
     All input is passed through to Claude Code. \
     All output is captured for remote streaming.")]
 struct Cli {
+    /// Subcommand to run.
+    #[command(subcommand)]
+    command: Option<Commands>,
+
     /// Start a new session instead of resuming the previous one.
     /// Without this flag, klaas will resume the last session if it exists.
     #[arg(long)]
@@ -49,6 +54,13 @@ struct Cli {
     /// All unrecognized arguments are forwarded.
     #[arg(trailing_var_arg = true, allow_hyphen_values = true)]
     claude_args: Vec<String>,
+}
+
+/// Available subcommands.
+#[derive(Subcommand)]
+enum Commands {
+    /// Update klaas to the latest version.
+    Update,
 }
 
 #[tokio::main]
@@ -68,9 +80,30 @@ async fn main() -> anyhow::Result<()> {
 
     let cli = Cli::parse();
 
+    // Handle subcommands
+    if let Some(command) = cli.command {
+        let exit_code = match command {
+            Commands::Update => match update::perform_update().await {
+                Ok(()) => 0,
+                Err(e) => {
+                    eprintln!("Update failed: {}", e);
+                    1
+                }
+            },
+        };
+        std::process::exit(exit_code);
+    }
+
+    // Spawn background update check (non-blocking)
+    update::spawn_update_check();
+
     // Run the application
     let exit_code = match app::run(cli.claude_args, cli.new_session).await {
-        Ok(code) => code,
+        Ok(code) => {
+            // Show update notification after Claude Code exits
+            update::display_update_notification();
+            code
+        }
         Err(e) => {
             eprintln!("Error: {}", e);
             1
