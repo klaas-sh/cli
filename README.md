@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="https://klaas.sh/logo.svg" alt="klaas logo" width="80" height="80">
+  <img src="logo.svg" alt="klaas logo" width="80" height="80">
 </p>
 
 <h1 align="center">klaas</h1>
