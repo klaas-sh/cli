@@ -3,17 +3,15 @@
 //! This module handles:
 //! - Connecting to the server via WebSocket with JWT authentication
 //! - Sending session attach/detach messages
-//! - Forwarding PTY output as base64-encoded messages (plaintext or E2EE)
+//! - Forwarding PTY output as encrypted E2EE messages
 //! - Receiving prompts, resize commands, and pings from the server
 //! - Automatic reconnection with exponential backoff
-//! - End-to-end encryption when MEK is available
+//! - Transparent end-to-end encryption (always enabled, no user interaction)
 
 use std::collections::VecDeque;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
-use base64::engine::general_purpose::STANDARD as BASE64;
-use base64::Engine;
 use chrono::Utc;
 use futures_util::stream::{SplitSink, SplitStream};
 use futures_util::{SinkExt, StreamExt};
@@ -64,12 +62,16 @@ pub enum OutgoingMessage {
         cwd: String,
     },
     /// Terminal output data (base64 encoded plaintext).
+    /// Kept for backward compatibility but no longer used - all output is now
+    /// encrypted using EncryptedOutput.
+    #[allow(dead_code)]
     Output {
         session_id: String,
         data: String,
         timestamp: String,
     },
     /// Terminal output data (E2EE encrypted).
+    /// This is the only output format used - E2EE is always enabled.
     EncryptedOutput {
         session_id: String,
         encrypted: EncryptedContent,
@@ -132,10 +134,10 @@ type WsReceiver = SplitStream<WebSocketStream<MaybeTlsStream<TcpStream>>>;
 ///
 /// Provides methods for:
 /// - Connecting with JWT authentication
-/// - Sending terminal output (plaintext or E2EE encrypted)
+/// - Sending terminal output (always E2EE encrypted)
 /// - Receiving commands from web clients
 /// - Automatic reconnection with exponential backoff
-/// - End-to-end encryption when MEK is set
+/// - Transparent end-to-end encryption (always enabled)
 pub struct WebSocketClient {
     /// WebSocket sender (write half).
     sender: Arc<Mutex<Option<WsSender>>>,
@@ -284,8 +286,8 @@ impl WebSocketClient {
 
     /// Sends terminal output to the server.
     ///
-    /// If E2EE is enabled (MEK is set), the data is encrypted before sending.
-    /// Otherwise, the data is base64 encoded as plaintext.
+    /// All output is encrypted using E2EE. The MEK is always available
+    /// since it is auto-generated on first use and stored in the keychain.
     ///
     /// # Arguments
     ///
@@ -293,25 +295,18 @@ impl WebSocketClient {
     pub async fn send_output(&self, data: &[u8]) -> Result<()> {
         let timestamp = Utc::now().to_rfc3339();
 
-        // Check if E2EE is enabled
-        let session_key = self.get_or_derive_session_key().await;
+        // Get session key (always available since MEK is auto-generated)
+        let session_key = self
+            .get_or_derive_session_key()
+            .await
+            .expect("MEK should always be available for E2EE");
 
-        let msg = if let Some(ref key) = session_key {
-            // E2EE enabled: encrypt the data
-            let encrypted = encrypt_content(key, data);
-            OutgoingMessage::EncryptedOutput {
-                session_id: self.session_id.clone(),
-                encrypted,
-                timestamp,
-            }
-        } else {
-            // No E2EE: send as base64 plaintext
-            let encoded = BASE64.encode(data);
-            OutgoingMessage::Output {
-                session_id: self.session_id.clone(),
-                data: encoded,
-                timestamp,
-            }
+        // Always encrypt - MEK is always available
+        let encrypted = encrypt_content(&session_key, data);
+        let msg = OutgoingMessage::EncryptedOutput {
+            session_id: self.session_id.clone(),
+            encrypted,
+            timestamp,
         };
 
         self.send_message(&msg).await
@@ -630,12 +625,13 @@ impl WebSocketClient {
         *self.mek.lock().await = Some(mek);
     }
 
-    /// Clears the MEK to disable E2EE.
+    /// Clears the MEK. This is only for testing or special cases.
     ///
-    /// After calling this, messages will be sent as plaintext and
-    /// encrypted incoming messages cannot be decrypted.
+    /// In normal operation, MEK is always set since it's auto-generated.
+    /// Clearing the MEK will cause `send_output` to panic.
+    #[allow(dead_code)]
     pub async fn clear_mek(&self) {
-        info!("E2EE disabled: MEK cleared");
+        warn!("E2EE disabled: MEK cleared (this should only happen in tests)");
 
         *self.session_key.lock().await = None;
         *self.mek.lock().await = None;
@@ -670,6 +666,7 @@ impl WebSocketClient {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use base64::{engine::general_purpose::STANDARD as BASE64, Engine};
 
     #[test]
     fn test_outgoing_message_serialization() {

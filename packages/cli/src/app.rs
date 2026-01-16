@@ -13,6 +13,7 @@ use tracing::{debug, error, info, warn};
 use crate::auth::{authenticate, refresh_token, AuthError};
 use crate::config::{get_api_config, ApiConfig, CLAUDE_COMMAND};
 use crate::credentials::CredentialStore;
+use crate::crypto::SecretKey;
 use crate::error::{CliError, Result};
 use crate::pty::PtyManager;
 use crate::terminal::TerminalManager;
@@ -49,6 +50,10 @@ pub async fn run(claude_args: Vec<String>, new_session: bool) -> Result<i32> {
     // Get or generate device ID (persisted across sessions)
     let device_id = get_or_create_device_id(&cred_store)?;
     debug!(device_id = %device_id, "Using device ID");
+
+    // Get or generate MEK for transparent E2EE (auto-generated on first use)
+    let mek = get_or_create_mek(&cred_store)?;
+    debug!("E2EE enabled with MEK from keychain");
 
     // Try to authenticate (handles cancellation gracefully)
     let access_token = match try_authenticate(&config, &cred_store).await {
@@ -111,6 +116,7 @@ pub async fn run(claude_args: Vec<String>, new_session: bool) -> Result<i32> {
                 device_id.as_str(),
                 &device_name,
                 &cwd,
+                &mek,
             )
             .await
         }
@@ -394,6 +400,7 @@ pub async fn run(claude_args: Vec<String>, new_session: bool) -> Result<i32> {
                         device_id.as_str(),
                         &device_name,
                         &cwd,
+                        &mek,
                     )
                     .await;
                 }
@@ -441,6 +448,27 @@ fn get_or_create_device_id(cred_store: &CredentialStore) -> Result<DeviceId> {
             cred_store.store_device_id(new_id.as_str())?;
             info!(device_id = %new_id, "Generated new device ID");
             Ok(new_id)
+        }
+    }
+}
+
+/// Gets or creates the Master Encryption Key (MEK) for E2EE.
+///
+/// The MEK is auto-generated on first use and stored securely in the keychain.
+/// This enables transparent E2EE with no user interaction required.
+fn get_or_create_mek(cred_store: &CredentialStore) -> Result<SecretKey> {
+    match cred_store.get_mek()? {
+        Some(mek_bytes) => {
+            debug!("Retrieved existing MEK for E2EE");
+            let mut arr = [0u8; 32];
+            arr.copy_from_slice(&mek_bytes);
+            Ok(SecretKey::from_bytes(arr))
+        }
+        None => {
+            let mek = SecretKey::random();
+            cred_store.store_mek(mek.as_bytes())?;
+            info!("Generated new MEK for E2EE");
+            Ok(mek)
         }
     }
 }
@@ -564,6 +592,7 @@ async fn try_authenticate(config: &ApiConfig, cred_store: &CredentialStore) -> A
 /// Connects to the WebSocket server.
 ///
 /// Returns None if connection fails (CLI continues to work locally).
+/// Sets up the MEK for transparent E2EE on the connection.
 async fn connect_websocket(
     config: &ApiConfig,
     access_token: &str,
@@ -571,6 +600,7 @@ async fn connect_websocket(
     device_id: &str,
     device_name: &str,
     cwd: &str,
+    mek: &SecretKey,
 ) -> Option<WebSocketClient> {
     debug!(ws_url = %config.ws_url, "Connecting to WebSocket");
 
@@ -585,7 +615,9 @@ async fn connect_websocket(
     .await
     {
         Ok(client) => {
-            info!("Connected to remote session");
+            // Set MEK for transparent E2EE
+            client.set_mek(mek.clone()).await;
+            info!("Connected to remote session with E2EE enabled");
             Some(client)
         }
         Err(e) => {
@@ -609,6 +641,7 @@ async fn handle_reconnection(
     device_id: &str,
     device_name: &str,
     cwd: &str,
+    mek: &SecretKey,
 ) {
     debug!("Attempting WebSocket reconnection");
 
@@ -651,6 +684,7 @@ async fn handle_reconnection(
         device_id,
         device_name,
         cwd,
+        mek,
     )
     .await
     {
