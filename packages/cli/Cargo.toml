@@ -37,6 +37,7 @@ argon2 = "0.5"           # Argon2id password hashing
 aes-gcm = "0.10"         # AES-256-GCM encryption
 hkdf = "0.12"            # HKDF-SHA256 key derivation
 sha2 = "0.10"            # SHA-256 for HKDF
+p256 = { version = "0.13", features = ["ecdh"] }  # ECDH P-256 key exchange
 zeroize = { version = "1.8", features = ["derive"] }  # Secure memory clearing
 
 # WebSocket client (using rustls for consistent TLS with reqwest)

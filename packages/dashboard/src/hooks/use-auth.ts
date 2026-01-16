@@ -1,7 +1,7 @@
 'use client'
 
 import { create } from 'zustand'
-import { apiClient } from '../lib/api-client'
+import { apiClient, SignupCredentials } from '../lib/api-client'
 import { LoginCredentials } from '../types/auth'
 
 /**
@@ -22,6 +22,14 @@ interface LoginResult {
 }
 
 /**
+ * Signup response interface
+ */
+interface SignupResult {
+  success: boolean
+  token?: string
+}
+
+/**
  * Authentication state interface
  */
 interface AuthState {
@@ -30,6 +38,7 @@ interface AuthState {
   isLoading: boolean
   hasHydrated: boolean
   login: (credentials: LoginCredentials) => Promise<LoginResult>
+  signup: (credentials: SignupCredentials) => Promise<SignupResult>
   logout: () => Promise<void>
   initialize: () => Promise<void>
   checkAuth: () => Promise<boolean>
@@ -73,6 +82,28 @@ export const useAuth = create<AuthState>()(set => ({
         return result // Return the full result for first-login checks
       } else {
         throw new Error('Login failed')
+      }
+    } catch (error) {
+      set({ isAuthenticated: false, email: null })
+      throw error
+    }
+  },
+
+  /**
+   * Register a new user
+   */
+  signup: async (credentials: SignupCredentials): Promise<SignupResult> => {
+    try {
+      const result = await apiClient.signup(credentials)
+
+      if (result.success && result.token) {
+        set({
+          isAuthenticated: true,
+          email: credentials.email
+        })
+        return result
+      } else {
+        throw new Error('Signup failed')
       }
     } catch (error) {
       set({ isAuthenticated: false, email: null })

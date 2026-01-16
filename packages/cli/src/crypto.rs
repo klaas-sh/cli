@@ -14,6 +14,11 @@ use aes_gcm::{
 };
 use argon2::{Algorithm, Argon2, Params, Version};
 use hkdf::Hkdf;
+use p256::{
+    ecdh::EphemeralSecret,
+    elliptic_curve::sec1::{FromEncodedPoint, ToEncodedPoint},
+    EncodedPoint, PublicKey,
+};
 use serde::{Deserialize, Serialize};
 use sha2::Sha256;
 use zeroize::{Zeroize, ZeroizeOnDrop};
@@ -47,6 +52,9 @@ const TAG_SIZE: usize = 16;
 
 /// Version prefix for session key derivation info.
 const SESSION_KEY_INFO_PREFIX: &str = "klaas-session-v1:";
+
+/// Domain separation for ECDH pairing key derivation.
+const PAIRING_KEY_INFO: &str = "klaas-pairing-v1";
 
 // =============================================================================
 // Types
@@ -107,6 +115,31 @@ pub struct StoredMEK {
     pub encrypted_mek: String,
     /// Authentication tag, 16 bytes, base64 encoded.
     pub tag: String,
+}
+
+/// Encrypted MEK format for pairing (no salt, uses ECDH shared secret).
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct EncryptedMEK {
+    /// Format version (always 1).
+    pub v: u8,
+    /// AES-GCM nonce, 12 bytes, base64 encoded.
+    pub nonce: String,
+    /// Encrypted MEK ciphertext, base64 encoded.
+    pub ciphertext: String,
+    /// Authentication tag, 16 bytes, base64 encoded.
+    pub tag: String,
+}
+
+/// ECDH P-256 keypair for pairing.
+///
+/// The private key is an ephemeral secret that is consumed during
+/// shared secret derivation. The public key can be shared with the
+/// pairing partner (Dashboard).
+pub struct ECDHKeypair {
+    /// Ephemeral private key (consumed on use).
+    pub private_key: EphemeralSecret,
+    /// Public key as uncompressed bytes (65 bytes).
+    pub public_key: Vec<u8>,
 }
 
 // =============================================================================
@@ -356,6 +389,113 @@ fn base64_decode(encoded: &str) -> Result<Vec<u8>, CliError> {
     STANDARD
         .decode(encoded)
         .map_err(|e| CliError::CryptoError(format!("Base64 decode failed: {}", e)))
+}
+
+/// Public base64 encode for use in pairing flow.
+pub fn encode_base64(data: &[u8]) -> String {
+    base64_encode(data)
+}
+
+/// Public base64 decode for use in pairing flow.
+pub fn decode_base64(encoded: &str) -> Result<Vec<u8>, CliError> {
+    base64_decode(encoded)
+}
+
+// =============================================================================
+// ECDH Key Exchange (for CLI Pairing)
+// =============================================================================
+
+/// Generates an ephemeral ECDH P-256 keypair for pairing.
+///
+/// The keypair is used for secure key exchange with the Dashboard.
+/// The private key is consumed when computing the shared secret.
+pub fn generate_ecdh_keypair() -> ECDHKeypair {
+    let private_key = EphemeralSecret::random(&mut rand::thread_rng());
+    let public_key = private_key.public_key();
+    let public_key_bytes = public_key.to_encoded_point(false).as_bytes().to_vec();
+
+    ECDHKeypair {
+        private_key,
+        public_key: public_key_bytes,
+    }
+}
+
+/// Computes ECDH shared secret and derives a key for MEK encryption.
+///
+/// Takes the CLI's private key and Dashboard's public key to compute
+/// a shared secret, then derives a 256-bit key using HKDF.
+fn compute_ecdh_shared_key(
+    private_key: EphemeralSecret,
+    their_public_key_bytes: &[u8],
+) -> Result<SecretKey, CliError> {
+    // Parse the other party's public key
+    let encoded_point = EncodedPoint::from_bytes(their_public_key_bytes)
+        .map_err(|e| CliError::CryptoError(format!("Invalid public key format: {}", e)))?;
+
+    let their_public_key = PublicKey::from_encoded_point(&encoded_point);
+    let their_public_key = Option::from(their_public_key)
+        .ok_or_else(|| CliError::CryptoError("Invalid public key point".into()))?;
+
+    // Compute shared secret
+    let shared_secret = private_key.diffie_hellman(&their_public_key);
+
+    // Derive key using HKDF with domain separation
+    let hk = Hkdf::<Sha256>::new(None, shared_secret.raw_secret_bytes());
+    let mut key = [0u8; KEY_SIZE];
+    hk.expand(PAIRING_KEY_INFO.as_bytes(), &mut key)
+        .map_err(|_| CliError::CryptoError("HKDF expand failed".into()))?;
+
+    Ok(SecretKey::from_bytes(key))
+}
+
+/// Decrypts MEK received during pairing using ECDH shared secret.
+///
+/// Takes the CLI's private key, Dashboard's public key, and the
+/// encrypted MEK, then decrypts and returns the MEK.
+pub fn decrypt_mek_from_pairing(
+    private_key: EphemeralSecret,
+    dash_public_key: &[u8],
+    encrypted_mek: &EncryptedMEK,
+) -> Result<SecretKey, CliError> {
+    if encrypted_mek.v != 1 {
+        return Err(CliError::CryptoError(format!(
+            "Unsupported encrypted MEK version: {}",
+            encrypted_mek.v
+        )));
+    }
+
+    // Compute shared key from ECDH
+    let shared_key = compute_ecdh_shared_key(private_key, dash_public_key)?;
+
+    // Decode encrypted MEK fields
+    let nonce = base64_decode(&encrypted_mek.nonce)?;
+    let ciphertext = base64_decode(&encrypted_mek.ciphertext)?;
+    let tag = base64_decode(&encrypted_mek.tag)?;
+
+    // Validate sizes
+    if nonce.len() != NONCE_SIZE {
+        return Err(CliError::CryptoError("Invalid nonce size".into()));
+    }
+    if tag.len() != TAG_SIZE {
+        return Err(CliError::CryptoError("Invalid tag size".into()));
+    }
+
+    let mut nonce_arr = [0u8; NONCE_SIZE];
+    nonce_arr.copy_from_slice(&nonce);
+
+    let mut tag_arr = [0u8; TAG_SIZE];
+    tag_arr.copy_from_slice(&tag);
+
+    // Decrypt MEK
+    let mek_bytes = aes_gcm_decrypt(&shared_key, &ciphertext, &nonce_arr, &tag_arr)?;
+
+    if mek_bytes.len() != KEY_SIZE {
+        return Err(CliError::CryptoError("Decrypted MEK has wrong size".into()));
+    }
+
+    let mut mek_arr = [0u8; KEY_SIZE];
+    mek_arr.copy_from_slice(&mek_bytes);
+    Ok(SecretKey::from_bytes(mek_arr))
 }
 
 // =============================================================================

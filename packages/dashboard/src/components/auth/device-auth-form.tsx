@@ -4,6 +4,13 @@ import React, { useState, useRef, useEffect, useCallback } from 'react'
 import { useRouter } from 'next/navigation'
 import { Button } from '@/components/ui/button'
 import { apiClient } from '@/lib/api-client'
+import {
+  base64Decode,
+  base64Encode,
+  encryptMEKForPairing,
+  generateECDHKeypair,
+  getMEKLocally,
+} from '@/lib/crypto'
 
 interface DeviceAuthFormProps {
   /** Pre-filled device code from URL */
@@ -63,13 +70,56 @@ export function DeviceAuthForm({
       // Format code as XXXX-XXXX for the API
       const formattedCode = formatCodeForDisplay(code)
 
-      // Call the authorize endpoint
+      // Step 1: Fetch pairing info to get CLI's public key
+      const pairingInfo = await apiClient.request<{
+        success: boolean
+        data: {
+          id: string
+          deviceName: string
+          cliPublicKey: string
+          status: string
+          expiresAt: string
+        }
+      }>(`/dashboard/auth/pair/info/${encodeURIComponent(formattedCode)}`)
+
+      if (!pairingInfo.success || !pairingInfo.data) {
+        setError('Invalid or expired pairing code')
+        return
+      }
+
+      if (pairingInfo.data.status !== 'pending') {
+        setError('This pairing request has already been processed')
+        return
+      }
+
+      // Step 2: Get MEK from local storage
+      const mek = await getMEKLocally()
+      if (!mek) {
+        setError(
+          'Encryption key not found. Please log in again before pairing.'
+        )
+        return
+      }
+
+      // Step 3: Generate ECDH keypair for key exchange
+      const dashKeypair = await generateECDHKeypair()
+
+      // Step 4: Encrypt MEK using ECDH shared secret
+      const cliPublicKey = base64Decode(pairingInfo.data.cliPublicKey)
+      const encryptedMek = await encryptMEKForPairing(
+        dashKeypair.privateKey,
+        cliPublicKey,
+        mek
+      )
+
+      // Step 5: Approve the pairing with our public key and encrypted MEK
       const response = await apiClient.request<{ success: boolean }>(
-        '/auth/authorize',
+        `/dashboard/auth/pair/approve/${encodeURIComponent(formattedCode)}`,
         {
           method: 'POST',
           body: JSON.stringify({
-            user_code: formattedCode
+            dash_public_key: base64Encode(dashKeypair.publicKey),
+            encrypted_mek: encryptedMek,
           })
         }
       )
@@ -85,7 +135,7 @@ export function DeviceAuthForm({
       }
     } catch (err: unknown) {
       const errMsg = err instanceof Error ? err.message : 'Unknown error'
-      if (errMsg.includes('invalid_code')) {
+      if (errMsg.includes('not found') || errMsg.includes('404')) {
         setError(
           'Invalid or expired code. Please check the code and try again.'
         )

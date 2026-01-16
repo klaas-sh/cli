@@ -15,6 +15,10 @@ use serde::{Deserialize, Serialize};
 use thiserror::Error;
 use tracing::{debug, info, warn};
 
+use crate::crypto::{
+    decode_base64, decrypt_mek_from_pairing, encode_base64, generate_ecdh_keypair, EncryptedMEK,
+    SecretKey,
+};
 use crate::ui::{self, WaitingAnimation};
 
 /// Errors that can occur during authentication.
@@ -63,6 +67,18 @@ pub enum AuthError {
     /// User skipped authentication (ESC) - continue without auth.
     #[error("Authentication skipped")]
     Skipped,
+
+    /// Pairing request expired.
+    #[error("Pairing request expired")]
+    PairingExpired,
+
+    /// Pairing was rejected.
+    #[error("Pairing request was rejected")]
+    PairingRejected,
+
+    /// Crypto error during pairing.
+    #[error("Crypto error: {0}")]
+    CryptoError(String),
 }
 
 /// Result type for authentication operations.
@@ -115,6 +131,51 @@ pub struct TokenResponse {
 /// Default token type if not specified in response.
 fn default_token_type() -> String {
     "Bearer".to_string()
+}
+
+/// Response from POST /auth/pair/request endpoint.
+///
+/// Contains the pairing code and URL to display to the user.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct PairingResponse {
+    /// Whether the request was successful.
+    pub success: bool,
+    /// Response data.
+    pub data: PairingData,
+}
+
+/// Pairing data from the server.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct PairingData {
+    /// Unique pairing request ID.
+    pub id: String,
+    /// Pairing code (e.g., "ABCD-1234").
+    pub pairing_code: String,
+    /// URL where the user should approve the pairing.
+    pub verification_uri: String,
+    /// Seconds until the pairing request expires.
+    pub expires_in: u64,
+}
+
+/// Response from GET /auth/pair/status/:code endpoint.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct PairingStatusResponse {
+    /// Whether the request was successful.
+    pub success: bool,
+    /// Status data.
+    pub data: PairingStatusData,
+}
+
+/// Pairing status data.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PairingStatusData {
+    /// Current status: "pending", "completed", or "expired".
+    pub status: String,
+    /// Dashboard's public key (base64), present when completed.
+    pub dash_public_key: Option<String>,
+    /// Encrypted MEK (present when completed).
+    pub encrypted_mek: Option<EncryptedMEK>,
 }
 
 /// Error response from the OAuth server.
@@ -434,6 +495,257 @@ pub async fn authenticate(api_url: &str) -> AuthResult<TokenResponse> {
         &device_response.device_code,
         device_response.interval,
         device_response.expires_in,
+    )
+    .await
+}
+
+// =============================================================================
+// CLI Pairing Flow (ECDH-based key exchange)
+// =============================================================================
+
+/// Request body for pairing request.
+#[derive(Debug, Serialize)]
+struct PairingRequest {
+    device_name: String,
+    cli_public_key: String,
+}
+
+/// Starts the pairing flow by generating an ECDH keypair and requesting
+/// a pairing code from the server.
+///
+/// # Arguments
+///
+/// * `api_url` - Base URL of the Klaas API
+/// * `device_name` - Name of this device (e.g., hostname)
+///
+/// # Returns
+///
+/// A tuple of (PairingData, ECDHKeypair private key bytes) for later use.
+pub async fn start_pairing(
+    api_url: &str,
+    device_name: &str,
+) -> AuthResult<(PairingData, p256::ecdh::EphemeralSecret)> {
+    let url = format!(
+        "{}/dashboard/auth/pair/request",
+        api_url.trim_end_matches('/')
+    );
+    debug!("Starting pairing at {}", url);
+
+    // Generate ECDH keypair
+    let keypair = generate_ecdh_keypair();
+    let public_key_b64 = encode_base64(&keypair.public_key);
+
+    let client = reqwest::Client::new();
+    let request = PairingRequest {
+        device_name: device_name.to_string(),
+        cli_public_key: public_key_b64,
+    };
+
+    let response = client.post(&url).json(&request).send().await?;
+
+    if response.status().is_success() {
+        let pairing_response: PairingResponse = response.json().await?;
+        debug!(
+            "Pairing started, code: {}, expires in {} seconds",
+            pairing_response.data.pairing_code, pairing_response.data.expires_in
+        );
+        Ok((pairing_response.data, keypair.private_key))
+    } else {
+        let error_text = response.text().await.unwrap_or_default();
+        Err(AuthError::ServerError(error_text))
+    }
+}
+
+/// Polls for pairing completion and returns the decrypted MEK.
+///
+/// Displays a spinner while waiting for the user to approve the pairing
+/// in the Dashboard.
+///
+/// # Arguments
+///
+/// * `api_url` - Base URL of the Klaas API
+/// * `pairing_code` - The pairing code from `start_pairing`
+/// * `private_key` - The CLI's ECDH private key
+/// * `expires_in` - Seconds until the pairing expires
+///
+/// # Returns
+///
+/// The decrypted Master Encryption Key (MEK).
+pub async fn poll_for_pairing(
+    api_url: &str,
+    pairing_code: &str,
+    private_key: p256::ecdh::EphemeralSecret,
+    expires_in: u64,
+) -> AuthResult<SecretKey> {
+    let url = format!(
+        "{}/dashboard/auth/pair/status/{}",
+        api_url.trim_end_matches('/'),
+        pairing_code
+    );
+    let client = reqwest::Client::new();
+
+    let start_time = Instant::now();
+    let expiry_duration = Duration::from_secs(expires_in);
+    let poll_interval = Duration::from_secs(2);
+    let animation_interval = ui::animation_interval();
+    let mut animation = WaitingAnimation::new(expires_in);
+    let mut ticks_until_poll = 0u64;
+
+    debug!(
+        "Polling for pairing at {}, expires in: {}s",
+        url, expires_in
+    );
+
+    // Enable raw mode to capture keyboard input
+    let _ = terminal::enable_raw_mode();
+    ui::hide_cursor();
+
+    // Store private key in Option so we can take ownership later
+    let mut private_key_opt = Some(private_key);
+
+    let cleanup = |animation: &WaitingAnimation| {
+        animation.clear();
+        ui::show_cursor();
+        let _ = terminal::disable_raw_mode();
+    };
+
+    loop {
+        // Check for keyboard input (non-blocking)
+        if event::poll(Duration::ZERO).unwrap_or(false) {
+            if let Ok(Event::Key(key_event)) = event::read() {
+                match key_event.code {
+                    KeyCode::Char('c') if key_event.modifiers.contains(KeyModifiers::CONTROL) => {
+                        cleanup(&animation);
+                        return Err(AuthError::Cancelled);
+                    }
+                    KeyCode::Esc => {
+                        cleanup(&animation);
+                        return Err(AuthError::Skipped);
+                    }
+                    _ => {}
+                }
+            }
+        }
+
+        // Check if pairing has expired
+        if start_time.elapsed() >= expiry_duration {
+            cleanup(&animation);
+            return Err(AuthError::PairingExpired);
+        }
+
+        // Render animation frame
+        animation.render_frame();
+
+        // Wait for animation interval
+        tokio::time::sleep(animation_interval).await;
+
+        // Count ticks until next poll
+        let ticks_per_poll =
+            (poll_interval.as_millis() as u64) / animation_interval.as_millis() as u64;
+        ticks_until_poll += 1;
+
+        if ticks_until_poll < ticks_per_poll {
+            continue;
+        }
+        ticks_until_poll = 0;
+
+        // Check pairing status
+        let response = client.get(&url).send().await?;
+
+        if !response.status().is_success() {
+            let error_text = response.text().await.unwrap_or_default();
+            cleanup(&animation);
+            return Err(AuthError::ServerError(error_text));
+        }
+
+        let status_response: PairingStatusResponse = response.json().await?;
+
+        match status_response.data.status.as_str() {
+            "pending" => {
+                debug!("Pairing still pending...");
+                continue;
+            }
+            "expired" => {
+                cleanup(&animation);
+                return Err(AuthError::PairingExpired);
+            }
+            "completed" => {
+                cleanup(&animation);
+                info!("Pairing completed!");
+
+                // Extract Dashboard's public key and encrypted MEK
+                let dash_public_key_b64 = status_response
+                    .data
+                    .dash_public_key
+                    .ok_or_else(|| AuthError::ServerError("Missing Dashboard public key".into()))?;
+
+                let encrypted_mek = status_response
+                    .data
+                    .encrypted_mek
+                    .ok_or_else(|| AuthError::ServerError("Missing encrypted MEK".into()))?;
+
+                // Decode Dashboard's public key
+                let dash_public_key = decode_base64(&dash_public_key_b64)
+                    .map_err(|e| AuthError::CryptoError(e.to_string()))?;
+
+                // Take ownership of private key
+                let private_key = private_key_opt.take().ok_or_else(|| {
+                    AuthError::CryptoError("Private key already consumed".into())
+                })?;
+
+                // Decrypt MEK using ECDH
+                let mek = decrypt_mek_from_pairing(private_key, &dash_public_key, &encrypted_mek)
+                    .map_err(|e| AuthError::CryptoError(e.to_string()))?;
+
+                ui::display_pairing_success();
+                return Ok(mek);
+            }
+            status => {
+                cleanup(&animation);
+                return Err(AuthError::ServerError(format!("Unknown status: {}", status)));
+            }
+        }
+    }
+}
+
+/// Displays user-friendly instructions for the pairing flow.
+pub fn display_pairing_instructions(data: &PairingData) {
+    ui::display_pairing_instructions(&data.verification_uri, &data.pairing_code);
+}
+
+/// Performs the complete pairing flow.
+///
+/// This is a convenience function that combines all steps:
+/// 1. Generates ECDH keypair
+/// 2. Requests pairing code from server
+/// 3. Displays instructions to the user
+/// 4. Polls for pairing completion
+/// 5. Decrypts and returns the MEK
+///
+/// # Arguments
+///
+/// * `api_url` - Base URL of the Klaas API
+/// * `device_name` - Name of this device (e.g., hostname)
+///
+/// # Returns
+///
+/// The decrypted Master Encryption Key (MEK).
+pub async fn pair_device(api_url: &str, device_name: &str) -> AuthResult<SecretKey> {
+    // Display startup banner
+    ui::display_startup_banner();
+
+    // Start pairing
+    let (pairing_data, private_key) = start_pairing(api_url, device_name).await?;
+
+    // Display instructions
+    display_pairing_instructions(&pairing_data);
+
+    // Poll for completion
+    poll_for_pairing(
+        api_url,
+        &pairing_data.pairing_code,
+        private_key,
+        pairing_data.expires_in,
     )
     .await
 }

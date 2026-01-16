@@ -2,12 +2,12 @@
  * End-to-end encryption utilities for the browser.
  *
  * Implements the E2EE scheme:
- * - Argon2id for password → KEK derivation
+ * - PBKDF2 for password → auth_key and enc_key derivation
  * - AES-256-GCM for MEK and content encryption
  * - HKDF-SHA256 for MEK → session key derivation
+ * - ECDH P-256 for CLI pairing
  *
- * Uses Web Crypto API for all cryptographic operations except Argon2id,
- * which requires the argon2-browser WASM library.
+ * Uses Web Crypto API for all cryptographic operations.
  */
 
 // =============================================================================
@@ -29,17 +29,15 @@ export interface EncryptedContent {
 }
 
 /**
- * Stored MEK format (as received from/sent to server).
+ * Encrypted MEK format (stored on server or sent during pairing).
  */
-export interface StoredMEK {
+export interface EncryptedMEK {
   /** Format version (always 1) */
   v: 1
-  /** Argon2id salt, 16 bytes, base64 encoded */
-  salt: string
   /** AES-GCM nonce, 12 bytes, base64 encoded */
   nonce: string
-  /** Encrypted MEK, 32 bytes, base64 encoded */
-  encrypted_mek: string
+  /** Encrypted MEK ciphertext, base64 encoded */
+  ciphertext: string
   /** Authentication tag, 16 bytes, base64 encoded */
   tag: string
 }
@@ -48,14 +46,8 @@ export interface StoredMEK {
 // Constants
 // =============================================================================
 
-/** Argon2id memory parameter (64 MB in KB) */
-const ARGON2_MEMORY_KB = 65536
-
-/** Argon2id iterations */
-const ARGON2_ITERATIONS = 3
-
-/** Argon2id parallelism */
-const ARGON2_PARALLELISM = 4
+/** PBKDF2 iterations for key derivation */
+const PBKDF2_ITERATIONS = 100000
 
 /** Key size in bytes (256 bits) */
 const KEY_SIZE = 32
@@ -63,14 +55,23 @@ const KEY_SIZE = 32
 /** Nonce size in bytes for AES-GCM (96 bits) */
 const NONCE_SIZE = 12
 
-/** Salt size in bytes for Argon2id (128 bits) */
+/** Salt size in bytes (128 bits) */
 const SALT_SIZE = 16
 
 /** Auth tag size in bytes for AES-GCM (128 bits) */
 const TAG_SIZE = 16
 
-/** Version prefix for session key derivation info */
+/** Domain separation for auth key derivation */
+const AUTH_KEY_INFO = 'klaas-auth-v1'
+
+/** Domain separation for encryption key derivation */
+const ENC_KEY_INFO = 'klaas-encrypt-v1'
+
+/** Domain separation for session key derivation */
 const SESSION_KEY_INFO_PREFIX = 'klaas-session-v1:'
+
+/** Domain separation for ECDH pairing */
+const PAIRING_KEY_INFO = 'klaas-pairing-v1'
 
 // =============================================================================
 // Base64 Utilities
@@ -121,48 +122,119 @@ export function generateNonce(): Uint8Array {
 }
 
 /**
- * Generates a random 128-bit salt for Argon2id.
+ * Generates a random 128-bit salt.
  */
 export function generateSalt(): Uint8Array {
   return randomBytes(SALT_SIZE)
 }
 
 // =============================================================================
-// Key Derivation Functions
+// PBKDF2 Key Derivation
 // =============================================================================
 
 /**
- * Derives a Key Encryption Key (KEK) from a password using Argon2id.
- *
- * The KEK is used to encrypt/decrypt the Master Encryption Key (MEK).
- * Uses argon2-browser WASM implementation.
+ * Derives a key from password using PBKDF2-SHA256.
  */
-export async function deriveKEK(
+async function pbkdf2Derive(
   password: string,
   salt: Uint8Array
 ): Promise<Uint8Array> {
-  // Dynamic import to avoid SSR issues (WASM)
-  const argon2 = await import('argon2-browser')
+  const encoder = new TextEncoder()
+  const keyMaterial = await crypto.subtle.importKey(
+    'raw',
+    encoder.encode(password),
+    'PBKDF2',
+    false,
+    ['deriveBits']
+  )
 
-  const result = await argon2.hash({
-    pass: password,
-    salt: salt,
-    type: argon2.ArgonType.Argon2id,
-    time: ARGON2_ITERATIONS,
-    mem: ARGON2_MEMORY_KB,
-    parallelism: ARGON2_PARALLELISM,
-    hashLen: KEY_SIZE,
-  })
+  const saltBuffer = salt.buffer.slice(
+    salt.byteOffset,
+    salt.byteOffset + salt.byteLength
+  ) as ArrayBuffer
 
-  return result.hash
+  const bits = await crypto.subtle.deriveBits(
+    {
+      name: 'PBKDF2',
+      salt: saltBuffer,
+      iterations: PBKDF2_ITERATIONS,
+      hash: 'SHA-256',
+    },
+    keyMaterial,
+    KEY_SIZE * 8
+  )
+
+  return new Uint8Array(bits)
 }
 
 /**
- * Derives a session key from the MEK using HKDF-SHA256.
- *
- * Each session has a unique deterministic key derived from the MEK and
- * session ID. This allows any device with the MEK to derive the same
- * session key.
+ * Expands key material using HKDF-SHA256 with info string.
+ */
+async function hkdfExpand(
+  keyMaterial: Uint8Array,
+  info: string
+): Promise<Uint8Array> {
+  const keyMaterialBuffer = keyMaterial.buffer.slice(
+    keyMaterial.byteOffset,
+    keyMaterial.byteOffset + keyMaterial.byteLength
+  ) as ArrayBuffer
+
+  const key = await crypto.subtle.importKey(
+    'raw',
+    keyMaterialBuffer,
+    'HKDF',
+    false,
+    ['deriveBits']
+  )
+
+  const encoder = new TextEncoder()
+  const infoBytes = encoder.encode(info)
+  const infoBuffer = infoBytes.buffer.slice(
+    infoBytes.byteOffset,
+    infoBytes.byteOffset + infoBytes.byteLength
+  ) as ArrayBuffer
+
+  const bits = await crypto.subtle.deriveBits(
+    {
+      name: 'HKDF',
+      hash: 'SHA-256',
+      salt: new ArrayBuffer(0),
+      info: infoBuffer,
+    },
+    key,
+    KEY_SIZE * 8
+  )
+
+  return new Uint8Array(bits)
+}
+
+/**
+ * Derives auth_key from password for server authentication.
+ * This key is sent to the server for login verification.
+ */
+export async function deriveAuthKey(
+  password: string,
+  salt: Uint8Array
+): Promise<Uint8Array> {
+  const baseKey = await pbkdf2Derive(password, salt)
+  return hkdfExpand(baseKey, AUTH_KEY_INFO)
+}
+
+/**
+ * Derives enc_key from password for MEK encryption.
+ * This key never leaves the client and encrypts the MEK.
+ */
+export async function deriveEncKey(
+  password: string,
+  salt: Uint8Array
+): Promise<Uint8Array> {
+  const baseKey = await pbkdf2Derive(password, salt)
+  return hkdfExpand(baseKey, ENC_KEY_INFO)
+}
+
+/**
+ * Derives session key from MEK using HKDF-SHA256.
+ * Each session has a unique deterministic key.
  */
 export async function deriveSessionKey(
   mek: Uint8Array,
@@ -181,11 +253,12 @@ export async function deriveSessionKey(
     ['deriveBits']
   )
 
-  const info = new TextEncoder().encode(`${SESSION_KEY_INFO_PREFIX}${sessionId}`)
-
-  const infoBuffer = info.buffer.slice(
-    info.byteOffset,
-    info.byteOffset + info.byteLength
+  const info = `${SESSION_KEY_INFO_PREFIX}${sessionId}`
+  const encoder = new TextEncoder()
+  const infoBytes = encoder.encode(info)
+  const infoBuffer = infoBytes.buffer.slice(
+    infoBytes.byteOffset,
+    infoBytes.byteOffset + infoBytes.byteLength
   ) as ArrayBuffer
 
   const bits = await crypto.subtle.deriveBits(
@@ -196,7 +269,7 @@ export async function deriveSessionKey(
       info: infoBuffer,
     },
     keyMaterial,
-    KEY_SIZE * 8 // bits
+    KEY_SIZE * 8
   )
 
   return new Uint8Array(bits)
@@ -326,56 +399,33 @@ export function generateMEK(): Uint8Array {
 }
 
 /**
- * Encrypts the MEK with a KEK (derived from password).
- *
- * Returns a StoredMEK structure that can be sent to the server.
+ * Encrypts the MEK with enc_key for server storage.
  */
 export async function encryptMEK(
-  password: string,
+  encKey: Uint8Array,
   mek: Uint8Array
-): Promise<StoredMEK> {
-  const salt = generateSalt()
-  const kek = await deriveKEK(password, salt)
-
-  const encrypted = await encrypt(kek, mek)
-
+): Promise<EncryptedMEK> {
+  const encrypted = await encrypt(encKey, mek)
   return {
     v: 1,
-    salt: base64Encode(salt),
     nonce: encrypted.nonce,
-    encrypted_mek: encrypted.ciphertext,
+    ciphertext: encrypted.ciphertext,
     tag: encrypted.tag,
   }
 }
 
 /**
- * Decrypts the MEK from a StoredMEK structure.
- *
- * Requires the user's password to derive the KEK.
+ * Decrypts the MEK from server storage.
  */
 export async function decryptMEK(
-  stored: StoredMEK,
-  password: string
+  encKey: Uint8Array,
+  encrypted: EncryptedMEK
 ): Promise<Uint8Array> {
-  if (stored.v !== 1) {
-    throw new Error(`Unsupported MEK format version: ${stored.v}`)
-  }
-
-  // Decode salt
-  const salt = base64Decode(stored.salt)
-  if (salt.length !== SALT_SIZE) {
-    throw new Error('Invalid salt size')
-  }
-
-  // Derive KEK from password
-  const kek = await deriveKEK(password, salt)
-
-  // Decrypt MEK
-  const decrypted = await decrypt(kek, {
+  const decrypted = await decrypt(encKey, {
     v: 1,
-    nonce: stored.nonce,
-    ciphertext: stored.encrypted_mek,
-    tag: stored.tag,
+    nonce: encrypted.nonce,
+    ciphertext: encrypted.ciphertext,
+    tag: encrypted.tag,
   })
 
   if (decrypted.length !== KEY_SIZE) {
@@ -385,21 +435,79 @@ export async function decryptMEK(
   return decrypted
 }
 
-/**
- * Re-encrypts the MEK with a new password.
- *
- * Used when the user changes their password.
- */
-export async function changeMEKPassword(
-  stored: StoredMEK,
-  oldPassword: string,
-  newPassword: string
-): Promise<StoredMEK> {
-  // Decrypt MEK with old password
-  const mek = await decryptMEK(stored, oldPassword)
+// =============================================================================
+// ECDH Key Exchange (for CLI Pairing)
+// =============================================================================
 
-  // Re-encrypt with new password
-  return encryptMEK(newPassword, mek)
+/**
+ * ECDH keypair for pairing.
+ */
+export interface ECDHKeypair {
+  privateKey: CryptoKey
+  publicKey: Uint8Array
+}
+
+/**
+ * Generates an ephemeral ECDH P-256 keypair for pairing.
+ */
+export async function generateECDHKeypair(): Promise<ECDHKeypair> {
+  const keyPair = await crypto.subtle.generateKey(
+    { name: 'ECDH', namedCurve: 'P-256' },
+    true,
+    ['deriveBits']
+  )
+
+  const publicKeyRaw = await crypto.subtle.exportKey(
+    'raw',
+    keyPair.publicKey
+  )
+
+  return {
+    privateKey: keyPair.privateKey,
+    publicKey: new Uint8Array(publicKeyRaw),
+  }
+}
+
+/**
+ * Computes ECDH shared secret and derives a key for MEK encryption.
+ */
+export async function computeECDHSharedSecret(
+  privateKey: CryptoKey,
+  theirPublicKeyRaw: Uint8Array
+): Promise<Uint8Array> {
+  const publicKeyBuffer = theirPublicKeyRaw.buffer.slice(
+    theirPublicKeyRaw.byteOffset,
+    theirPublicKeyRaw.byteOffset + theirPublicKeyRaw.byteLength
+  ) as ArrayBuffer
+
+  const theirPublicKey = await crypto.subtle.importKey(
+    'raw',
+    publicKeyBuffer,
+    { name: 'ECDH', namedCurve: 'P-256' },
+    false,
+    []
+  )
+
+  const sharedBits = await crypto.subtle.deriveBits(
+    { name: 'ECDH', public: theirPublicKey },
+    privateKey,
+    256
+  )
+
+  // Use HKDF to derive a proper key with domain separation
+  return hkdfExpand(new Uint8Array(sharedBits), PAIRING_KEY_INFO)
+}
+
+/**
+ * Encrypts MEK for CLI pairing using ECDH shared secret.
+ */
+export async function encryptMEKForPairing(
+  privateKey: CryptoKey,
+  theirPublicKey: Uint8Array,
+  mek: Uint8Array
+): Promise<EncryptedMEK> {
+  const sharedKey = await computeECDHSharedSecret(privateKey, theirPublicKey)
+  return encryptMEK(sharedKey, mek)
 }
 
 // =============================================================================
@@ -454,9 +562,7 @@ export async function decryptMessage(
 
 /**
  * Clears sensitive data from a Uint8Array.
- *
- * Note: This is best-effort in JavaScript. The garbage collector may still
- * have copies of the data in memory.
+ * Note: Best-effort in JavaScript due to garbage collection.
  */
 export function clearKey(key: Uint8Array): void {
   key.fill(0)
@@ -474,54 +580,6 @@ const IDB_STORE_NAME = 'keys'
 
 /** Key name for stored MEK */
 const IDB_MEK_KEY = 'mek'
-
-/** Version for stored MEK format */
-const STORED_MEK_VERSION = 1
-
-/**
- * Stored MEK format for IndexedDB.
- * Uses device key derived from browser fingerprint to encrypt the MEK.
- */
-interface LocalStoredMEK {
-  /** Format version (always 1) */
-  v: 1
-  /** AES-GCM nonce, 12 bytes, base64 encoded */
-  nonce: string
-  /** Encrypted MEK, 32 bytes, base64 encoded */
-  encrypted_mek: string
-  /** Authentication tag, 16 bytes, base64 encoded */
-  tag: string
-}
-
-/**
- * Generates a device-specific key using browser fingerprint data.
- * This key is deterministic per device and used to encrypt the MEK at rest.
- *
- * Note: This is not cryptographically strong device binding, but provides
- * defense-in-depth by making raw IndexedDB data less portable.
- */
-async function getDeviceKey(): Promise<Uint8Array> {
-  // Collect device-specific data for fingerprinting
-  const fingerprint = [
-    navigator.userAgent,
-    navigator.language,
-    new Date().getTimezoneOffset().toString(),
-    screen.width.toString(),
-    screen.height.toString(),
-    screen.colorDepth.toString(),
-    // Use hardwareConurrency if available
-    navigator.hardwareConcurrency?.toString() || '0',
-    // Use origin for additional uniqueness
-    window.location.origin,
-  ].join('|')
-
-  // Hash the fingerprint to derive a key
-  const encoder = new TextEncoder()
-  const data = encoder.encode(fingerprint)
-  const hashBuffer = await crypto.subtle.digest('SHA-256', data)
-
-  return new Uint8Array(hashBuffer)
-}
 
 /**
  * Opens the IndexedDB database for key storage.
@@ -548,58 +606,10 @@ async function openDatabase(): Promise<IDBDatabase> {
 }
 
 /**
- * Stores the MEK locally in IndexedDB, encrypted with a device-specific key.
- *
- * @param mek - The Master Encryption Key to store
+ * Stores the MEK locally in IndexedDB.
+ * MEK is stored in plaintext since it's only kept during an active session.
  */
 export async function storeMEKLocally(mek: Uint8Array): Promise<void> {
-  // Get device key for encryption
-  const deviceKey = await getDeviceKey()
-
-  // Encrypt MEK with device key
-  const nonce = generateNonce()
-
-  const deviceKeyBuffer = deviceKey.buffer.slice(
-    deviceKey.byteOffset,
-    deviceKey.byteOffset + deviceKey.byteLength
-  ) as ArrayBuffer
-
-  const cryptoKey = await crypto.subtle.importKey(
-    'raw',
-    deviceKeyBuffer,
-    'AES-GCM',
-    false,
-    ['encrypt']
-  )
-
-  const nonceBuffer = nonce.buffer.slice(
-    nonce.byteOffset,
-    nonce.byteOffset + nonce.byteLength
-  ) as ArrayBuffer
-  const mekBuffer = mek.buffer.slice(
-    mek.byteOffset,
-    mek.byteOffset + mek.byteLength
-  ) as ArrayBuffer
-
-  const ciphertextWithTag = await crypto.subtle.encrypt(
-    { name: 'AES-GCM', iv: nonceBuffer },
-    cryptoKey,
-    mekBuffer
-  )
-
-  // Split ciphertext and tag
-  const ciphertext = new Uint8Array(ciphertextWithTag.slice(0, -TAG_SIZE))
-  const tag = new Uint8Array(ciphertextWithTag.slice(-TAG_SIZE))
-
-  // Create stored format
-  const storedMek: LocalStoredMEK = {
-    v: STORED_MEK_VERSION,
-    nonce: base64Encode(nonce),
-    encrypted_mek: base64Encode(ciphertext),
-    tag: base64Encode(tag),
-  }
-
-  // Store in IndexedDB
   const db = await openDatabase()
   return new Promise((resolve, reject) => {
     const transaction = db.transaction(IDB_STORE_NAME, 'readwrite')
@@ -607,7 +617,7 @@ export async function storeMEKLocally(mek: Uint8Array): Promise<void> {
 
     const request = store.put({
       id: IDB_MEK_KEY,
-      data: storedMek,
+      mek: base64Encode(mek),
     })
 
     request.onerror = (): void => {
@@ -623,9 +633,7 @@ export async function storeMEKLocally(mek: Uint8Array): Promise<void> {
 }
 
 /**
- * Retrieves and decrypts the MEK from local IndexedDB storage.
- *
- * @returns The decrypted MEK, or null if not found
+ * Retrieves the MEK from local IndexedDB storage.
  */
 export async function getMEKLocally(): Promise<Uint8Array | null> {
   let db: IDBDatabase
@@ -633,7 +641,6 @@ export async function getMEKLocally(): Promise<Uint8Array | null> {
   try {
     db = await openDatabase()
   } catch {
-    // IndexedDB not available
     return null
   }
 
@@ -647,66 +654,18 @@ export async function getMEKLocally(): Promise<Uint8Array | null> {
       reject(new Error('Failed to read from IndexedDB'))
     }
 
-    request.onsuccess = async (): Promise<void> => {
+    request.onsuccess = (): void => {
       db.close()
 
-      const result = request.result as
-        | { id: string; data: LocalStoredMEK }
-        | undefined
-      if (!result?.data) {
-        resolve(null)
-        return
-      }
-
-      const storedMek = result.data
-      if (storedMek.v !== STORED_MEK_VERSION) {
+      const result = request.result as { id: string; mek: string } | undefined
+      if (!result?.mek) {
         resolve(null)
         return
       }
 
       try {
-        // Decrypt with device key
-        const deviceKey = await getDeviceKey()
-        const nonce = base64Decode(storedMek.nonce)
-        const ciphertext = base64Decode(storedMek.encrypted_mek)
-        const tag = base64Decode(storedMek.tag)
-
-        const deviceKeyBuffer = deviceKey.buffer.slice(
-          deviceKey.byteOffset,
-          deviceKey.byteOffset + deviceKey.byteLength
-        ) as ArrayBuffer
-
-        const cryptoKey = await crypto.subtle.importKey(
-          'raw',
-          deviceKeyBuffer,
-          'AES-GCM',
-          false,
-          ['decrypt']
-        )
-
-        // Concatenate ciphertext + tag
-        const ciphertextWithTag = new Uint8Array(ciphertext.length + tag.length)
-        ciphertextWithTag.set(ciphertext)
-        ciphertextWithTag.set(tag, ciphertext.length)
-
-        const nonceBuffer = nonce.buffer.slice(
-          nonce.byteOffset,
-          nonce.byteOffset + nonce.byteLength
-        ) as ArrayBuffer
-        const ctBuffer = ciphertextWithTag.buffer.slice(
-          ciphertextWithTag.byteOffset,
-          ciphertextWithTag.byteOffset + ciphertextWithTag.byteLength
-        ) as ArrayBuffer
-
-        const plaintext = await crypto.subtle.decrypt(
-          { name: 'AES-GCM', iv: nonceBuffer },
-          cryptoKey,
-          ctBuffer
-        )
-
-        resolve(new Uint8Array(plaintext))
+        resolve(base64Decode(result.mek))
       } catch {
-        // Decryption failed - possibly on different device
         resolve(null)
       }
     }
