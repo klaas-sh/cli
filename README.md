@@ -140,6 +140,59 @@ cargo clippy        # Lint
 5. **Remote input**: Browser keystrokes sent via WebSocket to CLI, injected
    into PTY
 
+## Security: End-to-End Encryption
+
+Klaas implements end-to-end encryption (E2EE) ensuring that **only you can read
+your terminal sessions** - not even the klaas team can decrypt your data.
+
+### How It Works
+
+```
+┌─────────────┐     encrypted with      ┌─────────────┐
+│ User's      │ ───────────────────────►│ Stored on   │
+│ Master Key  │     user's password     │ Server      │
+└─────────────┘                         └─────────────┘
+       │
+       │ decrypted locally on each device
+       ▼
+┌─────────────┐  ┌─────────────┐  ┌─────────────┐
+│ CLI         │  │ Web Browser │  │ Mobile App  │
+└─────────────┘  └─────────────┘  └─────────────┘
+       │                │                │
+       └────────────────┴────────────────┘
+                        │
+              All decrypt messages with
+                 same master key
+```
+
+### Key Principles
+
+1. **Zero-Knowledge Architecture**: The server stores only encrypted data and
+   your password-protected master key. Without your password, the data is
+   unreadable.
+
+2. **Multi-Device Access**: All your authenticated devices (CLI, web browser,
+   mobile app) can decrypt and view your session data. Adding a new device
+   requires your password to unlock the master key.
+
+3. **Client-Side Encryption**: All encryption and decryption happens on your
+   devices. The server never sees plaintext content.
+
+4. **Password-Protected Keys**: Your master encryption key is encrypted with
+   your password before being stored. If you forget your password, your data
+   cannot be recovered (by design).
+
+### What's Protected
+
+| Data | Encrypted |
+|------|-----------|
+| Terminal output | ✓ AES-256-GCM |
+| Terminal input (keystrokes) | ✓ AES-256-GCM |
+| Session metadata (timestamps) | Plaintext (for functionality) |
+| Authentication tokens | Separate (JWT/OAuth) |
+
+For implementation details, see [docs/e2ee/](docs/e2ee/).
+
 ## License
 
 MIT
