@@ -2,17 +2,65 @@
 
 import { create } from 'zustand'
 import { apiClient } from '../lib/api-client'
-import {
-  type StoredMEK,
-  type EncryptedContent,
-  deriveSessionKey,
-  decryptMEK,
-  encryptMEK,
-  generateMEK,
-  encrypt,
-  decrypt,
-  clearKey,
-} from '../lib/crypto'
+
+/**
+ * Stored MEK format (as received from/sent to server).
+ * Exported for use by components that need to work with encrypted data.
+ */
+export interface StoredMEK {
+  /** Format version (always 1) */
+  v: 1
+  /** Argon2id salt, 16 bytes, base64 encoded */
+  salt: string
+  /** AES-GCM nonce, 12 bytes, base64 encoded */
+  nonce: string
+  /** Encrypted MEK, 32 bytes, base64 encoded */
+  encrypted_mek: string
+  /** Authentication tag, 16 bytes, base64 encoded */
+  tag: string
+}
+
+/**
+ * Encrypted content format for session data.
+ * Exported for use by components that need to work with encrypted data.
+ */
+export interface EncryptedContent {
+  /** Format version (always 1) */
+  v: 1
+  /** 12-byte nonce, base64 encoded */
+  nonce: string
+  /** Ciphertext, base64 encoded */
+  ciphertext: string
+  /** 16-byte authentication tag, base64 encoded */
+  tag: string
+}
+
+/**
+ * Type definition for the crypto module.
+ * This is manually typed to avoid importing the actual module at build time.
+ */
+interface CryptoModule {
+  generateMEK: () => Uint8Array
+  encryptMEK: (password: string, mek: Uint8Array) => Promise<StoredMEK>
+  decryptMEK: (stored: StoredMEK, password: string) => Promise<Uint8Array>
+  deriveSessionKey: (mek: Uint8Array, sessionId: string) => Promise<Uint8Array>
+  encrypt: (key: Uint8Array, plaintext: Uint8Array) => Promise<EncryptedContent>
+  decrypt: (key: Uint8Array, encrypted: EncryptedContent) => Promise<Uint8Array>
+  clearKey: (key: Uint8Array) => void
+}
+
+/**
+ * Lazy-loads the crypto module to avoid WASM bundle issues with webpack.
+ * The crypto module uses argon2-browser which requires WASM support.
+ *
+ * Uses webpack magic comment to tell webpack to ignore this import during
+ * static analysis and only load it at runtime.
+ */
+async function getCryptoModule(): Promise<CryptoModule> {
+  // Use webpackIgnore to prevent webpack from bundling the crypto module
+  // This is necessary because argon2-browser uses WASM which causes build errors
+  return import(/* webpackIgnore: true */ '../lib/crypto')
+}
 
 /**
  * Encryption state interface
@@ -51,7 +99,7 @@ interface EncryptionState {
   /**
    * Locks encryption by clearing the MEK from memory.
    */
-  lock: () => void
+  lock: () => Promise<void>
 
   /**
    * Changes the encryption password.
@@ -86,6 +134,10 @@ interface EncryptionState {
  *
  * Manages the Master Encryption Key (MEK) and session keys for E2EE.
  * The MEK is kept in memory when unlocked and cleared when locked.
+ *
+ * All crypto operations are lazy-loaded to avoid WASM bundle issues
+ * with webpack/Next.js. The crypto module (which includes argon2-browser)
+ * is only loaded when encryption operations are actually performed.
  */
 export const useEncryption = create<EncryptionState>()((set, get) => ({
   isUnlocked: false,
@@ -121,11 +173,14 @@ export const useEncryption = create<EncryptionState>()((set, get) => ({
     set({ isLoading: true, error: null })
 
     try {
+      // Lazy-load crypto module
+      const crypto = await getCryptoModule()
+
       // Generate a new MEK
-      const mek = generateMEK()
+      const mek = crypto.generateMEK()
 
       // Encrypt MEK with password
-      const storedMek = await encryptMEK(password, mek)
+      const storedMek = await crypto.encryptMEK(password, mek)
 
       // Store on server
       await apiClient.request('/v1/users/me/encryption-key', {
@@ -157,8 +212,11 @@ export const useEncryption = create<EncryptionState>()((set, get) => ({
         '/v1/users/me/encryption-key'
       )
 
+      // Lazy-load crypto module
+      const crypto = await getCryptoModule()
+
       // Decrypt MEK with password
-      const mek = await decryptMEK(storedMek, password)
+      const mek = await crypto.decryptMEK(storedMek, password)
 
       set({
         isUnlocked: true,
@@ -176,16 +234,19 @@ export const useEncryption = create<EncryptionState>()((set, get) => ({
     }
   },
 
-  lock: (): void => {
+  lock: async (): Promise<void> => {
     const state = get()
+
+    // Lazy-load crypto module
+    const crypto = await getCryptoModule()
 
     // Clear MEK from memory
     if (state.mek) {
-      clearKey(state.mek)
+      crypto.clearKey(state.mek)
     }
 
     // Clear all session keys
-    state.sessionKeys.forEach((key) => clearKey(key))
+    state.sessionKeys.forEach((key) => crypto.clearKey(key))
 
     set({
       isUnlocked: false,
@@ -207,11 +268,14 @@ export const useEncryption = create<EncryptionState>()((set, get) => ({
         '/v1/users/me/encryption-key'
       )
 
+      // Lazy-load crypto module
+      const crypto = await getCryptoModule()
+
       // Decrypt with old password
-      const mek = await decryptMEK(storedMek, oldPassword)
+      const mek = await crypto.decryptMEK(storedMek, oldPassword)
 
       // Re-encrypt with new password
-      const newStoredMek = await encryptMEK(newPassword, mek)
+      const newStoredMek = await crypto.encryptMEK(newPassword, mek)
 
       // Store new encrypted MEK
       await apiClient.request('/v1/users/me/encryption-key', {
@@ -247,8 +311,11 @@ export const useEncryption = create<EncryptionState>()((set, get) => ({
       return sessionKey
     }
 
+    // Lazy-load crypto module
+    const crypto = await getCryptoModule()
+
     // Derive session key
-    sessionKey = await deriveSessionKey(state.mek, sessionId)
+    sessionKey = await crypto.deriveSessionKey(state.mek, sessionId)
 
     // Cache it
     set((prev) => ({
@@ -263,7 +330,11 @@ export const useEncryption = create<EncryptionState>()((set, get) => ({
     data: Uint8Array
   ): Promise<EncryptedContent> => {
     const sessionKey = await get().getSessionKey(sessionId)
-    return encrypt(sessionKey, data)
+
+    // Lazy-load crypto module
+    const crypto = await getCryptoModule()
+
+    return crypto.encrypt(sessionKey, data)
   },
 
   decryptForSession: async (
@@ -271,6 +342,10 @@ export const useEncryption = create<EncryptionState>()((set, get) => ({
     encrypted: EncryptedContent
   ): Promise<Uint8Array> => {
     const sessionKey = await get().getSessionKey(sessionId)
-    return decrypt(sessionKey, encrypted)
+
+    // Lazy-load crypto module
+    const crypto = await getCryptoModule()
+
+    return crypto.decrypt(sessionKey, encrypted)
   },
 }))

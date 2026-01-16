@@ -1,6 +1,10 @@
 'use client'
 
 import React, { useEffect, useRef, useState, useCallback } from 'react'
+import {
+  useEncryption,
+  type EncryptedContent,
+} from '../../hooks/use-encryption'
 
 /** Token key for localStorage */
 const TOKEN_KEY = 'user-token'
@@ -21,7 +25,10 @@ type ConnectionState = 'connecting' | 'connected' | 'disconnected' | 'error'
 interface OutputMessage {
   type: 'output'
   session_id: string
-  data: string
+  /** Plaintext data (base64 encoded) - used when E2EE is disabled */
+  data?: string
+  /** Encrypted data - used when E2EE is enabled */
+  encrypted?: EncryptedContent
   timestamp: string
 }
 
@@ -60,7 +67,10 @@ interface SubscribeMessage {
 interface PromptMessage {
   type: 'prompt'
   session_id: string
-  text: string
+  /** Plaintext text - used when E2EE is disabled */
+  text?: string
+  /** Encrypted text - used when E2EE is enabled */
+  encrypted?: EncryptedContent
 }
 
 interface ResizeMessage {
@@ -126,6 +136,30 @@ export function Terminal({
     useState<'attached' | 'detached' | null>(null)
   const [errorMessage, setErrorMessage] = useState<string | null>(null)
   const [reconnectAttempt, setReconnectAttempt] = useState(0)
+
+  // Encryption state
+  const {
+    isEnabled: encryptionEnabled,
+    isUnlocked: encryptionUnlocked,
+    isLoading: encryptionLoading,
+    error: encryptionError,
+    initialize: initializeEncryption,
+    unlock: unlockEncryption,
+    encryptForSession,
+    decryptForSession,
+  } = useEncryption()
+
+  // Local state for unlock password input
+  const [unlockPassword, setUnlockPassword] = useState('')
+  const [unlockError, setUnlockError] = useState<string | null>(null)
+  const [isUnlocking, setIsUnlocking] = useState(false)
+  // Decryption error for display in terminal
+  const [decryptionError, setDecryptionError] = useState<string | null>(null)
+
+  // Initialize encryption state on mount
+  useEffect(() => {
+    initializeEncryption()
+  }, [initializeEncryption])
 
   // Load xterm modules on mount (client-side only)
   useEffect(() => {
@@ -205,6 +239,102 @@ export function Terminal({
   }, [])
 
   /**
+   * Handles encrypted output messages.
+   * Decrypts content if encryption is unlocked, shows placeholder otherwise.
+   */
+  const handleEncryptedOutput = useCallback(
+    async (
+      encrypted: EncryptedContent,
+      term: import('@xterm/xterm').Terminal
+    ): Promise<void> => {
+      if (!encryptionUnlocked) {
+        // Encryption is locked - show placeholder
+        term.write('\r\n[Encrypted - Enter password to view]\r\n')
+        return
+      }
+
+      try {
+        // Decrypt the content
+        const decrypted = await decryptForSession(sessionId, encrypted)
+        const text = new TextDecoder().decode(decrypted)
+        term.write(text)
+        // Clear any previous decryption error on success
+        setDecryptionError(null)
+      } catch (error) {
+        // Decryption failed - show error message
+        const errorMsg = error instanceof Error
+          ? error.message
+          : 'Decryption failed'
+        setDecryptionError(errorMsg)
+        term.write(`\r\n[Decryption error: ${errorMsg}]\r\n`)
+      }
+    },
+    [encryptionUnlocked, decryptForSession, sessionId]
+  )
+
+  /**
+   * Sends encrypted or plaintext prompt to the server.
+   */
+  const sendPrompt = useCallback(
+    async (text: string): Promise<void> => {
+      if (encryptionEnabled && encryptionUnlocked) {
+        // E2EE is enabled and unlocked - encrypt the message
+        try {
+          const plaintext = new TextEncoder().encode(text)
+          const encrypted = await encryptForSession(sessionId, plaintext)
+          sendMessage({
+            type: 'prompt',
+            session_id: sessionId,
+            encrypted,
+          })
+        } catch {
+          // Encryption failed - fall back to plaintext
+          sendMessage({
+            type: 'prompt',
+            session_id: sessionId,
+            text,
+          })
+        }
+      } else {
+        // E2EE not enabled or locked - send plaintext
+        sendMessage({
+          type: 'prompt',
+          session_id: sessionId,
+          text,
+        })
+      }
+    },
+    [
+      encryptionEnabled,
+      encryptionUnlocked,
+      encryptForSession,
+      sendMessage,
+      sessionId,
+    ]
+  )
+
+  /**
+   * Handles the unlock form submission.
+   */
+  const handleUnlock = useCallback(
+    async (e: React.FormEvent): Promise<void> => {
+      e.preventDefault()
+      if (!unlockPassword) return
+
+      setIsUnlocking(true)
+      setUnlockError(null)
+
+      const success = await unlockEncryption(unlockPassword)
+      if (!success) {
+        setUnlockError('Invalid password')
+      }
+      setUnlockPassword('')
+      setIsUnlocking(false)
+    },
+    [unlockPassword, unlockEncryption]
+  )
+
+  /**
    * Connects to the WebSocket server.
    */
   const connect = useCallback((): void => {
@@ -275,10 +405,16 @@ export function Terminal({
 
         switch (message.type) {
           case 'output':
-            // Decode base64 data and write to terminal
             if (message.session_id === sessionId) {
-              const decoded = decodeBase64(message.data)
-              term.write(decoded)
+              // Handle encrypted or plaintext output
+              if (message.encrypted) {
+                // Encrypted message - need to decrypt
+                handleEncryptedOutput(message.encrypted, term)
+              } else if (message.data) {
+                // Plaintext message - decode base64 and display
+                const decoded = decodeBase64(message.data)
+                term.write(decoded)
+              }
             }
             break
 
@@ -340,6 +476,7 @@ export function Terminal({
   }, [
     buildWebSocketUrl,
     decodeBase64,
+    handleEncryptedOutput,
     sendMessage,
     sessionId
   ])
@@ -415,13 +552,9 @@ export function Terminal({
     // Store timeout for cleanup
     const connectTimeoutRef = connectTimeout
 
-    // Handle terminal input - send as prompt message
+    // Handle terminal input - send as prompt message (encrypted if enabled)
     const inputDisposable = term.onData((data) => {
-      sendMessage({
-        type: 'prompt',
-        session_id: sessionId,
-        text: data
-      })
+      sendPrompt(data)
     })
 
     // Handle resize with error handling for disposed terminals
@@ -484,7 +617,7 @@ export function Terminal({
       xtermRef.current = null
       fitAddonRef.current = null
     }
-  }, [xtermModules, connect, sendMessage, sessionId])
+  }, [xtermModules, connect, sendMessage, sendPrompt, sessionId])
 
   /**
    * Get connection status text for status bar.
@@ -554,6 +687,30 @@ export function Terminal({
               </span>
             </>
           )}
+
+          {/* E2EE status indicator */}
+          {encryptionEnabled && (
+            <>
+              <span className="text-zinc-600">|</span>
+              <span className={`${
+                encryptionUnlocked
+                  ? 'text-green-400'
+                  : 'text-yellow-400'
+              }`}>
+                {encryptionUnlocked ? 'E2EE Unlocked' : 'E2EE Locked'}
+              </span>
+            </>
+          )}
+
+          {/* Decryption error indicator */}
+          {decryptionError && (
+            <>
+              <span className="text-zinc-600">|</span>
+              <span className="text-red-400">
+                Decryption Error
+              </span>
+            </>
+          )}
         </div>
 
         {/* Reconnect button */}
@@ -568,12 +725,82 @@ export function Terminal({
         )}
       </div>
 
-      {/* Terminal container */}
-      <div
-        ref={terminalRef}
-        className="flex-1 min-h-0 cursor-text"
-        onClick={() => xtermRef.current?.focus()}
-      />
+      {/* Terminal container with optional unlock overlay */}
+      <div className="flex-1 min-h-0 relative">
+        {/* Terminal */}
+        <div
+          ref={terminalRef}
+          className="h-full cursor-text"
+          onClick={() => xtermRef.current?.focus()}
+        />
+
+        {/* Unlock encryption overlay */}
+        {encryptionEnabled && !encryptionUnlocked && !encryptionLoading && (
+          <div className="absolute inset-0 bg-zinc-900/90 flex items-center
+            justify-center">
+            <div className="bg-zinc-800 border border-zinc-700 rounded-lg
+              p-6 max-w-sm w-full mx-4">
+              <div className="text-center mb-4">
+                <div className="inline-flex items-center justify-center w-12
+                  h-12 rounded-full bg-yellow-500/20 mb-3">
+                  <svg
+                    className="w-6 h-6 text-yellow-500"
+                    fill="none"
+                    viewBox="0 0 24 24"
+                    stroke="currentColor"
+                  >
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      strokeWidth={2}
+                      d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2
+                        2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"
+                    />
+                  </svg>
+                </div>
+                <h3 className="text-lg font-medium text-zinc-100">
+                  Session Encrypted
+                </h3>
+                <p className="text-sm text-zinc-400 mt-1">
+                  Enter your encryption password to view session content
+                </p>
+              </div>
+
+              <form onSubmit={handleUnlock} className="space-y-4">
+                <div>
+                  <input
+                    type="password"
+                    value={unlockPassword}
+                    onChange={(e) => setUnlockPassword(e.target.value)}
+                    placeholder="Encryption password"
+                    className="w-full px-3 py-2 bg-zinc-900 border border-zinc-700
+                      rounded-lg text-zinc-100 placeholder-zinc-500 focus:outline-none
+                      focus:ring-2 focus:ring-violet-500 focus:border-transparent"
+                    autoFocus
+                    disabled={isUnlocking}
+                  />
+                </div>
+
+                {(unlockError || encryptionError) && (
+                  <p className="text-sm text-red-400 text-center">
+                    {unlockError || encryptionError}
+                  </p>
+                )}
+
+                <button
+                  type="submit"
+                  disabled={isUnlocking || !unlockPassword}
+                  className="w-full px-4 py-2 bg-violet-600 hover:bg-violet-700
+                    disabled:bg-zinc-700 disabled:cursor-not-allowed rounded-lg
+                    text-white font-medium transition-colors"
+                >
+                  {isUnlocking ? 'Unlocking...' : 'Unlock'}
+                </button>
+              </form>
+            </div>
+          </div>
+        )}
+      </div>
     </div>
   )
 }
