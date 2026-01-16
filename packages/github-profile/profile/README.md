@@ -23,7 +23,8 @@
 
 ---
 
-**klaas** wraps your Claude Code sessions and streams them to the cloud, giving you remote access from any device.
+**`klaas`** wraps your Claude Code sessions and streams them to the cloud, 
+giving you remote access from any device.
 
 - Stream terminal output in real-time
 - Access sessions from phone, tablet, or another computer
