@@ -30,6 +30,7 @@ ulid = "1"
 
 # Encoding
 base64 = "0.22"
+hex = "0.4"
 
 # Cryptography (E2EE)
 argon2 = "0.5"           # Argon2id password hashing

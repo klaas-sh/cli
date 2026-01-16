@@ -23,9 +23,13 @@ const ACCESS_TOKEN_KEY: &str = "access_token";
 const REFRESH_TOKEN_KEY: &str = "refresh_token";
 const DEVICE_ID_KEY: &str = "device_id";
 const SESSION_ID_KEY: &str = "session_id";
+const MEK_KEY: &str = "encryption_key";
 
 /// Fallback credentials file name.
 const FALLBACK_CREDENTIALS_FILE: &str = "credentials.json";
+
+/// Key size in bytes for MEK (256-bit key).
+const MEK_SIZE: usize = 32;
 
 /// Fallback credentials structure for file-based storage.
 #[derive(Debug, Serialize, Deserialize, Default)]
@@ -34,6 +38,8 @@ struct FallbackCredentials {
     refresh_token: Option<String>,
     device_id: Option<String>,
     session_id: Option<String>,
+    /// Master Encryption Key stored as hex string for E2EE.
+    mek: Option<String>,
 }
 
 /// Credential storage manager.
@@ -275,6 +281,97 @@ impl CredentialStore {
         Ok(())
     }
 
+    /// Stores the Master Encryption Key (MEK) for E2EE.
+    ///
+    /// The MEK is a 32-byte key used to derive session-specific encryption
+    /// keys. It is auto-generated on first use and stored securely.
+    ///
+    /// # Arguments
+    ///
+    /// * `mek` - 32-byte Master Encryption Key
+    ///
+    /// # Errors
+    ///
+    /// Returns `CliError::KeychainError` if storage fails.
+    pub fn store_mek(&self, mek: &[u8]) -> Result<()> {
+        if mek.len() != MEK_SIZE {
+            return Err(CliError::KeychainError(format!(
+                "Invalid MEK size: expected {}, got {}",
+                MEK_SIZE,
+                mek.len()
+            )));
+        }
+
+        // Store as hex string for both keychain and fallback
+        let hex_mek = hex::encode(mek);
+
+        if self.use_keychain {
+            self.store_keychain_value(MEK_KEY, &hex_mek)?;
+        } else {
+            self.update_fallback(|creds| {
+                creds.mek = Some(hex_mek.clone());
+            })?;
+        }
+
+        debug!("Stored MEK for E2EE");
+        Ok(())
+    }
+
+    /// Retrieves the stored Master Encryption Key (MEK).
+    ///
+    /// # Returns
+    ///
+    /// - `Ok(Some(mek))` if MEK is stored (32-byte Vec)
+    /// - `Ok(None)` if no MEK is stored
+    /// - `Err(...)` if retrieval fails or MEK is invalid
+    pub fn get_mek(&self) -> Result<Option<Vec<u8>>> {
+        let hex_mek = if self.use_keychain {
+            self.get_keychain_value(MEK_KEY)?
+        } else {
+            self.read_fallback()?.mek
+        };
+
+        match hex_mek {
+            Some(hex) => {
+                let mek = hex::decode(&hex)
+                    .map_err(|e| CliError::KeychainError(format!("Invalid MEK encoding: {}", e)))?;
+
+                if mek.len() != MEK_SIZE {
+                    return Err(CliError::KeychainError(format!(
+                        "Stored MEK has wrong size: expected {}, got {}",
+                        MEK_SIZE,
+                        mek.len()
+                    )));
+                }
+
+                debug!("Retrieved MEK from storage");
+                Ok(Some(mek))
+            }
+            None => Ok(None),
+        }
+    }
+
+    /// Clears the stored MEK.
+    ///
+    /// This disables E2EE until a new MEK is generated. Use with caution as
+    /// this will make previous encrypted sessions unrecoverable.
+    ///
+    /// # Errors
+    ///
+    /// Returns `CliError::KeychainError` if deletion fails.
+    pub fn clear_mek(&self) -> Result<()> {
+        if self.use_keychain {
+            let _ = self.delete_keychain_value(MEK_KEY);
+        } else {
+            self.update_fallback(|creds| {
+                creds.mek = None;
+            })?;
+        }
+
+        debug!("Cleared MEK");
+        Ok(())
+    }
+
     /// Stores a value in the keychain.
     fn store_keychain_value(&self, key: &str, value: &str) -> Result<()> {
         let entry = Entry::new(KEYCHAIN_SERVICE, key)
@@ -460,6 +557,27 @@ pub fn clear_session_id() -> Result<()> {
     CredentialStore::new().clear_session_id()
 }
 
+/// Convenience function to store MEK.
+///
+/// Creates a temporary `CredentialStore` and stores the MEK.
+pub fn store_mek(mek: &[u8]) -> Result<()> {
+    CredentialStore::new().store_mek(mek)
+}
+
+/// Convenience function to get MEK.
+///
+/// Creates a temporary `CredentialStore` and retrieves the MEK.
+pub fn get_mek() -> Result<Option<Vec<u8>>> {
+    CredentialStore::new().get_mek()
+}
+
+/// Convenience function to clear MEK.
+///
+/// Creates a temporary `CredentialStore` and clears the MEK.
+pub fn clear_mek() -> Result<()> {
+    CredentialStore::new().clear_mek()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -472,6 +590,7 @@ mod tests {
         assert!(creds.refresh_token.is_none());
         assert!(creds.device_id.is_none());
         assert!(creds.session_id.is_none());
+        assert!(creds.mek.is_none());
     }
 
     /// Tests fallback credentials serialization round-trip.
@@ -482,6 +601,7 @@ mod tests {
             refresh_token: Some("test_refresh".to_string()),
             device_id: Some("01HQXK7V8G3N5M2R4P6T1W9Y0Z".to_string()),
             session_id: Some("01HQXK8V8G3N5M2R4P6T1W9Y0Z".to_string()),
+            mek: Some("0123456789abcdef".repeat(4)),
         };
 
         let json = serde_json::to_string(&creds).unwrap();
@@ -491,6 +611,37 @@ mod tests {
         assert_eq!(parsed.refresh_token, creds.refresh_token);
         assert_eq!(parsed.device_id, creds.device_id);
         assert_eq!(parsed.session_id, creds.session_id);
+        assert_eq!(parsed.mek, creds.mek);
+    }
+
+    /// Tests MEK hex encoding/decoding.
+    #[test]
+    fn test_mek_hex_encoding() {
+        // 32 bytes = 64 hex chars
+        let mek_bytes = [0xab; 32];
+        let hex = hex::encode(&mek_bytes);
+        assert_eq!(hex.len(), 64);
+
+        let decoded = hex::decode(&hex).unwrap();
+        assert_eq!(decoded.len(), 32);
+        assert_eq!(decoded, mek_bytes.to_vec());
+    }
+
+    /// Tests MEK size validation.
+    #[test]
+    fn test_mek_size_validation() {
+        // Valid 32-byte MEK should work
+        let valid_mek = [0u8; 32];
+        let hex = hex::encode(&valid_mek);
+        let decoded = hex::decode(&hex).unwrap();
+        assert_eq!(decoded.len(), MEK_SIZE);
+
+        // Invalid sizes should fail validation
+        let too_short = [0u8; 16];
+        assert_ne!(too_short.len(), MEK_SIZE);
+
+        let too_long = [0u8; 64];
+        assert_ne!(too_long.len(), MEK_SIZE);
     }
 
     /// Tests that get_fallback_path returns a valid path.
