@@ -1346,6 +1346,7 @@ __metadata:
     "@xterm/addon-fit": "npm:^0.10.0"
     "@xterm/addon-web-links": "npm:^0.11.0"
     "@xterm/xterm": "npm:^5.5.0"
+    argon2-browser: "npm:^1.18.0"
     autoprefixer: "npm:^10.4.0"
     clsx: "npm:^2.1.1"
     eslint: "npm:^8.57.0"
@@ -2609,6 +2610,13 @@ __metadata:
   version: 5.2.0
   resolution: "ansi-styles@npm:5.2.0"
   checksum: 9c4ca80eb3c2fb7b33841c210d2f20807f40865d27008d7c3f707b7f95cab7d67462a565e2388ac3285b71cb3d9bb2173de8da37c57692a362885ec34d6e27df
+  languageName: node
+  linkType: hard
+
+"argon2-browser@npm:^1.18.0":
+  version: 1.18.0
+  resolution: "argon2-browser@npm:1.18.0"
+  checksum: da58d39e6fd2be58cf0f7ee3fe6e3d88bfdf4c923f00ae0cce9d9431ea8661b8bc1c62326e7cf6b33872e2f3e8d1bb0816842f8e05d97141b859351fd5a80ca4
   languageName: node
   linkType: hard
 

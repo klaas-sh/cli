@@ -14,6 +14,7 @@ import { cors } from 'hono/cors';
 import { logger } from 'hono/logger';
 import type { Env } from './types';
 import { authRoutes } from './routes/auth';
+import { encryptionRoutes } from './routes/encryption';
 import { sessionsRoutes } from './routes/sessions';
 import { healthRoutes } from './routes/health';
 import { dashboardRoutes } from './routes/dashboard/index';
@@ -53,6 +54,9 @@ export function createApp(): AppType {
 
   // Session management routes (authenticated)
   app.route('/sessions', sessionsRoutes);
+
+  // Encryption key management routes (authenticated)
+  app.route('/v1/users/me/encryption-key', encryptionRoutes);
 
   // Dashboard routes (user authentication)
   app.route('/dashboard', dashboardRoutes);

@@ -6,6 +6,7 @@ pub mod app;
 pub mod auth;
 pub mod config;
 pub mod credentials;
+pub mod crypto;
 pub mod error;
 pub mod pty;
 pub mod terminal;
