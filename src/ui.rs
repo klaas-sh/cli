@@ -306,6 +306,54 @@ pub fn display_auth_success() {
     );
 }
 
+/// Displays pairing instructions for the ECDH key exchange flow.
+pub fn display_pairing_instructions(verification_uri: &str, pairing_code: &str) {
+    let (ar, ag, ab) = colors::AMBER;
+    let (al, alg, alb) = colors::AMBER_LIGHT;
+    let (cr, cg, cb) = colors::CYAN;
+
+    println!();
+    println!(
+        "  {}{}To connect this device:{}",
+        BOLD,
+        fg_color(ar, ag, ab),
+        RESET
+    );
+    println!();
+
+    // Display the pairing code prominently
+    println!(
+        "    Open the Dashboard and enter code: {}{}{}{}",
+        BOLD,
+        fg_color(cr, cg, cb),
+        pairing_code,
+        RESET
+    );
+    println!();
+
+    // Display the URL
+    println!(
+        "    Or visit: {}{}{}{}",
+        BOLD,
+        fg_color(al, alg, alb),
+        verification_uri,
+        RESET
+    );
+    println!();
+}
+
+/// Displays a success message when pairing completes.
+pub fn display_pairing_success() {
+    let (gr, gg, gb) = colors::GREEN;
+    println!(
+        "\r  {}{}✓{} Device paired successfully!{}",
+        BOLD,
+        fg_color(gr, gg, gb),
+        RESET,
+        RESET
+    );
+}
+
 /// Displays session connected message.
 pub fn display_session_connected(session_url: Option<&str>) {
     let (cr, cg, cb) = colors::CYAN;
