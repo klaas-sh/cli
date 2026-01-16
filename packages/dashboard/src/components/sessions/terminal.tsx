@@ -5,6 +5,7 @@ import {
   useEncryption,
   type EncryptedContent,
 } from '../../hooks/use-encryption'
+import { getWsUrl } from '../../lib/config'
 
 /** Token key for localStorage */
 const TOKEN_KEY = 'user-token'
@@ -203,8 +204,7 @@ export function Terminal({
    * Builds the WebSocket URL with authentication.
    */
   const buildWebSocketUrl = useCallback((): string | null => {
-    const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8787'
-    const wsUrl = apiUrl.replace(/^http/, 'ws')
+    const wsUrl = getWsUrl()
     const token = localStorage.getItem(TOKEN_KEY)
 
     if (!token) {

@@ -51,7 +51,7 @@ function addSecurityHeaders(response: NextResponse, apiUrl: string): void {
   response.headers.set(
     'Content-Security-Policy',
     `default-src 'self'; connect-src 'self' ${apiHost} ` +
-    `http://localhost:8787 http://localhost:* ws://localhost:*; ` +
+    `http://localhost:* ws://localhost:*; ` +
     `script-src 'self' 'unsafe-inline' 'unsafe-eval'; ` +
     `style-src 'self' 'unsafe-inline'; img-src 'self' data: https:; ` +
     `font-src 'self' data:;`

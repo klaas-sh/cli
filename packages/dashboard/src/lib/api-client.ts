@@ -1,4 +1,5 @@
 import { LoginCredentials } from '@/types/auth'
+import { getApiUrl } from './config'
 import {
   base64Decode,
   base64Encode,
@@ -84,9 +85,8 @@ class ApiClient {
   private baseUrl: string
 
   constructor() {
-    // Use the API package URL from environment variables
-    this.baseUrl = process.env.NEXT_PUBLIC_API_URL ||
-      'http://localhost:8787'
+    // Use the API URL from config (supports dev-ports auto-discovery)
+    this.baseUrl = getApiUrl()
   }
 
   /**
