@@ -11,10 +11,35 @@
 
 import type {
   CliToServerMessage,
+  CliToServerMessageE2EE,
+  EncryptedContent,
   ServerToCliMessage,
-  WebToServerMessage,
+  ServerToCliMessageE2EE,
   ServerToWebMessage,
+  ServerToWebMessageE2EE,
+  WebToServerMessage,
+  WebToServerMessageE2EE,
 } from '../types';
+
+/**
+ * Combined CLI-to-server message type supporting both plaintext and E2EE.
+ */
+type CliMessage = CliToServerMessage | CliToServerMessageE2EE;
+
+/**
+ * Combined web-to-server message type supporting both plaintext and E2EE.
+ */
+type WebMessage = WebToServerMessage | WebToServerMessageE2EE;
+
+/**
+ * Combined server-to-CLI message type supporting both plaintext and E2EE.
+ */
+type ServerCliMessage = ServerToCliMessage | ServerToCliMessageE2EE;
+
+/**
+ * Combined server-to-web message type supporting both plaintext and E2EE.
+ */
+type ServerWebMessage = ServerToWebMessage | ServerToWebMessageE2EE;
 
 /** Maximum messages to queue when CLI is disconnected */
 const MAX_QUEUE_SIZE = 100;
@@ -36,17 +61,23 @@ const CONNECTION_TIMEOUT_MS = 90_000;
 const OUTPUT_BUFFER_MAX_BYTES = 256 * 1024;
 
 interface QueuedMessage {
-  message: ServerToCliMessage;
+  message: ServerCliMessage;
   timestamp: number;
 }
 
-/** Buffered output message for replay to new web clients */
+/**
+ * Buffered output message for replay to new web clients.
+ * Supports both plaintext (legacy) and encrypted (E2EE) formats.
+ * Server is zero-knowledge - passes through without decryption.
+ */
 interface BufferedOutput {
-  /** Base64-encoded terminal output */
-  data: string;
+  /** Base64-encoded terminal output (legacy plaintext format) */
+  data?: string;
+  /** Encrypted terminal output (E2EE format) */
+  encrypted?: EncryptedContent;
   /** Timestamp of the output */
   timestamp: string;
-  /** Approximate size in bytes (base64 data length) */
+  /** Approximate size in bytes for buffer management */
   size: number;
 }
 
@@ -349,9 +380,9 @@ export class SessionHub implements DurableObject {
       }
 
       if (clientType === 'cli') {
-        await this.handleCliMessage(parsed as CliToServerMessage);
+        await this.handleCliMessage(parsed as CliMessage);
       } else {
-        await this.handleWebMessage(parsed as WebToServerMessage, ws);
+        await this.handleWebMessage(parsed as WebMessage, ws);
       }
     } catch (error) {
       console.error('Error handling message:', error);
@@ -367,11 +398,14 @@ export class SessionHub implements DurableObject {
    *
    * Message types:
    * - session_attach: CLI attaching to session with metadata
-   * - output: Terminal output (base64 encoded)
+   * - output: Terminal output (plaintext or E2EE encrypted)
    * - session_detach: CLI detaching from session
    * - pong: Heartbeat response
+   *
+   * For E2EE: Server is zero-knowledge, passes encrypted content through
+   * without decryption.
    */
-  private async handleCliMessage(msg: CliToServerMessage): Promise<void> {
+  private async handleCliMessage(msg: CliMessage): Promise<void> {
     switch (msg.type) {
       case 'session_attach': {
         // Store session metadata in memory
@@ -415,18 +449,33 @@ export class SessionHub implements DurableObject {
         break;
       }
 
-      case 'output':
-        // Buffer output for replay to new web clients
-        this.bufferOutput(msg.data, msg.timestamp);
+      case 'output': {
+        // Handle both encrypted (E2EE) and plaintext (legacy) output formats.
+        // Server is zero-knowledge - passes through without decryption.
+        const hasEncrypted = 'encrypted' in msg && msg.encrypted !== undefined;
+        const hasData = 'data' in msg && msg.data !== undefined;
 
-        // Forward terminal output (base64 encoded) to all web clients
-        this.broadcastToWeb({
-          type: 'output',
-          session_id: msg.session_id,
-          data: msg.data,
-          timestamp: msg.timestamp,
-        });
+        if (hasEncrypted) {
+          // E2EE format: buffer and forward encrypted content as-is
+          this.bufferOutputEncrypted(msg.encrypted, msg.timestamp);
+          this.broadcastToWeb({
+            type: 'output',
+            session_id: msg.session_id,
+            encrypted: msg.encrypted,
+            timestamp: msg.timestamp,
+          });
+        } else if (hasData) {
+          // Legacy plaintext format: buffer and forward data
+          this.bufferOutput(msg.data, msg.timestamp);
+          this.broadcastToWeb({
+            type: 'output',
+            session_id: msg.session_id,
+            data: msg.data,
+            timestamp: msg.timestamp,
+          });
+        }
         break;
+      }
 
       case 'session_detach': {
         // Update stored status
@@ -458,11 +507,14 @@ export class SessionHub implements DurableObject {
    *
    * Message types:
    * - subscribe: Subscribe to session updates (array of session_ids)
-   * - prompt: Send text prompt to CLI
+   * - prompt: Send text prompt to CLI (plaintext or E2EE encrypted)
    * - resize: Send terminal resize to CLI
+   *
+   * For E2EE: Server is zero-knowledge, passes encrypted content through
+   * without decryption.
    */
   private async handleWebMessage(
-    msg: WebToServerMessage,
+    msg: WebMessage,
     ws: WebSocket
   ): Promise<void> {
     switch (msg.type) {
@@ -504,22 +556,39 @@ export class SessionHub implements DurableObject {
         break;
       }
 
-      case 'prompt':
+      case 'prompt': {
         // Verify session ID matches
         if (msg.session_id !== this.sessionId) {
           this.sendErrorToWeb(ws, 'session_mismatch', 'Session ID mismatch');
           return;
         }
 
-        // Forward prompt to CLI (will be queued if disconnected)
-        this.sendToCli({
-          type: 'prompt',
-          session_id: msg.session_id,
-          text: msg.text,
-          source: 'web',
-          timestamp: new Date().toISOString(),
-        });
+        // Handle both encrypted (E2EE) and plaintext (legacy) prompt formats.
+        // Server is zero-knowledge - passes through without decryption.
+        const hasEncrypted = 'encrypted' in msg && msg.encrypted !== undefined;
+        const hasText = 'text' in msg && msg.text !== undefined;
+
+        if (hasEncrypted) {
+          // E2EE format: forward encrypted content as-is
+          this.sendToCli({
+            type: 'prompt',
+            session_id: msg.session_id,
+            encrypted: msg.encrypted,
+            source: 'web',
+            timestamp: new Date().toISOString(),
+          });
+        } else if (hasText) {
+          // Legacy plaintext format: forward text
+          this.sendToCli({
+            type: 'prompt',
+            session_id: msg.session_id,
+            text: msg.text,
+            source: 'web',
+            timestamp: new Date().toISOString(),
+          });
+        }
         break;
+      }
 
       case 'resize':
         // Verify session ID matches
@@ -582,8 +651,9 @@ export class SessionHub implements DurableObject {
   /**
    * Send message to CLI, or queue if disconnected.
    * Uses hibernation-aware check to find CLI socket.
+   * Supports both plaintext and E2EE message formats.
    */
-  private sendToCli(msg: ServerToCliMessage): void {
+  private sendToCli(msg: ServerCliMessage): void {
     // Use hibernation-aware check to get CLI socket
     if (this.isCliConnected() && this.cliSocket) {
       try {
@@ -612,8 +682,9 @@ export class SessionHub implements DurableObject {
   /**
    * Broadcast message to all connected web clients.
    * Uses getWebSockets to ensure we reach all clients after hibernation.
+   * Supports both plaintext and E2EE message formats.
    */
-  private broadcastToWeb(msg: ServerToWebMessage): void {
+  private broadcastToWeb(msg: ServerWebMessage): void {
     const msgStr = JSON.stringify(msg);
 
     // Get all web sockets from persistent storage (hibernation-aware)
@@ -650,7 +721,7 @@ export class SessionHub implements DurableObject {
   }
 
   /**
-   * Buffer terminal output for replay to web clients connecting later.
+   * Buffer plaintext terminal output for replay to web clients.
    * Maintains a ring buffer of approximately OUTPUT_BUFFER_MAX_BYTES.
    */
   private bufferOutput(data: string, timestamp: string): void {
@@ -660,15 +731,47 @@ export class SessionHub implements DurableObject {
     this.outputBuffer.push({ data, timestamp, size });
     this.outputBufferSize += size;
 
-    // Log occasionally (every 10 messages) to avoid spam
+    this.logBufferStatus();
+    this.trimBufferIfNeeded();
+  }
+
+  /**
+   * Buffer encrypted terminal output for replay to web clients.
+   * Server is zero-knowledge - stores encrypted content without decryption.
+   * Maintains a ring buffer of approximately OUTPUT_BUFFER_MAX_BYTES.
+   */
+  private bufferOutputEncrypted(
+    encrypted: EncryptedContent,
+    timestamp: string
+  ): void {
+    // Estimate size based on ciphertext length (main payload)
+    const size = encrypted.ciphertext.length + encrypted.nonce.length +
+      encrypted.tag.length;
+
+    // Add new output to buffer
+    this.outputBuffer.push({ encrypted, timestamp, size });
+    this.outputBufferSize += size;
+
+    this.logBufferStatus();
+    this.trimBufferIfNeeded();
+  }
+
+  /**
+   * Log buffer status occasionally to avoid spam.
+   */
+  private logBufferStatus(): void {
     if (this.outputBuffer.length % 10 === 1) {
       console.log(
         `[SessionHub] Buffered output: ${this.outputBuffer.length} messages, ` +
         `${this.outputBufferSize} bytes total`
       );
     }
+  }
 
-    // Remove old entries if buffer exceeds max size
+  /**
+   * Trim buffer if it exceeds max size.
+   */
+  private trimBufferIfNeeded(): void {
     while (
       this.outputBufferSize > OUTPUT_BUFFER_MAX_BYTES &&
       this.outputBuffer.length > 1
@@ -683,6 +786,7 @@ export class SessionHub implements DurableObject {
   /**
    * Send all buffered output to a specific web client.
    * Called when a new web client connects to provide scroll-back history.
+   * Supports both plaintext and E2EE formats - sends in original format.
    */
   private sendBufferedOutput(socket: WebSocket): void {
     console.log(
@@ -709,22 +813,40 @@ export class SessionHub implements DurableObject {
       `(${this.outputBufferSize} bytes)`
     );
 
-    // Send each buffered output message
-    for (const { data, timestamp } of this.outputBuffer) {
-      const msg: ServerToWebMessage = {
-        type: 'output',
-        session_id: this.sessionId,
-        data,
-        timestamp,
-      };
+    // Send each buffered output message in its original format
+    for (const { data, encrypted, timestamp } of this.outputBuffer) {
+      let msg: ServerWebMessage;
+
+      if (encrypted) {
+        // E2EE format: send encrypted content as-is
+        msg = {
+          type: 'output',
+          session_id: this.sessionId,
+          encrypted,
+          timestamp,
+        };
+      } else if (data) {
+        // Legacy plaintext format
+        msg = {
+          type: 'output',
+          session_id: this.sessionId,
+          data,
+          timestamp,
+        };
+      } else {
+        // Should not happen, but skip malformed entries
+        continue;
+      }
+
       socket.send(JSON.stringify(msg));
     }
   }
 
   /**
    * Queue a message for later delivery to CLI.
+   * Supports both plaintext and E2EE message formats.
    */
-  private queueMessage(msg: ServerToCliMessage): void {
+  private queueMessage(msg: ServerCliMessage): void {
     // Prune old messages
     const now = Date.now();
     this.messageQueue = this.messageQueue.filter(
