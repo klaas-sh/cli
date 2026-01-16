@@ -30,7 +30,6 @@ function displayLogo() {
   for (const line of LOGO) {
     console.log(amber`  ${line}`);
   }
-  console.log();
 }
 
 /**
@@ -128,7 +127,6 @@ function isValidVersion(version) {
 async function main() {
   displayLogo();
   console.log(bold.yellow`  klaas CLI Release`);
-  console.log();
 
   // Get current version
   const currentVersion = getCurrentVersion();
