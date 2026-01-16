@@ -33,6 +33,10 @@ pub enum CliError {
     #[error("WebSocket error: {0}")]
     WebSocketError(String),
 
+    /// Cryptographic operation error.
+    #[error("Crypto error: {0}")]
+    CryptoError(String),
+
     /// Generic error.
     #[error("{0}")]
     Other(String),
