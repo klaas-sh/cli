@@ -15,6 +15,7 @@ import { logger } from 'hono/logger';
 import type { Env } from './types';
 import { authRoutes } from './routes/auth';
 import { encryptionRoutes } from './routes/encryption';
+import { hooksRoutes } from './routes/hooks';
 import { sessionsRoutes } from './routes/sessions';
 import { healthRoutes } from './routes/health';
 import { dashboardRoutes } from './routes/dashboard/index';
@@ -33,13 +34,19 @@ export function createApp(): AppType {
   app.use(
     '*',
     cors({
-      origin: [
-        'http://localhost:3000',
-        'http://localhost:3001',
-        'https://klaas.sh',
-        'https://app.klaas.sh',
-        'https://admin.klaas.sh',
-      ],
+      origin: (origin) => {
+        // Allow any localhost port in development
+        if (origin && origin.match(/^http:\/\/localhost:\d+$/)) {
+          return origin;
+        }
+        // Production origins
+        const allowedOrigins = [
+          'https://klaas.sh',
+          'https://app.klaas.sh',
+          'https://admin.klaas.sh',
+        ];
+        return allowedOrigins.includes(origin) ? origin : null;
+      },
       allowMethods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
       allowHeaders: ['Content-Type', 'Authorization', 'X-Device-ID', 'X-Session-ID'],
       credentials: true,
@@ -57,6 +64,9 @@ export function createApp(): AppType {
 
   // Encryption key management routes (authenticated)
   app.route('/v1/users/me/encryption-key', encryptionRoutes);
+
+  // Hooks routes (CLI hook notifications)
+  app.route('/v1/hooks', hooksRoutes);
 
   // Dashboard routes (user authentication)
   app.route('/dashboard', dashboardRoutes);
