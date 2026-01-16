@@ -2,41 +2,47 @@
   "name": "klaas",
   "version": "1.0.0",
   "description": "Remote access wrapper for Claude Code - DEPRECATED: Use native installer instead",
-  "keywords": [
-    "claude",
-    "claude-code",
-    "cli",
-    "remote",
-    "terminal"
-  ],
-  "homepage": "https://klaas.sh",
-  "repository": {
-    "type": "git",
-    "url": "git+https://github.com/klaas-sh/cli.git"
-  },
-  "license": "MIT",
   "author": "klaas-sh",
-  "type": "module",
   "bin": "./bin/klaas.js",
+  "dependencies": {
+    "barva": "^1.0.0"
+  },
+  "deprecated": "npm installation is deprecated. Please use the native installer: curl -fsSL https://klaas.sh/install.sh | bash",
+  "engines": {
+    "node": ">=18"
+  },
   "files": [
     "bin",
     "postinstall.js",
     "LICENSE",
     "README.md"
   ],
-  "scripts": {
-    "postinstall": "node postinstall.js"
-  },
-  "dependencies": {
-    "barva": "^1.0.0"
-  },
-  "engines": {
-    "node": ">=18"
-  },
+  "homepage": "https://klaas.sh",
+  "keywords": [
+    "ai",
+    "anthropic",
+    "claude",
+    "claude-code",
+    "cli",
+    "coding-assistant",
+    "remote",
+    "remote-access",
+    "streaming",
+    "terminal",
+    "wrapper"
+  ],
+  "license": "MIT",
   "os": [
     "darwin",
     "linux",
     "win32"
   ],
-  "deprecated": "npm installation is deprecated. Please use the native installer: curl -fsSL https://klaas.sh/install.sh | bash"
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/klaas-sh/npm.git"
+  },
+  "scripts": {
+    "postinstall": "node postinstall.js"
+  },
+  "type": "module"
 }
