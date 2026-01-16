@@ -23,6 +23,7 @@ mod app;
 mod auth;
 mod config;
 mod credentials;
+mod crypto;
 mod error;
 mod pty;
 mod terminal;

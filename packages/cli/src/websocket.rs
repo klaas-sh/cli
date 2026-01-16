@@ -3,9 +3,10 @@
 //! This module handles:
 //! - Connecting to the server via WebSocket with JWT authentication
 //! - Sending session attach/detach messages
-//! - Forwarding PTY output as base64-encoded messages
+//! - Forwarding PTY output as base64-encoded messages (plaintext or E2EE)
 //! - Receiving prompts, resize commands, and pings from the server
 //! - Automatic reconnection with exponential backoff
+//! - End-to-end encryption when MEK is available
 
 use std::collections::VecDeque;
 use std::sync::Arc;
@@ -27,6 +28,9 @@ use tokio_tungstenite::{connect_async, MaybeTlsStream, WebSocketStream};
 use tracing::{debug, error, info, warn};
 use url::Url;
 
+use crate::crypto::{
+    decrypt_content, derive_session_key, encrypt_content, EncryptedContent, SecretKey,
+};
 use crate::error::{CliError, Result};
 
 /// Maximum number of reconnection attempts before giving up.
@@ -59,10 +63,16 @@ pub enum OutgoingMessage {
         device_name: String,
         cwd: String,
     },
-    /// Terminal output data (base64 encoded).
+    /// Terminal output data (base64 encoded plaintext).
     Output {
         session_id: String,
         data: String,
+        timestamp: String,
+    },
+    /// Terminal output data (E2EE encrypted).
+    EncryptedOutput {
+        session_id: String,
+        encrypted: EncryptedContent,
         timestamp: String,
     },
     /// Detach the session from the server.
@@ -75,10 +85,17 @@ pub enum OutgoingMessage {
 #[derive(Debug, Clone, Deserialize)]
 #[serde(tag = "type", rename_all = "snake_case")]
 pub enum IncomingMessage {
-    /// Prompt text from a web client.
+    /// Prompt text from a web client (plaintext).
     Prompt {
         session_id: String,
         text: String,
+        source: String,
+        timestamp: String,
+    },
+    /// Prompt from a web client (E2EE encrypted).
+    EncryptedPrompt {
+        session_id: String,
+        encrypted: EncryptedContent,
         source: String,
         timestamp: String,
     },
@@ -115,9 +132,10 @@ type WsReceiver = SplitStream<WebSocketStream<MaybeTlsStream<TcpStream>>>;
 ///
 /// Provides methods for:
 /// - Connecting with JWT authentication
-/// - Sending terminal output
+/// - Sending terminal output (plaintext or E2EE encrypted)
 /// - Receiving commands from web clients
 /// - Automatic reconnection with exponential backoff
+/// - End-to-end encryption when MEK is set
 pub struct WebSocketClient {
     /// WebSocket sender (write half).
     sender: Arc<Mutex<Option<WsSender>>>,
@@ -141,6 +159,10 @@ pub struct WebSocketClient {
     is_connected: Arc<Mutex<bool>>,
     /// Current reconnection attempt.
     reconnect_attempt: Arc<Mutex<u32>>,
+    /// Master Encryption Key for E2EE (optional).
+    mek: Arc<Mutex<Option<SecretKey>>>,
+    /// Cached session key derived from MEK (derived lazily).
+    session_key: Arc<Mutex<Option<SecretKey>>>,
 }
 
 impl WebSocketClient {
@@ -192,6 +214,8 @@ impl WebSocketClient {
             message_queue: Arc::new(Mutex::new(VecDeque::new())),
             is_connected: Arc::new(Mutex::new(false)),
             reconnect_attempt: Arc::new(Mutex::new(0)),
+            mek: Arc::new(Mutex::new(None)),
+            session_key: Arc::new(Mutex::new(None)),
         };
 
         // Perform initial connection
@@ -260,22 +284,62 @@ impl WebSocketClient {
 
     /// Sends terminal output to the server.
     ///
-    /// The data is base64 encoded before sending.
+    /// If E2EE is enabled (MEK is set), the data is encrypted before sending.
+    /// Otherwise, the data is base64 encoded as plaintext.
     ///
     /// # Arguments
     ///
     /// * `data` - Raw terminal output bytes
     pub async fn send_output(&self, data: &[u8]) -> Result<()> {
-        let encoded = BASE64.encode(data);
         let timestamp = Utc::now().to_rfc3339();
 
-        let msg = OutgoingMessage::Output {
-            session_id: self.session_id.clone(),
-            data: encoded,
-            timestamp,
+        // Check if E2EE is enabled
+        let session_key = self.get_or_derive_session_key().await;
+
+        let msg = if let Some(ref key) = session_key {
+            // E2EE enabled: encrypt the data
+            let encrypted = encrypt_content(key, data);
+            OutgoingMessage::EncryptedOutput {
+                session_id: self.session_id.clone(),
+                encrypted,
+                timestamp,
+            }
+        } else {
+            // No E2EE: send as base64 plaintext
+            let encoded = BASE64.encode(data);
+            OutgoingMessage::Output {
+                session_id: self.session_id.clone(),
+                data: encoded,
+                timestamp,
+            }
         };
 
         self.send_message(&msg).await
+    }
+
+    /// Gets the cached session key or derives it from MEK if available.
+    async fn get_or_derive_session_key(&self) -> Option<SecretKey> {
+        // First check if we have a cached session key
+        let session_key_guard = self.session_key.lock().await;
+        if session_key_guard.is_some() {
+            return session_key_guard.clone();
+        }
+        drop(session_key_guard);
+
+        // Check if MEK is available
+        let mek_guard = self.mek.lock().await;
+        if let Some(ref mek) = *mek_guard {
+            // Derive session key from MEK
+            let derived_key = derive_session_key(mek, &self.session_id);
+            drop(mek_guard);
+
+            // Cache the derived key
+            let mut session_key_guard = self.session_key.lock().await;
+            *session_key_guard = Some(derived_key.clone());
+            Some(derived_key)
+        } else {
+            None
+        }
     }
 
     /// Sends a pong response to the server (heartbeat response).
@@ -546,6 +610,57 @@ impl WebSocketClient {
     pub fn device_id(&self) -> &str {
         &self.device_id
     }
+
+    /// Sets the Master Encryption Key to enable E2EE.
+    ///
+    /// When set, all outgoing messages will be encrypted and incoming
+    /// encrypted messages will be decrypted using session keys derived
+    /// from this MEK.
+    ///
+    /// # Arguments
+    ///
+    /// * `mek` - The Master Encryption Key
+    pub async fn set_mek(&self, mek: SecretKey) {
+        info!("E2EE enabled: MEK set");
+
+        // Clear any cached session key (will be re-derived on next use)
+        *self.session_key.lock().await = None;
+
+        // Set the new MEK
+        *self.mek.lock().await = Some(mek);
+    }
+
+    /// Clears the MEK to disable E2EE.
+    ///
+    /// After calling this, messages will be sent as plaintext and
+    /// encrypted incoming messages cannot be decrypted.
+    pub async fn clear_mek(&self) {
+        info!("E2EE disabled: MEK cleared");
+
+        *self.session_key.lock().await = None;
+        *self.mek.lock().await = None;
+    }
+
+    /// Returns whether E2EE is currently enabled (MEK is set).
+    pub async fn is_e2ee_enabled(&self) -> bool {
+        self.mek.lock().await.is_some()
+    }
+
+    /// Decrypts an incoming encrypted prompt message.
+    ///
+    /// Returns the decrypted text or an error if decryption fails
+    /// (e.g., wrong key or corrupted data).
+    pub async fn decrypt_prompt(&self, encrypted: &EncryptedContent) -> Result<String> {
+        let session_key = self.get_or_derive_session_key().await.ok_or_else(|| {
+            CliError::CryptoError("Cannot decrypt: E2EE not enabled (no MEK set)".into())
+        })?;
+
+        let plaintext = decrypt_content(&session_key, encrypted)?;
+
+        String::from_utf8(plaintext).map_err(|e| {
+            CliError::CryptoError(format!("Decrypted content is not valid UTF-8: {}", e))
+        })
+    }
 }
 
 // ============================================================================
@@ -680,5 +795,89 @@ mod tests {
         let data = b"Hello, World!";
         let encoded = BASE64.encode(data);
         assert_eq!(encoded, "SGVsbG8sIFdvcmxkIQ==");
+    }
+
+    #[test]
+    fn test_encrypted_output_serialization() {
+        let msg = OutgoingMessage::EncryptedOutput {
+            session_id: "01HQXK7V8G3N5M2R4P6T1W9Y0Z".to_string(),
+            encrypted: EncryptedContent {
+                v: 1,
+                nonce: "dGVzdG5vbmNlMTIz".to_string(),
+                ciphertext: "ZW5jcnlwdGVkZGF0YQ==".to_string(),
+                tag: "dGFnMTIzNDU2Nzg5MDEy".to_string(),
+            },
+            timestamp: "2025-01-13T10:00:00Z".to_string(),
+        };
+
+        let json = serde_json::to_string(&msg).unwrap();
+        assert!(json.contains(r#""type":"encrypted_output""#));
+        assert!(json.contains(r#""encrypted""#));
+        assert!(json.contains(r#""v":1"#));
+        assert!(json.contains(r#""nonce""#));
+        assert!(json.contains(r#""ciphertext""#));
+        assert!(json.contains(r#""tag""#));
+    }
+
+    #[test]
+    fn test_incoming_encrypted_prompt_deserialization() {
+        let json = r#"{
+            "type": "encrypted_prompt",
+            "session_id": "01HQXK7V8G3N5M2R4P6T1W9Y0Z",
+            "encrypted": {
+                "v": 1,
+                "nonce": "dGVzdG5vbmNlMTIz",
+                "ciphertext": "ZW5jcnlwdGVkZGF0YQ==",
+                "tag": "dGFnMTIzNDU2Nzg5MDEy"
+            },
+            "source": "web",
+            "timestamp": "2025-01-13T10:00:00Z"
+        }"#;
+
+        let msg: IncomingMessage = serde_json::from_str(json).unwrap();
+        match msg {
+            IncomingMessage::EncryptedPrompt {
+                session_id,
+                encrypted,
+                source,
+                ..
+            } => {
+                assert_eq!(session_id, "01HQXK7V8G3N5M2R4P6T1W9Y0Z");
+                assert_eq!(encrypted.v, 1);
+                assert_eq!(encrypted.nonce, "dGVzdG5vbmNlMTIz");
+                assert_eq!(source, "web");
+            }
+            _ => panic!("Expected EncryptedPrompt message"),
+        }
+    }
+
+    #[test]
+    fn test_encrypted_content_roundtrip() {
+        use crate::crypto::{derive_session_key, encrypt_content, SecretKey};
+
+        // Create a test MEK and session key
+        let mek = SecretKey::random();
+        let session_id = "01HQXK7V8G3N5M2R4P6T1W9Y0Z";
+        let session_key = derive_session_key(&mek, session_id);
+
+        // Encrypt test data
+        let plaintext = b"Hello, World!";
+        let encrypted = encrypt_content(&session_key, plaintext);
+
+        // Verify the encrypted content structure
+        assert_eq!(encrypted.v, 1);
+        assert!(!encrypted.nonce.is_empty());
+        assert!(!encrypted.ciphertext.is_empty());
+        assert!(!encrypted.tag.is_empty());
+
+        // Serialize and deserialize
+        let msg = OutgoingMessage::EncryptedOutput {
+            session_id: session_id.to_string(),
+            encrypted,
+            timestamp: "2025-01-13T10:00:00Z".to_string(),
+        };
+
+        let json = serde_json::to_string(&msg).unwrap();
+        assert!(json.contains(r#""type":"encrypted_output""#));
     }
 }

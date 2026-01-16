@@ -297,6 +297,30 @@ pub async fn run(claude_args: Vec<String>, new_session: bool) -> Result<i32> {
                         debug!(text = %text, "Received prompt from web client");
                         let _ = pty_input_tx.send(text.into_bytes()).await;
                     }
+                    IncomingMessage::EncryptedPrompt { encrypted, .. } => {
+                        // Decrypt and inject prompt text into PTY
+                        let client_guard = ws_client_for_loop.lock().await;
+                        if let Some(ref client) = *client_guard {
+                            match client.decrypt_prompt(&encrypted).await {
+                                Ok(text) => {
+                                    debug!(
+                                        text = %text,
+                                        "Received encrypted prompt from web client"
+                                    );
+                                    drop(client_guard);
+                                    let _ = pty_input_tx.send(text.into_bytes()).await;
+                                }
+                                Err(e) => {
+                                    error!(
+                                        error = %e,
+                                        "Failed to decrypt prompt (E2EE may not be enabled)"
+                                    );
+                                }
+                            }
+                        } else {
+                            warn!("Received encrypted prompt but WebSocket client not available");
+                        }
+                    }
                     IncomingMessage::Resize { cols, rows, .. } => {
                         // TODO: Resizing from web client breaks local terminal animations
                         // because it changes PTY size mid-session. Need a better approach
