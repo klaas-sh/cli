@@ -1,16 +1,22 @@
 import React from 'react'
 import type { Metadata, Viewport } from 'next'
-import { Inter } from 'next/font/google'
+import { Outfit, JetBrains_Mono } from 'next/font/google'
 import './globals.css'
 
-const inter = Inter({
+const outfit = Outfit({
   subsets: ['latin'],
-  variable: '--font-inter',
+  variable: '--font-outfit',
+  display: 'swap',
+})
+
+const jetbrainsMono = JetBrains_Mono({
+  subsets: ['latin'],
+  variable: '--font-jetbrains',
   display: 'swap',
 })
 
 export const metadata: Metadata = {
-  title: 'Klaas Dashboard',
+  title: 'klaas dashboard',
   description: 'Remote access and control for Claude Code sessions',
   icons: {
     icon: [
@@ -26,14 +32,14 @@ export const metadata: Metadata = {
 }
 
 export const viewport: Viewport = {
-  themeColor: '#7c3aed',
+  themeColor: '#f59e0b',
   width: 'device-width',
   initialScale: 1,
 }
 
 /**
- * Root layout for the Klaas Dashboard application.
- * Sets up the HTML document with Inter font and dark mode support.
+ * Root layout for the klaas Dashboard application.
+ * Sets up the HTML document with Outfit and JetBrains Mono fonts.
  */
 export default function RootLayout({
   children,
@@ -43,9 +49,11 @@ export default function RootLayout({
   return (
     <html lang="en" suppressHydrationWarning>
       <body
-        className={`${inter.variable} bg-gray-50 dark:bg-gray-900`}
+        className={`${outfit.variable} ${jetbrainsMono.variable} font-sans`}
         suppressHydrationWarning
       >
+        {/* Background grid pattern */}
+        <div className="bg-grid" />
         {children}
       </body>
     </html>

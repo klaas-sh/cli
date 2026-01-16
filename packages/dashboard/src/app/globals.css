@@ -2,61 +2,87 @@
 @import "@xterm/xterm/css/xterm.css";
 
 /*
- * Configure dark mode to use the .dark class selector
- * This allows manual toggling via JavaScript
+ * Klaas Dashboard Theme
+ * Design DNA: dark-monochromatic with warm amber accent
+ * Based on klaas.sh landing page design
  */
 @custom-variant dark (&:where(.dark, .dark *));
 
-/*
- * Tailwind v4 Theme Configuration
- * Define custom colors as Tailwind utilities using @theme
- * These become available as text-app-*, bg-app-*, etc.
- *
- * Light and dark variants are defined separately.
- * Use dark:text-app-*-dark to switch in dark mode.
- */
 @theme {
   /*
-   * Theme colors using Tailwind violet palette:
-   * - violet-900: #4c1d95 (dark background)
-   * - violet-800: #5b21b6 (accent)
-   * - violet-600: #7c3aed (primary/interactive)
-   * - violet-100: #ede9fe (light elements on dark)
+   * Klaas color palette - dark theme with amber accent
+   * Background layers (darkest to lightest):
+   * - void: #09090b (deepest black)
+   * - deep: #0c0c0f (main background)
+   * - surface: #121216 (card/panel background)
+   * - elevated: #18181c (hover states, elevated surfaces)
    */
 
-  /* Light mode colors */
-  --color-app-primary: #7c3aed;        /* violet-600 */
-  --color-app-primary-hover: #6d28d9;  /* violet-700 */
-  --color-app-primary-light: #ede9fe;  /* violet-100 */
-  --color-app-secondary: #64748b;      /* slate-500 */
-  --color-app-accent: #5b21b6;         /* violet-800 */
-  --color-app-success: #10b981;        /* emerald-500 */
-  --color-app-warning: #f59e0b;        /* amber-500 */
-  --color-app-error: #ef4444;          /* red-500 */
-  --color-app-background: #faf5ff;     /* violet-50 */
-  --color-app-surface: #ffffff;        /* white */
-  --color-app-border: #ddd6fe;         /* violet-200 */
-  --color-app-highlight: #f5f3ff;      /* violet-50 */
-  --color-app-text-primary: #1e293b;   /* slate-800 */
-  --color-app-text-secondary: #6d28d9; /* violet-700 */
-  --color-app-text-muted: #64748b;     /* slate-500 */
+  /* Background colors */
+  --color-app-bg-void: #09090b;
+  --color-app-bg-deep: #0c0c0f;
+  --color-app-bg-surface: #121216;
+  --color-app-bg-elevated: #18181c;
+  --color-app-bg-glass: rgba(24, 24, 28, 0.7);
 
-  /* Dark mode colors */
-  --color-app-primary-dark: #a78bfa;   /* violet-400 */
-  --color-app-primary-hover-dark: #8b5cf6; /* violet-500 */
-  --color-app-primary-light-dark: #4c1d95; /* violet-900 */
-  --color-app-secondary-dark: #64748b; /* slate-500 */
-  --color-app-accent-dark: #7c3aed;    /* violet-600 */
-  --color-app-success-dark: #34d399;   /* emerald-400 */
-  --color-app-warning-dark: #fbbf24;   /* amber-400 */
-  --color-app-error-dark: #f87171;     /* red-400 */
-  --color-app-background-dark: #2e1065; /* violet-950 */
-  --color-app-surface-dark: #4c1d95;   /* violet-900 */
-  --color-app-border-dark: #6d28d9;    /* violet-700 */
-  --color-app-highlight-dark: #3b1a6d; /* violet-900/50 approx */
-  --color-app-text-primary-dark: #ede9fe; /* violet-100 */
-  --color-app-text-secondary-dark: #c4b5fd; /* violet-300 */
-  --color-app-text-muted-dark: #a78bfa; /* violet-400 */
+  /* Text hierarchy */
+  --color-app-text-primary: #fafafa;
+  --color-app-text-secondary: #a1a1aa;
+  --color-app-text-muted: #71717a;
+  --color-app-text-dim: #52525b;
+
+  /* Brand accent - warm amber */
+  --color-app-accent: #f59e0b;
+  --color-app-accent-light: #fbbf24;
+  --color-app-accent-dark: #b45309;
+  --color-app-accent-muted: rgba(245, 158, 11, 0.15);
+  --color-app-accent-glow: rgba(245, 158, 11, 0.4);
+
+  /* Status colors */
+  --color-app-status-connected: #22c55e;
+  --color-app-status-connecting: #eab308;
+  --color-app-status-disconnected: #ef4444;
+  --color-app-status-idle: #71717a;
+
+  /* Terminal colors */
+  --color-app-terminal-green: #4ade80;
+  --color-app-terminal-cyan: #22d3ee;
+  --color-app-terminal-purple: #a78bfa;
+
+  /* Borders */
+  --color-app-border-subtle: rgba(255, 255, 255, 0.06);
+  --color-app-border-visible: rgba(255, 255, 255, 0.1);
+  --color-app-border-accent: rgba(245, 158, 11, 0.3);
+
+  /* Semantic mappings for light mode (maps to dark values) */
+  --color-app-primary: #f59e0b;
+  --color-app-primary-hover: #fbbf24;
+  --color-app-primary-light: rgba(245, 158, 11, 0.15);
+  --color-app-secondary: #a1a1aa;
+  --color-app-success: #22c55e;
+  --color-app-warning: #eab308;
+  --color-app-error: #ef4444;
+  --color-app-background: #0c0c0f;
+  --color-app-surface: #121216;
+  --color-app-border: rgba(255, 255, 255, 0.1);
+  --color-app-highlight: rgba(245, 158, 11, 0.15);
+
+  /* Dark mode colors (same as light - klaas is dark-first) */
+  --color-app-primary-dark: #f59e0b;
+  --color-app-primary-hover-dark: #fbbf24;
+  --color-app-primary-light-dark: rgba(245, 158, 11, 0.15);
+  --color-app-secondary-dark: #a1a1aa;
+  --color-app-accent-dark-theme: #f59e0b;
+  --color-app-success-dark: #4ade80;
+  --color-app-warning-dark: #fbbf24;
+  --color-app-error-dark: #f87171;
+  --color-app-background-dark: #09090b;
+  --color-app-surface-dark: #121216;
+  --color-app-border-dark: rgba(255, 255, 255, 0.1);
+  --color-app-highlight-dark: rgba(245, 158, 11, 0.15);
+  --color-app-text-primary-dark: #fafafa;
+  --color-app-text-secondary-dark: #a1a1aa;
+  --color-app-text-muted-dark: #71717a;
 
   /* Spacing variables */
   --spacing-18: 4.5rem;
@@ -64,18 +90,62 @@
   --spacing-84: 21rem;
   --spacing-96: 24rem;
 
-  /* Font family */
-  --font-family-app: 'Inter', system-ui, -apple-system, sans-serif;
+  /* Font families */
+  --font-family-sans: 'Outfit', system-ui, -apple-system, sans-serif;
+  --font-family-mono: 'JetBrains Mono', 'SF Mono', monospace;
+
+  /* Transitions */
+  --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
+  --ease-bounce: cubic-bezier(0.34, 1.56, 0.64, 1);
 }
 
 /* Base styles */
 html {
-  font-family: var(--font-family-app);
+  font-family: var(--font-family-sans);
+  scroll-behavior: smooth;
 }
 
 body {
-  @apply bg-app-background dark:bg-app-background-dark;
-  @apply text-app-text-primary dark:text-app-text-primary-dark;
+  background: var(--color-app-bg-deep);
+  color: var(--color-app-text-primary);
+  line-height: 1.6;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* Background grid pattern */
+.bg-grid {
+  position: fixed;
+  inset: 0;
+  background-image:
+    linear-gradient(rgba(255, 255, 255, 0.02) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(255, 255, 255, 0.02) 1px, transparent 1px);
+  background-size: 64px 64px;
+  pointer-events: none;
+  z-index: 0;
+}
+
+/* Ambient glow effects */
+.bg-glow {
+  position: fixed;
+  width: 800px;
+  height: 800px;
+  background: radial-gradient(circle, var(--color-app-accent-glow) 0%, transparent 70%);
+  filter: blur(120px);
+  opacity: 0.12;
+  pointer-events: none;
+  z-index: 0;
+}
+
+.bg-glow-top-right {
+  top: -400px;
+  right: -200px;
+}
+
+.bg-glow-bottom-left {
+  bottom: -200px;
+  left: -300px;
+  background: radial-gradient(circle, rgba(34, 211, 238, 0.3) 0%, transparent 70%);
+  opacity: 0.06;
 }
 
 /* Custom scrollbar */
@@ -85,82 +155,184 @@ body {
 }
 
 ::-webkit-scrollbar-track {
-  @apply bg-app-background dark:bg-app-background-dark;
+  background: var(--color-app-bg-deep);
 }
 
 ::-webkit-scrollbar-thumb {
-  @apply bg-app-border dark:bg-app-border-dark;
+  background: var(--color-app-border-visible);
   border-radius: 3px;
 }
 
 ::-webkit-scrollbar-thumb:hover {
-  @apply bg-app-text-muted dark:bg-app-text-muted-dark;
+  background: var(--color-app-text-dim);
 }
 
 /* App component styles */
 @layer components {
   .app-card {
-    @apply bg-app-surface dark:bg-app-surface-dark;
-    @apply border border-app-border dark:border-app-border-dark;
-    @apply rounded-xl p-8;
-    @apply shadow-sm;
+    background: var(--color-app-bg-surface);
+    border: 1px solid var(--color-app-border-visible);
+    border-radius: 12px;
+    padding: 1.5rem;
+  }
+
+  .app-card-elevated {
+    background: var(--color-app-bg-elevated);
+    border: 1px solid var(--color-app-border-visible);
+    border-radius: 12px;
+    padding: 1.5rem;
   }
 
   .app-button-primary {
-    @apply bg-app-primary dark:bg-app-primary-dark;
-    @apply text-white dark:text-gray-900;
-    @apply border-none rounded-lg;
-    @apply px-6 py-3;
-    @apply font-medium;
-    @apply transition-colors duration-200;
+    background: var(--color-app-accent);
+    color: var(--color-app-bg-void);
+    border: none;
+    border-radius: 8px;
+    padding: 0.75rem 1.5rem;
+    font-weight: 600;
+    font-size: 0.875rem;
+    transition: all 0.2s var(--ease-out);
   }
 
   .app-button-primary:hover:not(:disabled) {
-    @apply bg-app-accent dark:bg-app-accent-dark;
+    transform: translateY(-1px);
+    box-shadow: 0 4px 16px var(--color-app-accent-glow);
   }
 
   .app-button-primary:disabled {
-    @apply opacity-50 cursor-not-allowed;
+    opacity: 0.5;
+    cursor: not-allowed;
+  }
+
+  .app-button-secondary {
+    background: var(--color-app-bg-elevated);
+    color: var(--color-app-text-primary);
+    border: 1px solid var(--color-app-border-visible);
+    border-radius: 8px;
+    padding: 0.75rem 1.5rem;
+    font-weight: 500;
+    font-size: 0.875rem;
+    transition: all 0.2s var(--ease-out);
+  }
+
+  .app-button-secondary:hover:not(:disabled) {
+    background: var(--color-app-bg-glass);
+    border-color: var(--color-app-text-muted);
+  }
+
+  /* Form styles */
+  .app-input {
+    background: var(--color-app-bg-deep);
+    color: var(--color-app-text-primary);
+    border: 1px solid var(--color-app-border-visible);
+    border-radius: 8px;
+    padding: 0.75rem 1rem;
+    font-size: 0.875rem;
+    transition: border-color 0.2s var(--ease-out);
+  }
+
+  .app-input:focus {
+    outline: none;
+    border-color: var(--color-app-accent);
+  }
+
+  .app-input::placeholder {
+    color: var(--color-app-text-dim);
   }
 
   /* Form label styles */
   .app-label {
-    @apply text-app-text-primary dark:text-app-text-primary-dark;
+    color: var(--color-app-text-primary);
+    font-weight: 500;
+    font-size: 0.875rem;
   }
 
   .app-helper-text {
-    @apply text-app-text-secondary dark:text-app-text-secondary-dark;
+    color: var(--color-app-text-secondary);
+    font-size: 0.75rem;
   }
 
   .app-error-text {
-    @apply text-app-error dark:text-app-error-dark;
+    color: var(--color-app-error);
+    font-size: 0.75rem;
   }
 
   .app-link {
-    @apply text-app-text-secondary dark:text-app-text-secondary-dark;
+    color: var(--color-app-accent);
+    transition: color 0.2s var(--ease-out);
   }
 
   .app-link:hover {
-    @apply text-app-text-primary dark:text-app-text-primary-dark;
+    color: var(--color-app-accent-light);
   }
+
+  /* Status indicators */
+  .status-dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+  }
+
+  .status-dot-connected {
+    background: var(--color-app-status-connected);
+    animation: pulse 2s ease-in-out infinite;
+  }
+
+  .status-dot-connecting {
+    background: var(--color-app-status-connecting);
+    animation: pulse 1s ease-in-out infinite;
+  }
+
+  .status-dot-disconnected {
+    background: var(--color-app-status-disconnected);
+  }
+
+  .status-dot-idle {
+    background: var(--color-app-status-idle);
+  }
+
+  /* Terminal styling */
+  .terminal-line .prompt {
+    color: var(--color-app-terminal-green);
+  }
+
+  .terminal-line .output {
+    color: var(--color-app-text-secondary);
+  }
+
+  .terminal-line .highlight {
+    color: var(--color-app-accent-light);
+  }
+
+  .terminal-line .cyan {
+    color: var(--color-app-terminal-cyan);
+  }
+
+  .terminal-line .purple {
+    color: var(--color-app-terminal-purple);
+  }
+}
+
+/* Animations */
+@keyframes pulse {
+  0%, 100% { opacity: 1; transform: scale(1); }
+  50% { opacity: 0.5; transform: scale(0.9); }
+}
+
+@keyframes blink {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0; }
 }
 
 /*
  * LastPass Integration
  * Disable the LastPass icon on input fields with [data-lpignore="true"]
- * Usage: <input data-lpignore="true" type="text" />
  */
 [data-lpignore="true"] + div[data-lastpass-infield],
 [data-lpignore="true"] + div[data-lastpass-icon-root] {
   display: none !important;
 }
 
-/*
- * Allow LastPass on the login page
- * LastPass browser extension inserts a `<div data-lastpass-root>`
- * just before the closing body tag
- * Add `login-page` to body or to a tag adjacent to the lastpass div
- */
 .login-page > div[data-lastpass-root],
 .login-page ~ div[data-lastpass-root] {
   display: block !important;

@@ -6,13 +6,11 @@ import { usePathname } from 'next/navigation'
 import { ChevronLeft, ChevronRight } from 'lucide-react'
 import { clsx } from 'clsx'
 import { AppIcon } from '../icons/app-icon'
-import { navigationItems, settingsItem } from './navigation-config'
+import { navigationItems, footerNavigationItems } from './navigation-config'
 
 /**
- * Sidebar component for the Klaas dashboard
- *
- * Provides navigation with collapsible functionality.
- * Uses blue color scheme and minimal navigation items.
+ * Sidebar component for the klaas dashboard.
+ * Uses the klaas dark theme with amber accent colors.
  */
 export function Sidebar(): React.JSX.Element {
   const [isCollapsed, setIsCollapsed] = useState(() => {
@@ -43,32 +41,30 @@ export function Sidebar(): React.JSX.Element {
       {/* Header - matching main header height */}
       <div
         className={clsx(
-          'flex h-[73px] min-h-[73px] backdrop-blur-sm bg-opacity-80',
-          'items-center justify-between px-4 bg-white dark:bg-gray-800',
-          'border-b border-gray-200 dark:border-gray-700'
+          'flex h-[73px] min-h-[73px]',
+          'items-center justify-between px-4',
+          'bg-app-bg-surface border-b border-app-border-subtle'
         )}
       >
         <div className="flex items-center gap-2">
           <AppIcon size={32} />
           {!isCollapsed && (
-            <div className="flex items-center gap-2">
-              <span
-                className={clsx(
-                  'whitespace-nowrap overflow-hidden text-xl font-bold',
-                  'text-gray-900 dark:text-white'
-                )}
-              >
-                Klaas
-              </span>
-            </div>
+            <span
+              className={clsx(
+                'whitespace-nowrap overflow-hidden text-lg font-semibold',
+                'font-mono tracking-tight text-app-text-primary'
+              )}
+            >
+              klaas
+            </span>
           )}
         </div>
         <button
           onClick={() => setIsCollapsed(!isCollapsed)}
           className={clsx(
-            'p-1.5 rounded-lg text-gray-500 hover:text-gray-700',
-            'hover:bg-gray-100 dark:text-gray-400',
-            'dark:hover:text-gray-300 dark:hover:bg-gray-700'
+            'p-1.5 rounded-lg transition-colors',
+            'text-app-text-muted hover:text-app-text-primary',
+            'hover:bg-app-bg-elevated'
           )}
         >
           {isCollapsed ? (
@@ -82,9 +78,8 @@ export function Sidebar(): React.JSX.Element {
       {/* Navigation */}
       <nav
         className={clsx(
-          'flex-1 px-3 py-4 space-y-2 overflow-y-auto scrollbar-thin',
-          'scrollbar-thumb-gray-300 dark:scrollbar-thumb-gray-600',
-          'bg-gray-50 dark:bg-gray-900'
+          'flex-1 px-3 py-4 space-y-1 overflow-y-auto',
+          'bg-app-bg-deep'
         )}
       >
         {navigationItems.map((item) => {
@@ -95,13 +90,12 @@ export function Sidebar(): React.JSX.Element {
               key={item.name}
               href={item.href}
               className={clsx(
-                'flex items-center gap-3 px-3 py-2 text-sm',
+                'flex items-center gap-3 px-3 py-2.5 text-sm',
                 'font-medium rounded-lg transition-colors',
                 isActive
-                  ? 'bg-app-highlight text-app-text-secondary ' +
-                    'dark:bg-app-highlight-dark dark:text-app-primary-dark'
-                  : 'text-gray-700 hover:bg-gray-100 dark:text-gray-300 ' +
-                    'dark:hover:bg-gray-700'
+                  ? 'bg-app-accent-muted text-app-accent-light'
+                  : 'text-app-text-secondary hover:text-app-text-primary ' +
+                    'hover:bg-app-bg-elevated'
               )}
             >
               <div
@@ -114,8 +108,8 @@ export function Sidebar(): React.JSX.Element {
                   className={clsx(
                     'h-5 w-5 flex-shrink-0',
                     isActive
-                      ? 'text-app-primary dark:text-app-primary-dark'
-                      : 'text-gray-400 dark:text-gray-500'
+                      ? 'text-app-accent'
+                      : 'text-app-text-muted'
                   )}
                 />
               </div>
@@ -127,9 +121,8 @@ export function Sidebar(): React.JSX.Element {
               {item.badge && !isCollapsed && (
                 <span
                   className={clsx(
-                    'ml-auto rounded-full bg-app-primary-light',
-                    'dark:bg-app-highlight-dark px-2 py-0.5 text-xs',
-                    'font-medium text-app-text-secondary dark:text-app-primary-dark'
+                    'ml-auto rounded-full px-2 py-0.5 text-xs font-medium',
+                    'bg-app-accent-muted text-app-accent'
                   )}
                 >
                   {item.badge}
@@ -141,44 +134,49 @@ export function Sidebar(): React.JSX.Element {
       </nav>
 
       {/* Footer */}
-      <div className="px-3 py-4 bg-gray-50 dark:bg-gray-900">
-        <Link
-          href={settingsItem.href}
-          className={clsx(
-            'flex items-center gap-3 px-3 py-2 text-sm',
-            'font-medium rounded-lg transition-colors',
-            pathname.startsWith(settingsItem.href)
-              ? 'bg-app-highlight text-app-text-secondary ' +
-                'dark:bg-app-highlight-dark dark:text-app-primary-dark'
-              : 'text-gray-700 hover:bg-gray-100 dark:text-gray-300 ' +
-                'dark:hover:bg-gray-700'
-          )}
-        >
-          <div
-            className={clsx(
-              'flex items-center justify-center',
-              isCollapsed && 'w-5 h-5'
-            )}
-          >
-            <settingsItem.icon
+      <div className="px-3 py-4 bg-app-bg-deep space-y-1 border-t border-app-border-subtle">
+        {footerNavigationItems.map((item) => {
+          const isActive = pathname.startsWith(item.href)
+          return (
+            <Link
+              key={item.name}
+              href={item.href}
               className={clsx(
-                'h-5 w-5 flex-shrink-0',
-                pathname.startsWith(settingsItem.href)
-                  ? 'text-app-primary dark:text-app-primary-dark'
-                  : 'text-gray-400 dark:text-gray-500'
+                'flex items-center gap-3 px-3 py-2.5 text-sm',
+                'font-medium rounded-lg transition-colors',
+                isActive
+                  ? 'bg-app-accent-muted text-app-accent-light'
+                  : 'text-app-text-secondary hover:text-app-text-primary ' +
+                    'hover:bg-app-bg-elevated'
               )}
-            />
-          </div>
-          {!isCollapsed && (
-            <span className="whitespace-nowrap overflow-hidden">
-              {settingsItem.name}
-            </span>
-          )}
-        </Link>
-        {/* Version placeholder */}
+            >
+              <div
+                className={clsx(
+                  'flex items-center justify-center',
+                  isCollapsed && 'w-5 h-5'
+                )}
+              >
+                <item.icon
+                  className={clsx(
+                    'h-5 w-5 flex-shrink-0',
+                    isActive
+                      ? 'text-app-accent'
+                      : 'text-app-text-muted'
+                  )}
+                />
+              </div>
+              {!isCollapsed && (
+                <span className="whitespace-nowrap overflow-hidden">
+                  {item.name}
+                </span>
+              )}
+            </Link>
+          )
+        })}
+        {/* Version */}
         <div
           className={clsx(
-            'mt-3 text-xs text-gray-400 dark:text-gray-600',
+            'mt-3 text-xs font-mono text-app-text-dim',
             isCollapsed ? 'text-center' : 'px-3'
           )}
         >
