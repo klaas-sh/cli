@@ -5,7 +5,7 @@
   "description": "Klaas API - Cloudflare Workers backend",
   "type": "module",
   "scripts": {
-    "dev": "wrangler dev",
+    "dev": "./scripts/dev-with-port.sh",
     "deploy": "wrangler deploy",
     "deploy:staging": "wrangler deploy --env staging",
     "deploy:production": "wrangler deploy --env production",

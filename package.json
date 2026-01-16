@@ -24,6 +24,7 @@
     "deploy:api:production": "yarn workspace @klaas/api deploy:production",
     "deploy:api:staging": "yarn workspace @klaas/api deploy:staging",
     "dev": "concurrently -n api,cli -c blue,green \"yarn dev:api\" \"yarn dev:cli\"",
+    "dev:all": "concurrently -n api,dashboard,cli -c blue,magenta,green \"yarn dev:api\" \"yarn dev:dashboard\" \"yarn dev:cli\"",
     "dev:api": "yarn workspace @klaas/api dev",
     "dev:cli": "source ~/.cargo/env 2>/dev/null; cd packages/cli && cargo run",
     "dev:dashboard": "yarn workspace @klaas/dashboard clean && yarn workspace @klaas/dashboard dev",
@@ -44,6 +45,7 @@
   },
   "devDependencies": {
     "barva": "^1.0.0",
-    "concurrently": "^9.1.0"
+    "concurrently": "^9.1.0",
+    "get-port-cli": "^3.0.0"
   }
 }
