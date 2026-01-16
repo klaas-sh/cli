@@ -1,19 +1,23 @@
-# Contributing to klaas
+# Contributing to `klaas`
 
-Thanks for your interest in contributing to klaas!
+Thanks for your interest in contributing to `klaas`!
 
 ## About This Package
 
-This is the npm distribution package for klaas. It downloads and installs the
-appropriate native binary for your platform.
+This npm package is deprecated. It was a distribution wrapper that downloaded
+the native binary for your platform.
 
-For contributing to the core CLI, see the [cli repository](https://github.com/klaas-sh/cli).
+**This package is no longer accepting contributions.**
+
+## Contributing to the CLI
+
+To contribute to `klaas`, please visit the main CLI repository:
+
+**[github.com/klaas-sh/cli](https://github.com/klaas-sh/cli)**
+
+The CLI is written in Rust and we welcome contributions there.
 
 ## Reporting Issues
 
-- Use GitHub Issues for bugs and feature requests
+- For CLI issues, use [github.com/klaas-sh/cli/issues](https://github.com/klaas-sh/cli/issues)
 - For security issues, see [SECURITY.md](SECURITY.md)
-
-## License
-
-By contributing, you agree that your contributions will be licensed under the MIT License.
