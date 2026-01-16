@@ -125,7 +125,7 @@ export function isValidStoredMEK(obj: unknown): obj is StoredMEK {
     const encryptedMek = base64Decode(mek.encrypted_mek);
     const tag = base64Decode(mek.tag);
 
-    // Salt is 16 bytes for Argon2id
+    // Salt is 16 bytes for key derivation
     if (salt.length !== 16) {
       return false;
     }
@@ -149,50 +149,6 @@ export function isValidStoredMEK(obj: unknown): obj is StoredMEK {
   }
 
   return true;
-}
-
-// =============================================================================
-// HMAC for Proof Verification
-// =============================================================================
-
-/**
- * Generates HMAC-SHA256 of data with the given key.
- * Used for generating verification proofs.
- */
-export async function hmacSha256(
-  key: Uint8Array,
-  data: Uint8Array
-): Promise<Uint8Array> {
-  const cryptoKey = await crypto.subtle.importKey(
-    'raw',
-    key,
-    { name: 'HMAC', hash: 'SHA-256' },
-    false,
-    ['sign']
-  );
-
-  const signature = await crypto.subtle.sign('HMAC', cryptoKey, data);
-  return new Uint8Array(signature);
-}
-
-/**
- * Verifies HMAC-SHA256 signature.
- * Uses constant-time comparison to prevent timing attacks.
- */
-export async function verifyHmacSha256(
-  key: Uint8Array,
-  data: Uint8Array,
-  signature: Uint8Array
-): Promise<boolean> {
-  const cryptoKey = await crypto.subtle.importKey(
-    'raw',
-    key,
-    { name: 'HMAC', hash: 'SHA-256' },
-    false,
-    ['verify']
-  );
-
-  return crypto.subtle.verify('HMAC', cryptoKey, signature, data);
 }
 
 // =============================================================================
@@ -221,7 +177,7 @@ export function generateNonce(): Uint8Array {
 }
 
 /**
- * Generates a random 128-bit salt for Argon2id.
+ * Generates a random 128-bit salt for key derivation.
  */
 export function generateSalt(): Uint8Array {
   return randomBytes(16);

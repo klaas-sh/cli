@@ -140,35 +140,61 @@ export interface SessionListItem {
 
 /**
  * WebSocket message types from CLI to server.
+ * All content messages use encrypted format for E2EE.
  */
 export type CliToServerMessage =
-  | { type: 'session_attach'; session_id: string; device_id: string; device_name: string; cwd: string }
-  | { type: 'output'; session_id: string; data: string; timestamp: string }
+  | {
+      type: 'session_attach';
+      session_id: string;
+      device_id: string;
+      device_name: string;
+      cwd: string;
+    }
+  | {
+      type: 'output';
+      session_id: string;
+      encrypted: EncryptedContent;
+      timestamp: string;
+    }
   | { type: 'session_detach'; session_id: string }
   | { type: 'pong' };
 
 /**
  * WebSocket message types from server to CLI.
+ * All content messages use encrypted format for E2EE.
  */
 export type ServerToCliMessage =
-  | { type: 'prompt'; session_id: string; text: string; source: string; timestamp: string }
+  | {
+      type: 'prompt';
+      session_id: string;
+      encrypted: EncryptedContent;
+      source: string;
+      timestamp: string;
+    }
   | { type: 'resize'; session_id: string; cols: number; rows: number }
   | { type: 'ping' };
 
 /**
  * WebSocket message types from web client to server.
+ * All content messages use encrypted format for E2EE.
  */
 export type WebToServerMessage =
   | { type: 'subscribe'; session_ids: string[] }
-  | { type: 'prompt'; session_id: string; text: string }
+  | { type: 'prompt'; session_id: string; encrypted: EncryptedContent }
   | { type: 'resize'; session_id: string; cols: number; rows: number };
 
 /**
  * WebSocket message types from server to web client.
+ * All content messages use encrypted format for E2EE.
  */
 export type ServerToWebMessage =
   | { type: 'sessions_update'; sessions: SessionListItem[] }
-  | { type: 'output'; session_id: string; data: string; timestamp: string }
+  | {
+      type: 'output';
+      session_id: string;
+      encrypted: EncryptedContent;
+      timestamp: string;
+    }
   | { type: 'session_status'; session_id: string; status: 'attached' | 'detached' }
   | { type: 'error'; code: string; message: string };
 
@@ -207,12 +233,13 @@ export interface EncryptedContent {
 
 /**
  * Stored MEK (Master Encryption Key) format.
- * The MEK is encrypted with a KEK derived from the user's password.
+ * The MEK is encrypted with a device-specific key for backup/sync.
+ * Format is flexible to support various key derivation methods.
  */
 export interface StoredMEK {
   /** Format version (always 1) */
   v: 1;
-  /** Argon2id salt, 16 bytes, base64 encoded */
+  /** Key derivation salt, 16 bytes, base64 encoded (for future use) */
   salt: string;
   /** AES-GCM nonce, 12 bytes, base64 encoded */
   nonce: string;
@@ -223,22 +250,6 @@ export interface StoredMEK {
 }
 
 /**
- * Request to verify encryption key ownership.
- */
-export interface EncryptionVerifyRequest {
-  /** HMAC(MEK, "klaas-verify"), base64 encoded */
-  proof: string;
-}
-
-/**
- * Response from encryption verification.
- */
-export interface EncryptionVerifyResponse {
-  /** Whether the proof was valid */
-  valid: boolean;
-}
-
-/**
  * User account with encryption info.
  */
 export interface UserWithEncryption extends User {
@@ -246,62 +257,3 @@ export interface UserWithEncryption extends User {
   encrypted_mek: string | null;
 }
 
-// =============================================================================
-// E2EE WebSocket Message Types
-// =============================================================================
-
-/**
- * WebSocket message types from CLI to server (with E2EE support).
- */
-export type CliToServerMessageE2EE =
-  | {
-      type: 'session_attach';
-      session_id: string;
-      device_id: string;
-      device_name: string;
-      cwd: string;
-    }
-  | {
-      type: 'output';
-      session_id: string;
-      encrypted: EncryptedContent;
-      timestamp: string;
-    }
-  | { type: 'session_detach'; session_id: string }
-  | { type: 'pong' };
-
-/**
- * WebSocket message types from server to CLI (with E2EE support).
- */
-export type ServerToCliMessageE2EE =
-  | {
-      type: 'prompt';
-      session_id: string;
-      encrypted: EncryptedContent;
-      source: string;
-      timestamp: string;
-    }
-  | { type: 'resize'; session_id: string; cols: number; rows: number }
-  | { type: 'ping' };
-
-/**
- * WebSocket message types from web client to server (with E2EE support).
- */
-export type WebToServerMessageE2EE =
-  | { type: 'subscribe'; session_ids: string[] }
-  | { type: 'prompt'; session_id: string; encrypted: EncryptedContent }
-  | { type: 'resize'; session_id: string; cols: number; rows: number };
-
-/**
- * WebSocket message types from server to web client (with E2EE support).
- */
-export type ServerToWebMessageE2EE =
-  | { type: 'sessions_update'; sessions: SessionListItem[] }
-  | {
-      type: 'output';
-      session_id: string;
-      encrypted: EncryptedContent;
-      timestamp: string;
-    }
-  | { type: 'session_status'; session_id: string; status: 'attached' | 'detached' }
-  | { type: 'error'; code: string; message: string };

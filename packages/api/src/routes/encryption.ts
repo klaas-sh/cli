@@ -3,7 +3,11 @@
  *
  * Handles storage and retrieval of the user's encrypted Master Encryption Key
  * (MEK). The server never sees the unencrypted MEK - it is encrypted
- * client-side with a key derived from the user's password.
+ * client-side with a device-specific key.
+ *
+ * The MEK is stored server-side for backup/sync across devices. Each device
+ * encrypts the MEK with its own key before storage, enabling transparent
+ * auto E2EE without password flows.
  *
  * All routes require authentication via JWT.
  */
@@ -53,8 +57,7 @@ encryptionRoutes.get('/', async (c) => {
 
 /**
  * PUT /v1/users/me/encryption-key
- * Updates the user's encrypted MEK (used for initial setup and password
- * change).
+ * Stores the user's encrypted MEK (for backup/sync across devices).
  */
 encryptionRoutes.put('/', async (c) => {
   const userId = c.get('userId');
@@ -85,60 +88,6 @@ encryptionRoutes.put('/', async (c) => {
   }
 
   return c.json({ success: true });
-});
-
-/**
- * DELETE /v1/users/me/encryption-key
- * Removes the user's encrypted MEK (disables E2EE).
- *
- * WARNING: This will make all encrypted sessions unreadable.
- */
-encryptionRoutes.delete('/', async (c) => {
-  const userId = c.get('userId');
-
-  const result = await c.env.DB.prepare(
-    `UPDATE users SET encrypted_mek = NULL WHERE id = ?`
-  )
-    .bind(userId)
-    .run();
-
-  if (result.meta.changes === 0) {
-    return c.json({ error: 'User not found' }, 404);
-  }
-
-  return c.json({ success: true });
-});
-
-/**
- * POST /v1/users/me/encryption-key/verify
- * Verifies the user can decrypt their MEK.
- *
- * This endpoint is for client-side verification that the correct password
- * was entered. The server does not actually verify the proof cryptographically
- * since it doesn't know the MEK. The client should call this after
- * successfully decrypting the MEK to confirm the operation.
- */
-encryptionRoutes.post('/verify', async (c) => {
-  const userId = c.get('userId');
-
-  // Check if user has encryption enabled
-  const user = await c.env.DB.prepare(
-    `SELECT encrypted_mek FROM users WHERE id = ?`
-  )
-    .bind(userId)
-    .first<Pick<UserWithEncryption, 'encrypted_mek'>>();
-
-  if (!user) {
-    return c.json({ error: 'User not found' }, 404);
-  }
-
-  if (!user.encrypted_mek) {
-    return c.json({ error: 'Encryption not enabled for this user' }, 404);
-  }
-
-  // The client has already verified the MEK by decrypting it with their
-  // password. This endpoint just confirms encryption is set up.
-  return c.json({ valid: true });
 });
 
 /**
