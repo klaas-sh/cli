@@ -97,6 +97,8 @@ interface TerminalProps {
  * - User input forwarding
  * - Terminal resize events
  * - Connection state management with auto-reconnect
+ *
+ * E2EE is fully automatic - encryption happens transparently.
  */
 export function Terminal({
   sessionId,
@@ -119,8 +121,6 @@ export function Terminal({
   const isMountedRef = useRef<boolean>(true)
 
   // Store callbacks in refs to avoid triggering reconnections when they change
-  // This prevents the useEffect from re-running when parent re-renders with
-  // new inline callback functions
   const onDisconnectRef = useRef(onDisconnect)
   const onSessionStatusRef = useRef(onSessionStatus)
 
@@ -137,29 +137,21 @@ export function Terminal({
   const [errorMessage, setErrorMessage] = useState<string | null>(null)
   const [reconnectAttempt, setReconnectAttempt] = useState(0)
 
-  // Encryption state
+  // Encryption state - auto-initializes, always unlocked
   const {
-    isEnabled: encryptionEnabled,
     isUnlocked: encryptionUnlocked,
-    isLoading: encryptionLoading,
-    error: encryptionError,
-    initialize: initializeEncryption,
-    unlock: unlockEncryption,
+    autoInitialize,
     encryptForSession,
     decryptForSession,
   } = useEncryption()
 
-  // Local state for unlock password input
-  const [unlockPassword, setUnlockPassword] = useState('')
-  const [unlockError, setUnlockError] = useState<string | null>(null)
-  const [isUnlocking, setIsUnlocking] = useState(false)
   // Decryption error for display in terminal
   const [decryptionError, setDecryptionError] = useState<string | null>(null)
 
-  // Initialize encryption state on mount
+  // Auto-initialize encryption on mount
   useEffect(() => {
-    initializeEncryption()
-  }, [initializeEncryption])
+    autoInitialize()
+  }, [autoInitialize])
 
   // Load xterm modules on mount (client-side only)
   useEffect(() => {
@@ -240,19 +232,13 @@ export function Terminal({
 
   /**
    * Handles encrypted output messages.
-   * Decrypts content if encryption is unlocked, shows placeholder otherwise.
+   * Decrypts content automatically.
    */
   const handleEncryptedOutput = useCallback(
     async (
       encrypted: EncryptedContent,
       term: import('@xterm/xterm').Terminal
     ): Promise<void> => {
-      if (!encryptionUnlocked) {
-        // Encryption is locked - show placeholder
-        term.write('\r\n[Encrypted - Enter password to view]\r\n')
-        return
-      }
-
       try {
         // Decrypt the content
         const decrypted = await decryptForSession(sessionId, encrypted)
@@ -269,16 +255,17 @@ export function Terminal({
         term.write(`\r\n[Decryption error: ${errorMsg}]\r\n`)
       }
     },
-    [encryptionUnlocked, decryptForSession, sessionId]
+    [decryptForSession, sessionId]
   )
 
   /**
-   * Sends encrypted or plaintext prompt to the server.
+   * Sends encrypted prompt to the server.
+   * E2EE is always enabled, so all messages are encrypted.
    */
   const sendPrompt = useCallback(
     async (text: string): Promise<void> => {
-      if (encryptionEnabled && encryptionUnlocked) {
-        // E2EE is enabled and unlocked - encrypt the message
+      if (encryptionUnlocked) {
+        // Encrypt the message
         try {
           const plaintext = new TextEncoder().encode(text)
           const encrypted = await encryptForSession(sessionId, plaintext)
@@ -288,7 +275,7 @@ export function Terminal({
             encrypted,
           })
         } catch {
-          // Encryption failed - fall back to plaintext
+          // Encryption failed - fall back to plaintext (should not happen)
           sendMessage({
             type: 'prompt',
             session_id: sessionId,
@@ -296,7 +283,7 @@ export function Terminal({
           })
         }
       } else {
-        // E2EE not enabled or locked - send plaintext
+        // Encryption not ready yet - send plaintext as fallback
         sendMessage({
           type: 'prompt',
           session_id: sessionId,
@@ -304,34 +291,7 @@ export function Terminal({
         })
       }
     },
-    [
-      encryptionEnabled,
-      encryptionUnlocked,
-      encryptForSession,
-      sendMessage,
-      sessionId,
-    ]
-  )
-
-  /**
-   * Handles the unlock form submission.
-   */
-  const handleUnlock = useCallback(
-    async (e: React.FormEvent): Promise<void> => {
-      e.preventDefault()
-      if (!unlockPassword) return
-
-      setIsUnlocking(true)
-      setUnlockError(null)
-
-      const success = await unlockEncryption(unlockPassword)
-      if (!success) {
-        setUnlockError('Invalid password')
-      }
-      setUnlockPassword('')
-      setIsUnlocking(false)
-    },
-    [unlockPassword, unlockEncryption]
+    [encryptionUnlocked, encryptForSession, sendMessage, sessionId]
   )
 
   /**
@@ -408,7 +368,7 @@ export function Terminal({
             if (message.session_id === sessionId) {
               // Handle encrypted or plaintext output
               if (message.encrypted) {
-                // Encrypted message - need to decrypt
+                // Encrypted message - decrypt automatically
                 handleEncryptedOutput(message.encrypted, term)
               } else if (message.data) {
                 // Plaintext message - decode base64 and display
@@ -419,8 +379,7 @@ export function Terminal({
             break
 
           case 'session_status':
-            // Handle session status changes (only update state, don't write
-            // to terminal - status is shown in the status bar)
+            // Handle session status changes
             if (message.session_id === sessionId) {
               setSessionStatus(message.status)
               onSessionStatusRef.current?.(message.status)
@@ -428,7 +387,7 @@ export function Terminal({
             break
 
           case 'error':
-            // Update error state (shown in status bar, not terminal)
+            // Update error state (shown in status bar)
             setErrorMessage(message.message)
             break
 
@@ -459,7 +418,7 @@ export function Terminal({
           return
         } else {
           setConnectionState('disconnected')
-          // Only notify of disconnect when we've exhausted reconnection attempts
+          // Notify of disconnect when reconnection attempts exhausted
           onDisconnectRef.current?.()
         }
       } else {
@@ -480,8 +439,6 @@ export function Terminal({
     sendMessage,
     sessionId
   ])
-  // Note: onDisconnect and onSessionStatus are accessed via refs to prevent
-  // reconnections when parent re-renders with new inline callbacks
 
   /**
    * Handles manual reconnection.
@@ -539,8 +496,7 @@ export function Terminal({
     fitAddonRef.current = fitAddon
 
     // Connect to WebSocket after terminal is ready
-    // Use setTimeout to allow React Strict Mode's mount/unmount cycle to complete
-    // This prevents "WebSocket is closed before the connection is established" errors
+    // Use setTimeout to allow React Strict Mode's mount/unmount to complete
     const connectTimeout = setTimeout(() => {
       if (isMountedRef.current) {
         connect()
@@ -552,7 +508,7 @@ export function Terminal({
     // Store timeout for cleanup
     const connectTimeoutRef = connectTimeout
 
-    // Handle terminal input - send as prompt message (encrypted if enabled)
+    // Handle terminal input - send as encrypted prompt
     const inputDisposable = term.onData((data) => {
       sendPrompt(data)
     })
@@ -597,7 +553,7 @@ export function Terminal({
       window.removeEventListener('resize', handleResize)
       inputDisposable.dispose()
 
-      // Close WebSocket connection - use try/catch to handle edge cases
+      // Close WebSocket connection
       if (wsRef.current) {
         try {
           // Use code 1000 for clean shutdown
@@ -674,7 +630,7 @@ export function Terminal({
             {getConnectionText()}
           </span>
 
-          {/* Session/CLI status - show whenever we have it */}
+          {/* Session/CLI status */}
           {sessionStatus && (
             <>
               <span className="text-zinc-600">|</span>
@@ -689,18 +645,12 @@ export function Terminal({
           )}
 
           {/* E2EE status indicator */}
-          {encryptionEnabled && (
-            <>
-              <span className="text-zinc-600">|</span>
-              <span className={`${
-                encryptionUnlocked
-                  ? 'text-green-400'
-                  : 'text-yellow-400'
-              }`}>
-                {encryptionUnlocked ? 'E2EE Unlocked' : 'E2EE Locked'}
-              </span>
-            </>
-          )}
+          <span className="text-zinc-600">|</span>
+          <span className={`${
+            encryptionUnlocked ? 'text-green-400' : 'text-yellow-400'
+          }`}>
+            {encryptionUnlocked ? 'E2EE Active' : 'E2EE Initializing'}
+          </span>
 
           {/* Decryption error indicator */}
           {decryptionError && (
@@ -725,81 +675,13 @@ export function Terminal({
         )}
       </div>
 
-      {/* Terminal container with optional unlock overlay */}
-      <div className="flex-1 min-h-0 relative">
-        {/* Terminal */}
+      {/* Terminal container */}
+      <div className="flex-1 min-h-0">
         <div
           ref={terminalRef}
           className="h-full cursor-text"
           onClick={() => xtermRef.current?.focus()}
         />
-
-        {/* Unlock encryption overlay */}
-        {encryptionEnabled && !encryptionUnlocked && !encryptionLoading && (
-          <div className="absolute inset-0 bg-zinc-900/90 flex items-center
-            justify-center">
-            <div className="bg-zinc-800 border border-zinc-700 rounded-lg
-              p-6 max-w-sm w-full mx-4">
-              <div className="text-center mb-4">
-                <div className="inline-flex items-center justify-center w-12
-                  h-12 rounded-full bg-yellow-500/20 mb-3">
-                  <svg
-                    className="w-6 h-6 text-yellow-500"
-                    fill="none"
-                    viewBox="0 0 24 24"
-                    stroke="currentColor"
-                  >
-                    <path
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                      strokeWidth={2}
-                      d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2
-                        2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"
-                    />
-                  </svg>
-                </div>
-                <h3 className="text-lg font-medium text-zinc-100">
-                  Session Encrypted
-                </h3>
-                <p className="text-sm text-zinc-400 mt-1">
-                  Enter your encryption password to view session content
-                </p>
-              </div>
-
-              <form onSubmit={handleUnlock} className="space-y-4">
-                <div>
-                  <input
-                    type="password"
-                    value={unlockPassword}
-                    onChange={(e) => setUnlockPassword(e.target.value)}
-                    placeholder="Encryption password"
-                    className="w-full px-3 py-2 bg-zinc-900 border border-zinc-700
-                      rounded-lg text-zinc-100 placeholder-zinc-500 focus:outline-none
-                      focus:ring-2 focus:ring-violet-500 focus:border-transparent"
-                    autoFocus
-                    disabled={isUnlocking}
-                  />
-                </div>
-
-                {(unlockError || encryptionError) && (
-                  <p className="text-sm text-red-400 text-center">
-                    {unlockError || encryptionError}
-                  </p>
-                )}
-
-                <button
-                  type="submit"
-                  disabled={isUnlocking || !unlockPassword}
-                  className="w-full px-4 py-2 bg-violet-600 hover:bg-violet-700
-                    disabled:bg-zinc-700 disabled:cursor-not-allowed rounded-lg
-                    text-white font-medium transition-colors"
-                >
-                  {isUnlocking ? 'Unlocking...' : 'Unlock'}
-                </button>
-              </form>
-            </div>
-          </div>
-        )}
       </div>
     </div>
   )

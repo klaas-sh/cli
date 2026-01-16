@@ -461,3 +461,283 @@ export async function decryptMessage(
 export function clearKey(key: Uint8Array): void {
   key.fill(0)
 }
+
+// =============================================================================
+// IndexedDB Local Storage for MEK
+// =============================================================================
+
+/** IndexedDB database name */
+const IDB_DB_NAME = 'klaas-encryption'
+
+/** IndexedDB store name */
+const IDB_STORE_NAME = 'keys'
+
+/** Key name for stored MEK */
+const IDB_MEK_KEY = 'mek'
+
+/** Version for stored MEK format */
+const STORED_MEK_VERSION = 1
+
+/**
+ * Stored MEK format for IndexedDB.
+ * Uses device key derived from browser fingerprint to encrypt the MEK.
+ */
+interface LocalStoredMEK {
+  /** Format version (always 1) */
+  v: 1
+  /** AES-GCM nonce, 12 bytes, base64 encoded */
+  nonce: string
+  /** Encrypted MEK, 32 bytes, base64 encoded */
+  encrypted_mek: string
+  /** Authentication tag, 16 bytes, base64 encoded */
+  tag: string
+}
+
+/**
+ * Generates a device-specific key using browser fingerprint data.
+ * This key is deterministic per device and used to encrypt the MEK at rest.
+ *
+ * Note: This is not cryptographically strong device binding, but provides
+ * defense-in-depth by making raw IndexedDB data less portable.
+ */
+async function getDeviceKey(): Promise<Uint8Array> {
+  // Collect device-specific data for fingerprinting
+  const fingerprint = [
+    navigator.userAgent,
+    navigator.language,
+    new Date().getTimezoneOffset().toString(),
+    screen.width.toString(),
+    screen.height.toString(),
+    screen.colorDepth.toString(),
+    // Use hardwareConurrency if available
+    navigator.hardwareConcurrency?.toString() || '0',
+    // Use origin for additional uniqueness
+    window.location.origin,
+  ].join('|')
+
+  // Hash the fingerprint to derive a key
+  const encoder = new TextEncoder()
+  const data = encoder.encode(fingerprint)
+  const hashBuffer = await crypto.subtle.digest('SHA-256', data)
+
+  return new Uint8Array(hashBuffer)
+}
+
+/**
+ * Opens the IndexedDB database for key storage.
+ */
+async function openDatabase(): Promise<IDBDatabase> {
+  return new Promise((resolve, reject) => {
+    const request = indexedDB.open(IDB_DB_NAME, 1)
+
+    request.onerror = (): void => {
+      reject(new Error('Failed to open IndexedDB'))
+    }
+
+    request.onsuccess = (): void => {
+      resolve(request.result)
+    }
+
+    request.onupgradeneeded = (event): void => {
+      const db = (event.target as IDBOpenDBRequest).result
+      if (!db.objectStoreNames.contains(IDB_STORE_NAME)) {
+        db.createObjectStore(IDB_STORE_NAME, { keyPath: 'id' })
+      }
+    }
+  })
+}
+
+/**
+ * Stores the MEK locally in IndexedDB, encrypted with a device-specific key.
+ *
+ * @param mek - The Master Encryption Key to store
+ */
+export async function storeMEKLocally(mek: Uint8Array): Promise<void> {
+  // Get device key for encryption
+  const deviceKey = await getDeviceKey()
+
+  // Encrypt MEK with device key
+  const nonce = generateNonce()
+
+  const deviceKeyBuffer = deviceKey.buffer.slice(
+    deviceKey.byteOffset,
+    deviceKey.byteOffset + deviceKey.byteLength
+  ) as ArrayBuffer
+
+  const cryptoKey = await crypto.subtle.importKey(
+    'raw',
+    deviceKeyBuffer,
+    'AES-GCM',
+    false,
+    ['encrypt']
+  )
+
+  const nonceBuffer = nonce.buffer.slice(
+    nonce.byteOffset,
+    nonce.byteOffset + nonce.byteLength
+  ) as ArrayBuffer
+  const mekBuffer = mek.buffer.slice(
+    mek.byteOffset,
+    mek.byteOffset + mek.byteLength
+  ) as ArrayBuffer
+
+  const ciphertextWithTag = await crypto.subtle.encrypt(
+    { name: 'AES-GCM', iv: nonceBuffer },
+    cryptoKey,
+    mekBuffer
+  )
+
+  // Split ciphertext and tag
+  const ciphertext = new Uint8Array(ciphertextWithTag.slice(0, -TAG_SIZE))
+  const tag = new Uint8Array(ciphertextWithTag.slice(-TAG_SIZE))
+
+  // Create stored format
+  const storedMek: LocalStoredMEK = {
+    v: STORED_MEK_VERSION,
+    nonce: base64Encode(nonce),
+    encrypted_mek: base64Encode(ciphertext),
+    tag: base64Encode(tag),
+  }
+
+  // Store in IndexedDB
+  const db = await openDatabase()
+  return new Promise((resolve, reject) => {
+    const transaction = db.transaction(IDB_STORE_NAME, 'readwrite')
+    const store = transaction.objectStore(IDB_STORE_NAME)
+
+    const request = store.put({
+      id: IDB_MEK_KEY,
+      data: storedMek,
+    })
+
+    request.onerror = (): void => {
+      db.close()
+      reject(new Error('Failed to store MEK in IndexedDB'))
+    }
+
+    request.onsuccess = (): void => {
+      db.close()
+      resolve()
+    }
+  })
+}
+
+/**
+ * Retrieves and decrypts the MEK from local IndexedDB storage.
+ *
+ * @returns The decrypted MEK, or null if not found
+ */
+export async function getMEKLocally(): Promise<Uint8Array | null> {
+  let db: IDBDatabase
+
+  try {
+    db = await openDatabase()
+  } catch {
+    // IndexedDB not available
+    return null
+  }
+
+  return new Promise((resolve, reject) => {
+    const transaction = db.transaction(IDB_STORE_NAME, 'readonly')
+    const store = transaction.objectStore(IDB_STORE_NAME)
+    const request = store.get(IDB_MEK_KEY)
+
+    request.onerror = (): void => {
+      db.close()
+      reject(new Error('Failed to read from IndexedDB'))
+    }
+
+    request.onsuccess = async (): Promise<void> => {
+      db.close()
+
+      const result = request.result as
+        | { id: string; data: LocalStoredMEK }
+        | undefined
+      if (!result?.data) {
+        resolve(null)
+        return
+      }
+
+      const storedMek = result.data
+      if (storedMek.v !== STORED_MEK_VERSION) {
+        resolve(null)
+        return
+      }
+
+      try {
+        // Decrypt with device key
+        const deviceKey = await getDeviceKey()
+        const nonce = base64Decode(storedMek.nonce)
+        const ciphertext = base64Decode(storedMek.encrypted_mek)
+        const tag = base64Decode(storedMek.tag)
+
+        const deviceKeyBuffer = deviceKey.buffer.slice(
+          deviceKey.byteOffset,
+          deviceKey.byteOffset + deviceKey.byteLength
+        ) as ArrayBuffer
+
+        const cryptoKey = await crypto.subtle.importKey(
+          'raw',
+          deviceKeyBuffer,
+          'AES-GCM',
+          false,
+          ['decrypt']
+        )
+
+        // Concatenate ciphertext + tag
+        const ciphertextWithTag = new Uint8Array(ciphertext.length + tag.length)
+        ciphertextWithTag.set(ciphertext)
+        ciphertextWithTag.set(tag, ciphertext.length)
+
+        const nonceBuffer = nonce.buffer.slice(
+          nonce.byteOffset,
+          nonce.byteOffset + nonce.byteLength
+        ) as ArrayBuffer
+        const ctBuffer = ciphertextWithTag.buffer.slice(
+          ciphertextWithTag.byteOffset,
+          ciphertextWithTag.byteOffset + ciphertextWithTag.byteLength
+        ) as ArrayBuffer
+
+        const plaintext = await crypto.subtle.decrypt(
+          { name: 'AES-GCM', iv: nonceBuffer },
+          cryptoKey,
+          ctBuffer
+        )
+
+        resolve(new Uint8Array(plaintext))
+      } catch {
+        // Decryption failed - possibly on different device
+        resolve(null)
+      }
+    }
+  })
+}
+
+/**
+ * Deletes the locally stored MEK from IndexedDB.
+ */
+export async function deleteMEKLocally(): Promise<void> {
+  let db: IDBDatabase
+
+  try {
+    db = await openDatabase()
+  } catch {
+    return
+  }
+
+  return new Promise((resolve, reject) => {
+    const transaction = db.transaction(IDB_STORE_NAME, 'readwrite')
+    const store = transaction.objectStore(IDB_STORE_NAME)
+    const request = store.delete(IDB_MEK_KEY)
+
+    request.onerror = (): void => {
+      db.close()
+      reject(new Error('Failed to delete from IndexedDB'))
+    }
+
+    request.onsuccess = (): void => {
+      db.close()
+      resolve()
+    }
+  })
+}

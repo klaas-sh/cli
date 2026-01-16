@@ -1,24 +1,6 @@
 'use client'
 
 import { create } from 'zustand'
-import { apiClient } from '../lib/api-client'
-
-/**
- * Stored MEK format (as received from/sent to server).
- * Exported for use by components that need to work with encrypted data.
- */
-export interface StoredMEK {
-  /** Format version (always 1) */
-  v: 1
-  /** Argon2id salt, 16 bytes, base64 encoded */
-  salt: string
-  /** AES-GCM nonce, 12 bytes, base64 encoded */
-  nonce: string
-  /** Encrypted MEK, 32 bytes, base64 encoded */
-  encrypted_mek: string
-  /** Authentication tag, 16 bytes, base64 encoded */
-  tag: string
-}
 
 /**
  * Encrypted content format for session data.
@@ -37,75 +19,61 @@ export interface EncryptedContent {
 
 /**
  * Type definition for the crypto module.
- * This is manually typed to avoid importing the actual module at build time.
+ * Manually typed to avoid importing the actual module at build time.
  */
 interface CryptoModule {
   generateMEK: () => Uint8Array
-  encryptMEK: (password: string, mek: Uint8Array) => Promise<StoredMEK>
-  decryptMEK: (stored: StoredMEK, password: string) => Promise<Uint8Array>
-  deriveSessionKey: (mek: Uint8Array, sessionId: string) => Promise<Uint8Array>
-  encrypt: (key: Uint8Array, plaintext: Uint8Array) => Promise<EncryptedContent>
-  decrypt: (key: Uint8Array, encrypted: EncryptedContent) => Promise<Uint8Array>
+  deriveSessionKey: (
+    mek: Uint8Array,
+    sessionId: string
+  ) => Promise<Uint8Array>
+  encrypt: (
+    key: Uint8Array,
+    plaintext: Uint8Array
+  ) => Promise<EncryptedContent>
+  decrypt: (
+    key: Uint8Array,
+    encrypted: EncryptedContent
+  ) => Promise<Uint8Array>
   clearKey: (key: Uint8Array) => void
+  storeMEKLocally: (mek: Uint8Array) => Promise<void>
+  getMEKLocally: () => Promise<Uint8Array | null>
 }
 
 /**
  * Lazy-loads the crypto module to avoid WASM bundle issues with webpack.
- * The crypto module uses argon2-browser which requires WASM support.
- *
  * Uses webpack magic comment to tell webpack to ignore this import during
  * static analysis and only load it at runtime.
  */
 async function getCryptoModule(): Promise<CryptoModule> {
-  // Use webpackIgnore to prevent webpack from bundling the crypto module
-  // This is necessary because argon2-browser uses WASM which causes build errors
   return import(/* webpackIgnore: true */ '../lib/crypto')
 }
 
 /**
- * Encryption state interface
+ * Encryption state interface for automatic E2EE.
+ * E2EE is always enabled and unlocked automatically.
  */
 interface EncryptionState {
-  /** Whether encryption is unlocked (MEK is available) */
+  /** Whether encryption is unlocked (MEK is available in memory) */
   isUnlocked: boolean
-  /** Whether E2EE is enabled for the user */
-  isEnabled: boolean
-  /** Whether encryption state is loading */
+  /** Whether encryption state is initializing */
   isLoading: boolean
   /** Error message if any operation failed */
   error: string | null
-  /** The decrypted MEK (null when locked) */
+  /** The decrypted MEK (null before auto-initialization) */
   mek: Uint8Array | null
   /** Cached session keys */
   sessionKeys: Map<string, Uint8Array>
+  /** Whether auto-initialization has been attempted */
+  initialized: boolean
 
   /**
-   * Initializes encryption state by checking if E2EE is enabled.
+   * Auto-initializes encryption by loading or generating MEK.
+   * - Checks IndexedDB for existing MEK
+   * - If not found, generates new MEK and stores it
+   * - Loads MEK into memory automatically
    */
-  initialize: () => Promise<void>
-
-  /**
-   * Enables E2EE for the user with the given password.
-   * Generates a new MEK, encrypts it with the password, and stores it.
-   */
-  enable: (password: string) => Promise<void>
-
-  /**
-   * Unlocks encryption with the user's password.
-   * Fetches the encrypted MEK from the server and decrypts it.
-   */
-  unlock: (password: string) => Promise<boolean>
-
-  /**
-   * Locks encryption by clearing the MEK from memory.
-   */
-  lock: () => Promise<void>
-
-  /**
-   * Changes the encryption password.
-   * Re-encrypts the MEK with the new password.
-   */
-  changePassword: (oldPassword: string, newPassword: string) => Promise<void>
+  autoInitialize: () => Promise<void>
 
   /**
    * Encrypts data for a session.
@@ -132,181 +100,76 @@ interface EncryptionState {
 /**
  * Encryption hook using Zustand for state management.
  *
- * Manages the Master Encryption Key (MEK) and session keys for E2EE.
- * The MEK is kept in memory when unlocked and cleared when locked.
+ * Implements fully automatic E2EE with zero user interaction:
+ * - MEK is auto-generated on first use
+ * - MEK is stored in IndexedDB encrypted with device-specific key
+ * - All encryption/decryption happens transparently
  *
- * All crypto operations are lazy-loaded to avoid WASM bundle issues
- * with webpack/Next.js. The crypto module (which includes argon2-browser)
- * is only loaded when encryption operations are actually performed.
+ * All crypto operations are lazy-loaded to avoid WASM bundle issues.
  */
 export const useEncryption = create<EncryptionState>()((set, get) => ({
   isUnlocked: false,
-  isEnabled: false,
   isLoading: true,
   error: null,
   mek: null,
   sessionKeys: new Map(),
+  initialized: false,
 
-  initialize: async (): Promise<void> => {
-    set({ isLoading: true, error: null })
-
-    try {
-      // Check if E2EE is enabled for the user
-      const response = await apiClient.request<{ enabled: boolean }>(
-        '/v1/users/me/encryption-key/status'
-      )
-
-      set({
-        isEnabled: response.enabled,
-        isLoading: false,
-      })
-    } catch {
-      // If endpoint fails, assume E2EE is not enabled
-      set({
-        isEnabled: false,
-        isLoading: false,
-      })
-    }
-  },
-
-  enable: async (password: string): Promise<void> => {
-    set({ isLoading: true, error: null })
-
-    try {
-      // Lazy-load crypto module
-      const crypto = await getCryptoModule()
-
-      // Generate a new MEK
-      const mek = crypto.generateMEK()
-
-      // Encrypt MEK with password
-      const storedMek = await crypto.encryptMEK(password, mek)
-
-      // Store on server
-      await apiClient.request('/v1/users/me/encryption-key', {
-        method: 'PUT',
-        body: JSON.stringify(storedMek),
-      })
-
-      set({
-        isEnabled: true,
-        isUnlocked: true,
-        mek: mek,
-        isLoading: false,
-      })
-    } catch (error) {
-      set({
-        error: error instanceof Error ? error.message : 'Failed to enable E2EE',
-        isLoading: false,
-      })
-      throw error
-    }
-  },
-
-  unlock: async (password: string): Promise<boolean> => {
-    set({ isLoading: true, error: null })
-
-    try {
-      // Fetch encrypted MEK from server
-      const storedMek = await apiClient.request<StoredMEK>(
-        '/v1/users/me/encryption-key'
-      )
-
-      // Lazy-load crypto module
-      const crypto = await getCryptoModule()
-
-      // Decrypt MEK with password
-      const mek = await crypto.decryptMEK(storedMek, password)
-
-      set({
-        isUnlocked: true,
-        mek: mek,
-        isLoading: false,
-      })
-
-      return true
-    } catch {
-      set({
-        error: 'Failed to unlock - wrong password or corrupted key',
-        isLoading: false,
-      })
-      return false
-    }
-  },
-
-  lock: async (): Promise<void> => {
+  autoInitialize: async (): Promise<void> => {
     const state = get()
 
-    // Lazy-load crypto module
-    const crypto = await getCryptoModule()
-
-    // Clear MEK from memory
-    if (state.mek) {
-      crypto.clearKey(state.mek)
+    // Prevent duplicate initialization
+    if (state.initialized || state.mek) {
+      return
     }
 
-    // Clear all session keys
-    state.sessionKeys.forEach((key) => crypto.clearKey(key))
-
-    set({
-      isUnlocked: false,
-      mek: null,
-      sessionKeys: new Map(),
-      error: null,
-    })
-  },
-
-  changePassword: async (
-    oldPassword: string,
-    newPassword: string
-  ): Promise<void> => {
-    set({ isLoading: true, error: null })
+    set({ isLoading: true, error: null, initialized: true })
 
     try {
-      // Fetch current encrypted MEK
-      const storedMek = await apiClient.request<StoredMEK>(
-        '/v1/users/me/encryption-key'
-      )
-
       // Lazy-load crypto module
       const crypto = await getCryptoModule()
 
-      // Decrypt with old password
-      const mek = await crypto.decryptMEK(storedMek, oldPassword)
+      // Try to load existing MEK from IndexedDB
+      let mek = await crypto.getMEKLocally()
 
-      // Re-encrypt with new password
-      const newStoredMek = await crypto.encryptMEK(newPassword, mek)
+      if (!mek) {
+        // No existing MEK - generate a new one
+        mek = crypto.generateMEK()
 
-      // Store new encrypted MEK
-      await apiClient.request('/v1/users/me/encryption-key', {
-        method: 'PUT',
-        body: JSON.stringify(newStoredMek),
-      })
+        // Store in IndexedDB for future sessions
+        await crypto.storeMEKLocally(mek)
+      }
 
-      // Keep MEK in memory if it was already unlocked
       set({
-        mek: get().isUnlocked ? mek : null,
+        isUnlocked: true,
+        mek: mek,
         isLoading: false,
       })
     } catch (error) {
       set({
-        error:
-          error instanceof Error ? error.message : 'Failed to change password',
+        error: error instanceof Error
+          ? error.message
+          : 'Failed to initialize encryption',
         isLoading: false,
       })
-      throw error
     }
   },
 
   getSessionKey: async (sessionId: string): Promise<Uint8Array> => {
     const state = get()
 
+    // Auto-initialize if not done yet
     if (!state.mek) {
-      throw new Error('Encryption not unlocked')
+      await get().autoInitialize()
+    }
+
+    const currentState = get()
+    if (!currentState.mek) {
+      throw new Error('Encryption not initialized')
     }
 
     // Check cache
-    let sessionKey = state.sessionKeys.get(sessionId)
+    let sessionKey = currentState.sessionKeys.get(sessionId)
     if (sessionKey) {
       return sessionKey
     }
@@ -315,7 +178,7 @@ export const useEncryption = create<EncryptionState>()((set, get) => ({
     const crypto = await getCryptoModule()
 
     // Derive session key
-    sessionKey = await crypto.deriveSessionKey(state.mek, sessionId)
+    sessionKey = await crypto.deriveSessionKey(currentState.mek, sessionId)
 
     // Cache it
     set((prev) => ({

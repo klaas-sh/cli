@@ -6,6 +6,7 @@ import { Sidebar } from '@/components/layout/sidebar'
 import { Header } from '@/components/layout/header'
 import { MobileDrawer } from '@/components/layout/mobile-drawer'
 import { ToastProvider } from '@/components/ui/toast'
+import { useEncryption } from '@/hooks/use-encryption'
 
 /**
  * Dashboard content wrapper with sidebar and header layout.
@@ -88,6 +89,7 @@ function DashboardContent({
 /**
  * Dashboard layout with authentication check.
  * Redirects to login if user is not authenticated.
+ * Auto-initializes E2EE on mount.
  */
 export default function DashboardLayout({
   children,
@@ -95,14 +97,19 @@ export default function DashboardLayout({
   children: React.ReactNode
 }): React.JSX.Element {
   const router = useRouter()
+  const { autoInitialize } = useEncryption()
 
   useEffect(() => {
     // Check authentication
     const token = localStorage.getItem('user-token')
     if (!token) {
       router.push('/login')
+      return
     }
-  }, [router])
+
+    // Auto-initialize E2EE (runs silently in background)
+    autoInitialize()
+  }, [router, autoInitialize])
 
   return <DashboardContent>{children}</DashboardContent>
 }
