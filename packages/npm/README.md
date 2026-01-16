@@ -126,8 +126,7 @@ authenticated, your session is automatically streamed to the klaas dashboard.
 
 ## License
 
-MIT License - see [LICENSE](https://github.com/klaas-sh/cli/blob/main/LICENSE)
-for details.
+MIT License - see [LICENSE](LICENSE) for details.
 
 ## Links
 
