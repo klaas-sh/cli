@@ -172,16 +172,22 @@ async fn main() -> anyhow::Result<()> {
     // Spawn background update check (non-blocking)
     update::spawn_update_check();
 
-    // Display startup banner
+    // Display startup banner and hide cursor during startup
     ui::display_startup_banner();
+    ui::hide_cursor();
 
     // Select agent to run
     let selected_agent = match select_agent(&cli) {
-        agents::AgentSelection::Selected(agent) => agent,
+        agents::AgentSelection::Selected(agent) => {
+            ui::show_cursor();
+            agent
+        }
         agents::AgentSelection::Cancelled => {
+            ui::show_cursor();
             std::process::exit(0);
         }
         agents::AgentSelection::NoneInstalled => {
+            ui::show_cursor();
             eprintln!("Error: No supported AI coding agents found.");
             eprintln!();
             eprintln!("Install one of the following:");
@@ -262,7 +268,17 @@ fn select_agent(cli: &Cli) -> agents::AgentSelection {
     };
 
     // Detect which are installed
-    let installed = registry.detect_installed_from(&candidates);
+    let installed_refs = registry.detect_installed_from(&candidates);
+
+    // Convert to owned agents and add shell option if multiple agents exist
+    let shell_agent = agents::shell_agent();
+    let mut installed: Vec<agents::Agent> = installed_refs.iter().map(|a| (*a).clone()).collect();
+
+    if !installed.is_empty() {
+        if let Some(shell) = shell_agent {
+            installed.push(shell);
+        }
+    }
 
     match installed.len() {
         0 => AgentSelection::NoneInstalled,
@@ -274,12 +290,13 @@ fn select_agent(cli: &Cli) -> agents::AgentSelection {
             // Check if there's a default agent specified in config
             if let Some(ref default_id) = klaas_config.default_agent {
                 if let Some(agent) = installed.iter().find(|a| a.id == *default_id) {
-                    return AgentSelection::Selected((*agent).clone());
+                    return AgentSelection::Selected(agent.clone());
                 }
             }
 
             // Multiple agents - show interactive selection
-            ui::select_agent(&installed)
+            let refs: Vec<&agents::Agent> = installed.iter().collect();
+            ui::select_agent(&refs)
         }
     }
 }
