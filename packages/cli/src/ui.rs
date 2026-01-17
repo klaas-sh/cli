@@ -278,6 +278,7 @@ pub fn display_startup_banner() {
         fg_color(tr, tg, tb),
         RESET
     );
+    println!();
 }
 
 /// Displays auth instructions with branded styling.
@@ -408,6 +409,7 @@ pub fn display_offline_warning() {
         fg_color(mr, mg, mb),
         RESET
     );
+    println!();
 }
 
 /// Returns the animation frame interval for smooth animation.
@@ -555,7 +557,7 @@ fn draw_agent_menu(
 
     // Print instructions
     print!(
-        "\r\n  {}Use ↑↓ arrows, press shortcut, or Enter. Esc to cancel.{}\r\n",
+        "\r\n  {}Use ↑↓ arrows and Enter or press shortcut. Esc to cancel.{}\r\n",
         fg_color(mr, mg, mb),
         RESET
     );
@@ -587,7 +589,6 @@ pub fn display_hooks_available_notice(agent: &crate::agents::Agent) {
     let (mr, mg, mb) = colors::TEXT_MUTED;
     let (ar, ag, ab) = colors::AMBER_LIGHT;
 
-    println!();
     println!(
         "  {}{}ℹ{} {} supports hooks for permission notifications",
         BOLD,
@@ -602,7 +603,7 @@ pub fn display_hooks_available_notice(agent: &crate::agents::Agent) {
         RESET
     );
     println!(
-        "    {}$ klaas hooks setup --{}{}",
+        "    {}› klaas hooks setup --{}{}",
         fg_color(ar, ag, ab),
         agent.id,
         RESET

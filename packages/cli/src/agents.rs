@@ -185,6 +185,31 @@ pub fn builtin_agents() -> Vec<Agent> {
     ]
 }
 
+/// Returns a shell agent based on the user's default shell.
+///
+/// Detects the shell from the SHELL environment variable and creates
+/// an agent entry for it. Returns None if SHELL is not set.
+pub fn shell_agent() -> Option<Agent> {
+    let shell_path = std::env::var("SHELL").ok()?;
+    let shell_name = std::path::Path::new(&shell_path)
+        .file_name()?
+        .to_str()?
+        .to_string();
+
+    // Capitalize first letter for display name
+    let display_name = shell_name
+        .chars()
+        .next()
+        .map(|c| c.to_uppercase().collect::<String>() + &shell_name[1..])
+        .unwrap_or_else(|| shell_name.clone());
+
+    Some(
+        Agent::new("shell", &format!("{} (shell)", display_name), &shell_name)
+            .with_shortcut('S')
+            .with_description("Plain terminal shell"),
+    )
+}
+
 /// Agent registry for detection and lookup.
 pub struct AgentRegistry {
     /// All known agents (built-in + custom).
