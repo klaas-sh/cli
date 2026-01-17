@@ -1,4 +1,4 @@
-//! OAuth Device Flow authentication for Klaas CLI.
+//! OAuth Device Flow authentication for klaas CLI.
 //!
 //! Implements RFC 8628 OAuth 2.0 Device Authorization Grant.
 //! The flow:
@@ -203,7 +203,7 @@ struct RefreshRequest {
 ///
 /// # Arguments
 ///
-/// * `api_url` - Base URL of the Klaas API (e.g., "https://api.klaas.sh")
+/// * `api_url` - Base URL of the klaas API (e.g., "https://api.klaas.sh")
 ///
 /// # Returns
 ///
@@ -241,7 +241,7 @@ pub async fn start_device_flow(api_url: &str) -> AuthResult<DeviceFlowResponse> 
 ///
 /// # Arguments
 ///
-/// * `api_url` - Base URL of the Klaas API
+/// * `api_url` - Base URL of the klaas API
 /// * `device_code` - The device code from `start_device_flow`
 /// * `interval` - Initial polling interval in seconds
 /// * `expires_in` - Seconds until the device code expires
@@ -401,7 +401,7 @@ pub async fn poll_for_token(
 ///
 /// # Arguments
 ///
-/// * `api_url` - Base URL of the Klaas API
+/// * `api_url` - Base URL of the klaas API
 /// * `refresh_token` - The refresh token from a previous authentication
 ///
 /// # Returns
@@ -467,7 +467,7 @@ pub fn display_auth_instructions(response: &DeviceFlowResponse) {
 ///
 /// # Arguments
 ///
-/// * `api_url` - Base URL of the Klaas API
+/// * `api_url` - Base URL of the klaas API
 ///
 /// # Returns
 ///
@@ -512,7 +512,7 @@ struct PairingRequest {
 ///
 /// # Arguments
 ///
-/// * `api_url` - Base URL of the Klaas API
+/// * `api_url` - Base URL of the klaas API
 /// * `device_name` - Name of this device (e.g., hostname)
 ///
 /// # Returns
@@ -560,7 +560,7 @@ pub async fn start_pairing(
 ///
 /// # Arguments
 ///
-/// * `api_url` - Base URL of the Klaas API
+/// * `api_url` - Base URL of the klaas API
 /// * `pairing_code` - The pairing code from `start_pairing`
 /// * `private_key` - The CLI's ECDH private key
 /// * `expires_in` - Seconds until the pairing expires
@@ -724,7 +724,7 @@ pub fn display_pairing_instructions(data: &PairingData) {
 ///
 /// # Arguments
 ///
-/// * `api_url` - Base URL of the Klaas API
+/// * `api_url` - Base URL of the klaas API
 /// * `device_name` - Name of this device (e.g., hostname)
 ///
 /// # Returns

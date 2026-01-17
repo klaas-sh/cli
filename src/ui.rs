@@ -1,4 +1,4 @@
-//! Terminal UI animations and styling for Klaas CLI.
+//! Terminal UI animations and styling for klaas CLI.
 //!
 //! Provides visually appealing startup screens and animations with the klaas
 //! brand colors (amber palette).

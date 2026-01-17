@@ -856,7 +856,7 @@ fn setup_shell_prompt(
                 if let Ok(mut file) = std::fs::File::create(&zshrc_path) {
                     // Source user's config then set our prompt
                     let content = format!(
-                        r#"# Klaas shell wrapper
+                        r#"# klaas shell wrapper
 [[ -f "$HOME/.zshrc" ]] && source "$HOME/.zshrc"
 PROMPT='{}'
 {}
@@ -878,7 +878,7 @@ PROMPT='{}'
             // Create temp rcfile that sources user's config then sets prompt
             if let Ok(mut temp_file) = tempfile::NamedTempFile::new() {
                 let content = format!(
-                    r#"# Klaas shell wrapper
+                    r#"# klaas shell wrapper
 [[ -f "$HOME/.bashrc" ]] && source "$HOME/.bashrc"
 PS1='{}'
 {}

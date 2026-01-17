@@ -2,7 +2,7 @@
 //!
 //! Agents like Claude Code and Gemini CLI can spawn hooks when events occur.
 //! This module handles those hook invocations and sends notifications to the
-//! Klaas API.
+//! klaas API.
 //!
 //! Environment variables used for session correlation:
 //! - `KLAAS_SESSION_ID`: The session this hook belongs to
@@ -66,9 +66,9 @@ impl Default for HookOutput {
 /// The hook reads JSON from stdin, processes the event, and outputs JSON
 /// to stdout.
 pub async fn handle_hook(event: &str) -> Result<(), String> {
-    // Check if we're running inside a Klaas session
+    // Check if we're running inside a klaas session
     let session_id = env::var(ENV_SESSION_ID).map_err(|_| {
-        "Error: This command must be called by an agent CLI running inside Klaas.".to_string()
+        "Error: This command must be called by an agent CLI running inside klaas.".to_string()
     })?;
 
     let api_url = env::var(ENV_API_URL).unwrap_or_else(|_| {
@@ -177,7 +177,7 @@ struct NotificationPayload {
     message: Option<String>,
 }
 
-/// Sends a notification to the Klaas API.
+/// Sends a notification to the klaas API.
 async fn send_notification(
     api_url: &str,
     hook_token: Option<&str>,

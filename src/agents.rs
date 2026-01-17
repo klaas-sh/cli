@@ -1,6 +1,6 @@
 //! Agent definitions and detection for multi-agent support.
 //!
-//! Klaas supports multiple AI coding agents. This module provides:
+//! klaas supports multiple AI coding agents. This module provides:
 //! - Built-in agent definitions (Claude Code, Gemini CLI, Codex, etc.)
 //! - Agent detection (checking PATH for installed agents)
 //! - Custom agent definitions from configuration files

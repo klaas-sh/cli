@@ -1,7 +1,7 @@
 #Requires -Version 5.1
 <#
 .SYNOPSIS
-    Klaas CLI Installation Script for Windows
+    klaas CLI Installation Script for Windows
 
 .DESCRIPTION
     Downloads and installs the klaas CLI binary for Windows.

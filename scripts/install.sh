@@ -1,6 +1,6 @@
 #!/bin/bash
 #
-# Klaas CLI Installation Script
+# klaas CLI Installation Script
 #
 # Usage:
 #   curl -fsSL https://klaas.sh/install.sh | bash

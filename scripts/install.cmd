@@ -1,7 +1,7 @@
 @echo off
 setlocal EnableDelayedExpansion
 
-:: Klaas CLI Installation Script for Windows CMD
+:: klaas CLI Installation Script for Windows CMD
 ::
 :: Usage:
 ::   curl -fsSL https://klaas.sh/install.cmd -o install.cmd && install.cmd
