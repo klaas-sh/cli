@@ -62,7 +62,16 @@ impl PtyManager {
             .map_err(|e| CliError::SpawnError(format!("Failed to open PTY: {}", e)))?;
 
         // Build command with current working directory
-        let mut cmd = CommandBuilder::new(command);
+        // Handle commands with spaces (e.g., "gh copilot")
+        let mut parts = command.split_whitespace();
+        let executable = parts.next().unwrap_or(command);
+        let mut cmd = CommandBuilder::new(executable);
+
+        // Add any additional parts of the command as initial arguments
+        for part in parts {
+            cmd.arg(part);
+        }
+
         if let Ok(cwd) = std::env::current_dir() {
             cmd.cwd(cwd);
         }

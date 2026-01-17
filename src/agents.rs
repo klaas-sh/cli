@@ -170,10 +170,10 @@ pub fn builtin_agents() -> Vec<Agent> {
             .with_hooks(HooksType::Codex)
             .with_shortcut('O')
             .with_description("OpenAI's coding agent"),
-        Agent::new("copilot", "GitHub Copilot", "gh")
+        Agent::new("copilot", "GitHub Copilot", "gh copilot")
             .with_detect(vec!["gh"])
             .with_shortcut('C')
-            .with_description("GitHub Copilot in terminal (gh copilot)"),
+            .with_description("GitHub Copilot in terminal"),
         Agent::new("vibe", "Mistral Vibe", "vibe")
             .with_shortcut('M')
             .with_description("Mistral AI's coding assistant"),
