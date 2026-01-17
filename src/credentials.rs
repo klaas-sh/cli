@@ -647,6 +647,6 @@ mod tests {
     #[test]
     fn test_get_fallback_path() {
         let path = get_fallback_path();
-        assert!(path.ends_with("klaas/credentials.json"));
+        assert!(path.ends_with(".klaas/credentials.json"));
     }
 }

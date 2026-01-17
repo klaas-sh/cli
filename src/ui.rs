@@ -208,11 +208,7 @@ impl WaitingAnimation {
 
         // Clear current line, print main text, then newline and timer
         // Use \x1b[K to clear to end of line (removes stale characters)
-        print!(
-            "\r{}\x1b[K\n{}\x1b[K\x1b[1A",
-            output,
-            timer_line
-        );
+        print!("\r{}\x1b[K\n{}\x1b[K\x1b[1A", output, timer_line);
         let _ = io::stdout().flush();
 
         // Advance star animation
@@ -495,11 +491,7 @@ pub fn select_agent(agents: &[&crate::agents::Agent]) -> crate::agents::AgentSel
                 }
                 KeyCode::Char(c) => {
                     // Ctrl+C to cancel (same as Esc)
-                    if c == 'c'
-                        && key_event
-                            .modifiers
-                            .contains(event::KeyModifiers::CONTROL)
-                    {
+                    if c == 'c' && key_event.modifiers.contains(event::KeyModifiers::CONTROL) {
                         break AgentSelection::Cancelled;
                     }
                     // Check for shortcut key

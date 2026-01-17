@@ -43,13 +43,17 @@ mod websocket;
 #[derive(Parser)]
 #[command(name = "klaas")]
 #[command(about = "Remote access wrapper for AI coding agents")]
-#[command(version)]
+#[command(version, disable_version_flag = true)]
 #[command(long_about = "Wraps AI agent CLI sessions and enables remote access \
     via a web interface. Sessions auto-attach on startup.\n\n\
     Supports Claude Code, Gemini CLI, Codex, Aider, and more.\n\
     All input is passed through to the agent. \
     All output is captured for remote streaming.")]
 struct Cli {
+    /// Print version.
+    #[arg(short = 'v', long = "version", action = clap::ArgAction::Version)]
+    version: (),
+
     /// Subcommand to run.
     #[command(subcommand)]
     command: Option<Commands>,
