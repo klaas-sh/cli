@@ -37,7 +37,7 @@
     "push:platform": "git push origin main",
     "push:public": "yarn push:cli && yarn push:github-profile && yarn push:homebrew-tap && yarn push:npm && yarn push:scoop-bucket",
     "push:scoop-bucket": "git subtree push --prefix=packages/scoop-bucket scoop-bucket main",
-    "release:cli": "node scripts/release-cli.js",
+    "release:cli": "yarn push:cli && node scripts/release-cli.js",
     "test": "yarn workspaces foreach -Aptv run test:once",
     "test:api": "yarn workspace @klaas/api test:once",
     "test:cli": "source ~/.cargo/env 2>/dev/null; cd packages/cli && cargo test",
