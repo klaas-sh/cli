@@ -508,9 +508,9 @@ fn draw_agent_menu(
     let (cr, cg, cb) = colors::CYAN;
 
     // If redrawing, move cursor up to overwrite previous menu
-    // Menu structure: 1 blank + 1 header + 1 blank + agents + 1 blank + 1 footer
+    // Menu structure: 1 header + 1 blank + agents + 1 blank + 1 footer = agents + 4
     if is_redraw {
-        let lines_to_move_up = agents.len() + 5;
+        let lines_to_move_up = agents.len() + 4;
         for _ in 0..lines_to_move_up {
             let _ = stdout.queue(cursor::MoveUp(1));
             let _ = stdout.queue(terminal::Clear(terminal::ClearType::CurrentLine));
@@ -569,8 +569,8 @@ fn draw_agent_menu(
 fn clear_agent_menu(stdout: &mut io::Stdout, agent_count: usize) {
     use crossterm::{cursor, terminal, QueueableCommand};
 
-    // Move up to clear all lines (header + agents + footer + blank lines)
-    let lines_to_clear = agent_count + 5;
+    // Move up to clear all lines (1 header + 1 blank + agents + 1 blank + 1 footer)
+    let lines_to_clear = agent_count + 4;
 
     for _ in 0..lines_to_clear {
         let _ = stdout.queue(cursor::MoveUp(1));
