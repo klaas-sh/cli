@@ -449,7 +449,7 @@ pub fn select_agent(agents: &[&crate::agents::Agent]) -> crate::agents::AgentSel
     let mut stdout = io::stdout();
 
     // Draw initial menu
-    draw_agent_menu(&mut stdout, agents, selected_index);
+    draw_agent_menu(&mut stdout, agents, selected_index, false);
 
     let result = loop {
         // Wait for key event
@@ -458,13 +458,13 @@ pub fn select_agent(agents: &[&crate::agents::Agent]) -> crate::agents::AgentSel
                 KeyCode::Up => {
                     if selected_index > 0 {
                         selected_index -= 1;
-                        draw_agent_menu(&mut stdout, agents, selected_index);
+                        draw_agent_menu(&mut stdout, agents, selected_index, true);
                     }
                 }
                 KeyCode::Down => {
                     if selected_index < agents.len() - 1 {
                         selected_index += 1;
-                        draw_agent_menu(&mut stdout, agents, selected_index);
+                        draw_agent_menu(&mut stdout, agents, selected_index, true);
                     }
                 }
                 KeyCode::Enter => {
@@ -494,20 +494,31 @@ pub fn select_agent(agents: &[&crate::agents::Agent]) -> crate::agents::AgentSel
 }
 
 /// Draws the agent selection menu.
+/// If `is_redraw` is true, moves cursor up to overwrite the previous menu.
 fn draw_agent_menu(
     stdout: &mut io::Stdout,
     agents: &[&crate::agents::Agent],
     selected_index: usize,
+    is_redraw: bool,
 ) {
-    use crossterm::{cursor, QueueableCommand};
+    use crossterm::{cursor, terminal, QueueableCommand};
 
     let (ar, ag, ab) = colors::AMBER;
     let (tr, tg, tb) = colors::TEXT_SECONDARY;
     let (mr, mg, mb) = colors::TEXT_MUTED;
-    let (gr, gg, gb) = colors::GREEN;
     let (cr, cg, cb) = colors::CYAN;
 
-    // Move to start
+    // If redrawing, move cursor up to overwrite previous menu
+    // Menu structure: 1 blank + 1 header + 1 blank + agents + 1 blank + 1 footer
+    if is_redraw {
+        let lines_to_move_up = agents.len() + 5;
+        for _ in 0..lines_to_move_up {
+            let _ = stdout.queue(cursor::MoveUp(1));
+            let _ = stdout.queue(terminal::Clear(terminal::ClearType::CurrentLine));
+        }
+    }
+
+    // Move to start of line
     let _ = stdout.queue(cursor::MoveToColumn(0));
 
     // Print header
@@ -533,23 +544,15 @@ fn draw_agent_menu(
             ((tr, tg, tb), (mr, mg, mb))
         };
 
-        // Hooks indicator
-        let hooks_indicator = if agent.supports_hooks() {
-            format!(" {}(hooks){}", fg_color(gr, gg, gb), RESET)
-        } else {
-            String::new()
-        };
-
         print!(
-            "  {} {}[{}]{} {}{}{}{}\r\n",
+            "  {} {}[{}]{} {}{}{}\r\n",
             indicator,
             fg_color(shortcut_color.0, shortcut_color.1, shortcut_color.2),
             shortcut,
             RESET,
             fg_color(name_color.0, name_color.1, name_color.2),
             agent.name,
-            RESET,
-            hooks_indicator
+            RESET
         );
     }
 
