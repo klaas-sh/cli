@@ -841,6 +841,13 @@ fn setup_shell_prompt(
     let zsh_prompt = "%{\x1b[38;2;245;158;11m%}klaas ›%{\x1b[0m%} ";
     let bash_prompt = "\\[\\033[38;2;245;158;11m\\]klaas ›\\[\\033[0m\\] ";
 
+    // Welcome message in dimmed grey
+    let version = env!("CARGO_PKG_VERSION");
+    let welcome_msg = format!(
+        r#"echo -e "\033[38;2;113;113;122mklaas v{}. Ctrl+D to exit.\033[0m""#,
+        version
+    );
+
     match shell_name {
         "zsh" => {
             // Create temp dir with custom .zshrc
@@ -852,8 +859,9 @@ fn setup_shell_prompt(
                         r#"# Klaas shell wrapper
 [[ -f "$HOME/.zshrc" ]] && source "$HOME/.zshrc"
 PROMPT='{}'
+{}
 "#,
-                        zsh_prompt
+                        zsh_prompt, welcome_msg
                     );
                     if file.write_all(content.as_bytes()).is_ok() {
                         env_vars.insert(
@@ -873,8 +881,9 @@ PROMPT='{}'
                     r#"# Klaas shell wrapper
 [[ -f "$HOME/.bashrc" ]] && source "$HOME/.bashrc"
 PS1='{}'
+{}
 "#,
-                    bash_prompt
+                    bash_prompt, welcome_msg
                 );
                 if temp_file.write_all(content.as_bytes()).is_ok() {
                     // Keep the file around (don't delete on drop)
