@@ -1,6 +1,6 @@
 [package]
 name = "klaas"
-version = "0.1.3"
+version = "0.1.4"
 edition = "2021"
 description = "Remote access wrapper for Claude Code"
 license = "UNLICENSED"
