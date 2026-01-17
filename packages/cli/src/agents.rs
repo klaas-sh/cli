@@ -106,6 +106,13 @@ impl Agent {
         self
     }
 
+    /// Sets default arguments for this agent.
+    #[must_use]
+    pub fn with_args(mut self, args: Vec<String>) -> Self {
+        self.args = args;
+        self
+    }
+
     /// Checks if this agent is installed by looking for its binary in PATH.
     pub fn is_installed(&self) -> bool {
         // Check the main command first
@@ -203,10 +210,18 @@ pub fn shell_agent() -> Option<Agent> {
         .map(|c| c.to_uppercase().collect::<String>() + &shell_name[1..])
         .unwrap_or_else(|| shell_name.clone());
 
+    // Use --no-rcs (zsh) or --norc (bash) to prevent config from overriding prompt
+    let args = match shell_name.as_str() {
+        "zsh" => vec!["--no-rcs".to_string()],
+        "bash" => vec!["--norc".to_string()],
+        _ => vec![],
+    };
+
     Some(
         Agent::new("shell", &format!("{} (shell)", display_name), &shell_name)
+            .with_args(args)
             .with_shortcut('S')
-            .with_description("Plain terminal shell"),
+            .with_description("Plain terminal shell (no user config)"),
     )
 }
 
