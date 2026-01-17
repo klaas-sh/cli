@@ -396,7 +396,6 @@ pub fn display_offline_warning() {
     let (yr, yg, yb) = colors::AMBER;
     let (mr, mg, mb) = colors::TEXT_MUTED;
 
-    println!();
     println!(
         "  {}{}!{} Unable to connect to Klaas server.{}",
         BOLD,
@@ -409,7 +408,6 @@ pub fn display_offline_warning() {
         fg_color(mr, mg, mb),
         RESET
     );
-    println!();
 }
 
 /// Returns the animation frame interval for smooth animation.
@@ -597,16 +595,14 @@ pub fn display_hooks_available_notice(agent: &crate::agents::Agent) {
         RESET,
         agent.name
     );
-    println!();
     println!(
-        "    {}To enable, add to your {} settings:{}\r",
+        "    {}To enable, add to your {} settings:{}",
         fg_color(mr, mg, mb),
         agent.name,
         RESET
     );
-    println!();
     println!(
-        "    {}klaas hooks setup --{}{}\r",
+        "    {}$ klaas hooks setup --{}{}",
         fg_color(ar, ag, ab),
         agent.id,
         RESET
