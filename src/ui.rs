@@ -261,23 +261,30 @@ pub fn display_startup_banner() {
     let (ar, ag, ab) = colors::AMBER;
     let (tr, tg, tb) = colors::TEXT_SECONDARY;
 
-    // Print ASCII art logo in amber
+    // Print ASCII art logo with text on right side
     println!();
-    for line in LOGO {
-        println!("  {}{}{}", fg_color(ar, ag, ab), line, RESET);
-    }
-
+    println!("  {}{}{}", fg_color(ar, ag, ab), LOGO[0], RESET);
     println!(
-        "  {}{}klaas{} {}v{}{} {}~ Remote Terminal Access{}",
+        "  {}{}{} {}{}klaas{} {}v{}{}",
+        fg_color(ar, ag, ab),
+        LOGO[1],
+        RESET,
         BOLD,
         fg_color(ar, ag, ab),
         RESET,
         fg_color(tr, tg, tb),
         env!("CARGO_PKG_VERSION"),
+        RESET
+    );
+    println!(
+        "  {}{}{} {}Remote Terminal Access{}",
+        fg_color(ar, ag, ab),
+        LOGO[2],
         RESET,
         fg_color(tr, tg, tb),
         RESET
     );
+    println!("  {}{}{}", fg_color(ar, ag, ab), LOGO[3], RESET);
     println!();
 }
 
