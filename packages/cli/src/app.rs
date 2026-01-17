@@ -121,6 +121,17 @@ pub async fn run(agent: Agent, agent_args: Vec<String>, new_session: bool) -> Re
         env_vars.insert(ENV_HOOK_TOKEN.to_string(), token.clone());
     }
 
+    // Set custom prompt for shell agent
+    if agent.id == "shell" {
+        // Amber color prompt: "klaas › "
+        // Bash/sh: uses \[ \] for non-printing chars, \033 for escape
+        let bash_prompt = "\\[\\033[38;2;245;158;11m\\]klaas ›\\[\\033[0m\\] ";
+        // Zsh: uses %{ %} for non-printing chars, %F{} for colors
+        let zsh_prompt = "%{\x1b[38;2;245;158;11m%}klaas ›%{\x1b[0m%} ";
+        env_vars.insert("PS1".to_string(), bash_prompt.to_string());
+        env_vars.insert("PROMPT".to_string(), zsh_prompt.to_string());
+    }
+
     // Build full argument list (agent defaults + user args)
     let mut full_args = agent.args.clone();
     full_args.extend(agent_args);
