@@ -150,23 +150,23 @@ fn is_binary_in_path(binary: &str) -> bool {
 /// Returns the built-in agent definitions.
 ///
 /// Primary agents (with shortcuts for interactive selection):
-/// - [A] Claude Code (Anthropic)
-/// - [G] Gemini CLI (Google)
-/// - [O] Codex CLI (OpenAI)
+/// - [A] Anthropic Claude Code
+/// - [G] Google Gemini CLI
+/// - [O] OpenAI Codex CLI
 /// - [C] GitHub Copilot CLI
 /// - [M] Mistral Vibe CLI
 pub fn builtin_agents() -> Vec<Agent> {
     vec![
         // Primary agents (Official AI Lab CLIs)
-        Agent::new("claude", "Claude Code", "claude")
+        Agent::new("claude", "Anthropic Claude Code", "claude")
             .with_hooks(HooksType::Claude)
             .with_shortcut('A')
             .with_description("Anthropic's full-featured coding agent"),
-        Agent::new("gemini", "Gemini CLI", "gemini")
+        Agent::new("gemini", "Google Gemini CLI", "gemini")
             .with_hooks(HooksType::Gemini)
             .with_shortcut('G')
             .with_description("Google's AI coding assistant"),
-        Agent::new("codex", "Codex CLI", "codex")
+        Agent::new("codex", "OpenAI Codex CLI", "codex")
             .with_hooks(HooksType::Codex)
             .with_shortcut('O')
             .with_description("OpenAI's coding agent"),

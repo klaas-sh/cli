@@ -268,7 +268,7 @@ pub fn display_startup_banner() {
     }
 
     println!(
-        "  {}{}klaas{} {}v{}{} {}~ Remote access for Claude Code{}",
+        "  {}{}klaas{} {}v{}{} {}~ Remote Terminal Access{}",
         BOLD,
         fg_color(ar, ag, ab),
         RESET,
