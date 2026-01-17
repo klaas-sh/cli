@@ -398,7 +398,7 @@ pub fn display_offline_warning() {
     let (mr, mg, mb) = colors::TEXT_MUTED;
 
     println!(
-        "  {}{}!{} Unable to connect to Klaas server.{}",
+        "  {}{}!{} Unable to connect to klaas server.{}",
         BOLD,
         fg_color(yr, yg, yb),
         RESET,
@@ -595,17 +595,25 @@ pub fn display_hooks_available_notice(agent: &crate::agents::Agent) {
     let (mr, mg, mb) = colors::TEXT_MUTED;
     let (ar, ag, ab) = colors::AMBER_LIGHT;
 
+    // Use shorter name without company prefix for display
+    let display_name = agent
+        .name
+        .strip_prefix("Anthropic ")
+        .or_else(|| agent.name.strip_prefix("Google "))
+        .or_else(|| agent.name.strip_prefix("OpenAI "))
+        .unwrap_or(&agent.name);
+
     println!(
         "  {}{}ℹ{} {} supports hooks for permission notifications",
         BOLD,
         fg_color(cr, cg, cb),
         RESET,
-        agent.name
+        display_name
     );
     println!(
         "    {}To enable, add to your {} settings:{}",
         fg_color(mr, mg, mb),
-        agent.name,
+        display_name,
         RESET
     );
     println!(
