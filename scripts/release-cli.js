@@ -123,6 +123,47 @@ function isValidVersion(version) {
 }
 
 /**
+ * Bumps a version by type (major, minor, patch).
+ * @param {string} version - Current version (e.g., "1.2.3")
+ * @param {'major' | 'minor' | 'patch'} type - Bump type
+ * @returns {string} New version
+ */
+function bumpVersion(version, type) {
+  const [major, minor, patch] = version.split('-')[0].split('.').map(Number);
+  switch (type) {
+    case 'major':
+      return `${major + 1}.0.0`;
+    case 'minor':
+      return `${major}.${minor + 1}.0`;
+    case 'patch':
+      return `${major}.${minor}.${patch + 1}`;
+    default:
+      return version;
+  }
+}
+
+/**
+ * Parses user input to resolve version.
+ * Supports shortcuts: M/major, m/minor, p/patch
+ * @param {string} input - User input
+ * @param {string} currentVersion - Current version for bump calculation
+ * @returns {string} Resolved version
+ */
+function resolveVersion(input, currentVersion) {
+  const lower = input.toLowerCase();
+  if (lower === 'm' || lower === 'major') {
+    return bumpVersion(currentVersion, 'major');
+  }
+  if (lower === 'n' || lower === 'minor') {
+    return bumpVersion(currentVersion, 'minor');
+  }
+  if (lower === 'p' || lower === 'patch') {
+    return bumpVersion(currentVersion, 'patch');
+  }
+  return input;
+}
+
+/**
  * Main release function.
  */
 async function main() {
@@ -134,17 +175,27 @@ async function main() {
   console.log(dim`  Current version: ${cyan`v${currentVersion}`}`);
   console.log();
 
+  // Show shortcuts
+  const patchVersion = bumpVersion(currentVersion, 'patch');
+  const minorVersion = bumpVersion(currentVersion, 'minor');
+  const majorVersion = bumpVersion(currentVersion, 'major');
+  console.log(dim`  Shortcuts: ${cyan`p`}atch → ${patchVersion}, mi${cyan`n`}or → ${minorVersion}, ${cyan`m`}ajor → ${majorVersion}`);
+  console.log();
+
   // Prompt for new version
-  const newVersion = await prompt(
+  const input = await prompt(
     amber`  Enter new version`,
-    currentVersion
+    'p'
   );
+
+  // Resolve shortcuts
+  const newVersion = resolveVersion(input, currentVersion);
 
   // Validate version
   if (!isValidVersion(newVersion)) {
     console.log();
-    console.log(red`  Error: Invalid version format "${newVersion}"`);
-    console.log(dim`  Expected format: X.Y.Z or X.Y.Z-suffix`);
+    console.log(red`  Error: Invalid version format "${input}"`);
+    console.log(dim`  Expected: X.Y.Z, or shortcut (p/n/m)`);
     process.exit(1);
   }
 
