@@ -45,6 +45,9 @@ const SHIMMER_WIDTH: usize = 5;
 /// Number of frames to pause at each end of the shimmer.
 const SHIMMER_PAUSE_FRAMES: usize = 8;
 
+/// Timer phase symbols that rotate every 15 seconds (draining circle effect).
+const TIMER_PHASE_SYMBOLS: &[char] = &['●', '◕', '◑', '◔'];
+
 /// Generates ANSI escape code for 24-bit true color foreground.
 fn fg_color(r: u8, g: u8, b: u8) -> String {
     format!("\x1b[38;2;{};{};{}m", r, g, b)
@@ -168,8 +171,13 @@ impl WaitingAnimation {
         }
         output.push_str(RESET);
 
-        // Add countdown timer
+        // Add countdown timer with rotating phase symbol
         let remaining = self.remaining_secs();
+        let elapsed = self.start_time.elapsed().as_secs();
+        // Symbol changes every 15 seconds: ● ◕ ◑ ◔
+        let phase_index = ((elapsed / 15) % 4) as usize;
+        let phase_symbol = TIMER_PHASE_SYMBOLS[phase_index];
+
         let time_text = if remaining == 0 {
             "0 seconds left".to_string()
         } else if remaining <= 60 {
@@ -190,8 +198,9 @@ impl WaitingAnimation {
         };
         let (mr, mg, mb) = colors::TEXT_MUTED;
         output.push_str(&format!(
-            " {}({}){}",
+            " {}({} {}){}",
             fg_color(mr, mg, mb),
+            phase_symbol,
             time_text,
             RESET
         ));
