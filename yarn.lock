@@ -2847,7 +2847,7 @@ __metadata:
   languageName: node
   linkType: hard
 
-"barva@npm:^1.0.0, barva@npm:^1.2.0":
+"barva@npm:^1.0.0, barva@npm:^1.0.1, barva@npm:^1.2.0":
   version: 1.2.0
   resolution: "barva@npm:1.2.0"
   checksum: a5f68781346bcb3c9f8d11d5ccea969694d61fe97be50542b02f98afbd7d8aa95395c26dc4db28d73d2de9eff02abba264c3795a4e2d4085f68a0d9e10b69f0b
@@ -5335,7 +5335,7 @@ __metadata:
   version: 0.0.0-use.local
   resolution: "klaas@workspace:packages/npm"
   dependencies:
-    barva: "npm:^1.0.0"
+    barva: "npm:^1.0.1"
   bin:
     klaas: ./bin/klaas.js
   languageName: unknown
