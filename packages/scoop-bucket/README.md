@@ -5,8 +5,8 @@
 </p>
 
 <p align="center">
-  <strong>Remote access CLI for Claude Code</strong><br>
-  Control your Claude Code sessions from anywhere
+  <strong>Remote terminal access for agentic coding tools</strong><br>
+  Stream your sessions to any device with E2EE
 </p>
 
 <p align="center">
@@ -40,7 +40,17 @@ scoop bucket rm klaas
 
 ## About
 
-This bucket contains the Scoop manifest for [klaas](https://klaas.sh), a remote access wrapper for Claude Code that enables you to control your sessions from anywhere via a web interface.
+This bucket contains the Scoop manifest for [klaas](https://klaas.sh), a remote
+terminal access tool for AI coding agents. Stream your Claude Code, Gemini CLI,
+Codex, and other agent sessions to any device with end-to-end encryption.
+
+## Supported Agents
+
+- [Claude Code](https://code.claude.com/)
+- [Gemini CLI](https://geminicli.com/)
+- [Codex CLI](https://developers.openai.com/codex/cli/)
+- [Copilot CLI](https://github.com/features/copilot/cli)
+- [Vibe CLI](https://mistral.ai/news/devstral-2-vibe-cli)
 
 ## Links
 

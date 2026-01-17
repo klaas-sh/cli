@@ -5,8 +5,8 @@
 <h1 align="center">klaas</h1>
 
 <p align="center">
-  <strong>Remote access CLI for Claude Code</strong><br>
-  Control your Claude Code sessions from anywhere
+  <strong>Remote terminal access for agentic coding tools</strong><br>
+  Stream your sessions to any device with E2EE
 </p>
 
 <p align="center">
@@ -59,8 +59,7 @@ scoop install klaas
 
 ## Why not npm?
 
-klaas is a native Rust binary that wraps Claude Code. Native installation
-provides:
+klaas is a native Rust binary. Native installation provides:
 
 - **Better performance** - No Node.js overhead
 - **Proper system integration** - Uses system keychain for credentials
@@ -69,32 +68,40 @@ provides:
 
 ## What is klaas?
 
-**klaas** wraps your Claude Code sessions and streams them to the cloud,
+**klaas** wraps your AI coding agent sessions and streams them to the cloud,
 enabling remote access from any device via a web interface. Perfect for:
 
-- **Remote approval** - Approve tool calls from any device when Claude needs
-  permission
-- **Remote instructions** - Send new prompts and instructions to Claude from
-  anywhere
-- **Monitor sessions** - Watch long-running coding sessions from any device
-- **Stay in control** - Keep an eye on autonomous coding tasks wherever you are
+- **Real-time streaming** - See terminal output character by character
+- **Multi-device access** - Start on desktop, check progress from your phone
+- **Remote approval** - Approve tool calls when your agent needs permission
+- **Remote instructions** - Send prompts and guide your agent from anywhere
+- **End-to-end encrypted** - Your sessions are encrypted. We can't read them.
+
+## Supported Agents
+
+| Agent | Flag | Hooks |
+|-------|------|-------|
+| [Claude Code](https://code.claude.com/) | `--claude` | Full |
+| [Gemini CLI](https://geminicli.com/) | `--gemini` | Full |
+| [Codex CLI](https://developers.openai.com/codex/cli/) | `--codex` | Partial |
+| [Copilot CLI](https://github.com/features/copilot/cli) | `--copilot` | - |
+| [Vibe CLI](https://mistral.ai/news/devstral-2-vibe-cli) | `--vibe` | - |
 
 ## Usage
 
-Simply replace `claude` with `klaas`:
-
 ```bash
-# Start Claude Code with remote access
+# Auto-detect installed agent
 klaas
 
-# Start with a prompt
-klaas -p "Review this codebase"
+# Use a specific agent
+klaas --claude
+klaas --gemini
 
 # Start a new session (instead of resuming)
 klaas --new-session
 
-# Pass any Claude Code arguments
-klaas --model sonnet --allowedTools Read,Write
+# Pass arguments to the agent
+klaas --claude -- --model sonnet --allowedTools Read,Write
 ```
 
 On first run, you'll be prompted to authenticate via your browser. Once
@@ -104,13 +111,13 @@ authenticated, your session is automatically streamed to the klaas dashboard.
 
 ```
 ┌─────────────┐     ┌─────────────┐     ┌─────────────┐
-│   klaas     │────▶│  Claude     │────▶│  Terminal   │
-│   CLI       │◀────│  Code       │◀────│  Output     │
+│   klaas     │────▶│   Agent     │────▶│  Terminal   │
+│   CLI       │◀────│   CLI       │◀────│  Output     │
 └─────────────┘     └─────────────┘     └─────────────┘
        │                                       │
        │         ┌─────────────┐               │
        └────────▶│   klaas     │◀──────────────┘
-                 │   Cloud     │
+        (E2EE)   │   Cloud     │
                  └─────────────┘
                        │
                  ┌─────────────┐
@@ -119,15 +126,14 @@ authenticated, your session is automatically streamed to the klaas dashboard.
                  └─────────────┘
 ```
 
-1. **klaas** spawns Claude Code in a pseudo-terminal (PTY)
-2. All input/output is captured and forwarded
-3. Output is streamed to the klaas cloud in real-time
+1. **klaas** detects installed agents and spawns your choice in a PTY
+2. All input/output is captured and encrypted client-side
+3. Encrypted output is streamed to the klaas cloud in real-time
 4. Access your session from the web dashboard at [klaas.sh](https://klaas.sh)
 
 ## License
 
-MIT License - see [LICENSE](LICENSE)
-for details.
+MIT License - see [LICENSE](LICENSE) for details.
 
 ## Links
 

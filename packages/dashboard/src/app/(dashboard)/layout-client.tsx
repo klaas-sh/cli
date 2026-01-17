@@ -10,7 +10,7 @@ import { useEncryption } from '@/hooks/use-encryption'
 
 /**
  * Dashboard content wrapper with sidebar and header layout.
- * Handles sidebar collapse state and mobile drawer.
+ * Uses the klaas dark theme with amber accents.
  */
 function DashboardContent({
   children
@@ -56,7 +56,45 @@ function DashboardContent({
 
   return (
     <ToastProvider>
-      <div className="min-h-screen bg-gray-50 dark:bg-gray-900">
+      <div className="min-h-screen bg-[#09090b]">
+        {/* Fixed grid pattern overlay - exact match to klaas.sh */}
+        <div
+          className="fixed inset-0 pointer-events-none z-0"
+          style={{
+            backgroundImage: `
+              linear-gradient(rgba(255, 255, 255, 0.02) 1px, transparent 1px),
+              linear-gradient(90deg, rgba(255, 255, 255, 0.02) 1px, transparent 1px)
+            `,
+            backgroundSize: '64px 64px',
+          }}
+        />
+        {/* Amber glow - top right */}
+        <div
+          className="fixed w-[800px] h-[800px] -top-[400px] -right-[200px]
+            opacity-15 pointer-events-none z-0"
+          style={{
+            background: `radial-gradient(
+              circle,
+              rgba(245, 158, 11, 0.4) 0%,
+              transparent 70%
+            )`,
+            filter: 'blur(120px)',
+          }}
+        />
+        {/* Cyan glow - bottom left */}
+        <div
+          className="fixed w-[600px] h-[600px] -bottom-[200px] -left-[300px]
+            opacity-[0.08] pointer-events-none z-0"
+          style={{
+            background: `radial-gradient(
+              circle,
+              rgba(34, 211, 238, 0.3) 0%,
+              transparent 70%
+            )`,
+            filter: 'blur(120px)',
+          }}
+        />
+
         {/* Desktop sidebar - hidden on mobile */}
         <Sidebar />
 
@@ -75,7 +113,7 @@ function DashboardContent({
         {/* Main content - full width on mobile, offset on desktop */}
         <div className={`transition-all duration-300 pt-[73px]
           ${contentMarginClass}`}>
-          <main className="px-4 py-4 sm:px-6">
+          <main className="px-4 py-6 sm:px-6">
             <div className="w-full">
               {children}
             </div>

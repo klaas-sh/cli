@@ -10,7 +10,7 @@ import { navigationItems, footerNavigationItems } from './navigation-config'
 
 /**
  * Sidebar component for the klaas dashboard.
- * Uses the klaas dark theme with amber accent colors.
+ * Uses transparent background to blend with main content area.
  */
 export function Sidebar(): React.JSX.Element {
   const [isCollapsed, setIsCollapsed] = useState(() => {
@@ -43,7 +43,7 @@ export function Sidebar(): React.JSX.Element {
         className={clsx(
           'flex h-[73px] min-h-[73px]',
           'items-center justify-between px-4',
-          'bg-app-bg-surface border-b border-app-border-subtle'
+          'border-b border-app-border-subtle'
         )}
       >
         <div className="flex items-center gap-2">
@@ -77,10 +77,7 @@ export function Sidebar(): React.JSX.Element {
 
       {/* Navigation */}
       <nav
-        className={clsx(
-          'flex-1 px-3 py-4 space-y-1 overflow-y-auto',
-          'bg-app-bg-deep'
-        )}
+        className="flex-1 px-3 py-4 space-y-1 overflow-y-auto"
       >
         {navigationItems.map((item) => {
           const isActive = pathname === item.href ||
@@ -93,20 +90,23 @@ export function Sidebar(): React.JSX.Element {
                 'flex items-center gap-3 px-3 py-2.5 text-sm',
                 'font-medium rounded-lg transition-colors',
                 isActive
-                  ? 'bg-app-accent-muted text-app-accent-light'
+                  ? 'text-app-accent-light'
                   : 'text-app-text-secondary hover:text-app-text-primary ' +
                     'hover:bg-app-bg-elevated'
               )}
             >
               <div
                 className={clsx(
-                  'flex items-center justify-center',
-                  isCollapsed && 'w-5 h-5'
+                  'flex items-center justify-center w-8 h-8 rounded-lg',
+                  'flex-shrink-0 transition-colors',
+                  isActive
+                    ? 'bg-[#f59e0b]/15 border border-[#f59e0b]/30'
+                    : 'bg-transparent border border-transparent'
                 )}
               >
                 <item.icon
                   className={clsx(
-                    'h-5 w-5 flex-shrink-0',
+                    'h-5 w-5',
                     isActive
                       ? 'text-app-accent'
                       : 'text-app-text-muted'
@@ -134,7 +134,7 @@ export function Sidebar(): React.JSX.Element {
       </nav>
 
       {/* Footer */}
-      <div className="px-3 py-4 bg-app-bg-deep space-y-1 border-t border-app-border-subtle">
+      <div className="px-3 py-4 space-y-1">
         {footerNavigationItems.map((item) => {
           const isActive = pathname.startsWith(item.href)
           return (
@@ -145,20 +145,23 @@ export function Sidebar(): React.JSX.Element {
                 'flex items-center gap-3 px-3 py-2.5 text-sm',
                 'font-medium rounded-lg transition-colors',
                 isActive
-                  ? 'bg-app-accent-muted text-app-accent-light'
+                  ? 'text-app-accent-light'
                   : 'text-app-text-secondary hover:text-app-text-primary ' +
                     'hover:bg-app-bg-elevated'
               )}
             >
               <div
                 className={clsx(
-                  'flex items-center justify-center',
-                  isCollapsed && 'w-5 h-5'
+                  'flex items-center justify-center w-8 h-8 rounded-lg',
+                  'flex-shrink-0 transition-colors',
+                  isActive
+                    ? 'bg-[#f59e0b]/15 border border-[#f59e0b]/30'
+                    : 'bg-transparent border border-transparent'
                 )}
               >
                 <item.icon
                   className={clsx(
-                    'h-5 w-5 flex-shrink-0',
+                    'h-5 w-5',
                     isActive
                       ? 'text-app-accent'
                       : 'text-app-text-muted'

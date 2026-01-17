@@ -409,6 +409,200 @@ pub fn animation_interval() -> Duration {
     Duration::from_millis(80)
 }
 
+/// Displays an interactive agent selection menu.
+///
+/// Shows a list of available agents with keyboard shortcuts.
+/// User can select by pressing the shortcut key or using arrow keys.
+///
+/// # Arguments
+/// * `agents` - List of installed agents to choose from
+///
+/// # Returns
+/// The selected agent or a cancellation/error result.
+pub fn select_agent(agents: &[&crate::agents::Agent]) -> crate::agents::AgentSelection {
+    use crate::agents::AgentSelection;
+    use crossterm::{
+        event::{self, Event, KeyCode},
+        terminal,
+    };
+
+    if agents.is_empty() {
+        return AgentSelection::NoneInstalled;
+    }
+
+    // Enter raw mode for keyboard input
+    if terminal::enable_raw_mode().is_err() {
+        // Fall back to first agent if we can't enter raw mode
+        return AgentSelection::Selected(agents[0].clone());
+    }
+
+    let mut selected_index: usize = 0;
+    let mut stdout = io::stdout();
+
+    // Draw initial menu
+    draw_agent_menu(&mut stdout, agents, selected_index);
+
+    let result = loop {
+        // Wait for key event
+        if let Ok(Event::Key(key_event)) = event::read() {
+            match key_event.code {
+                KeyCode::Up => {
+                    if selected_index > 0 {
+                        selected_index -= 1;
+                        draw_agent_menu(&mut stdout, agents, selected_index);
+                    }
+                }
+                KeyCode::Down => {
+                    if selected_index < agents.len() - 1 {
+                        selected_index += 1;
+                        draw_agent_menu(&mut stdout, agents, selected_index);
+                    }
+                }
+                KeyCode::Enter => {
+                    break AgentSelection::Selected(agents[selected_index].clone());
+                }
+                KeyCode::Esc => {
+                    break AgentSelection::Cancelled;
+                }
+                KeyCode::Char(c) => {
+                    // Check for shortcut key
+                    let upper = c.to_ascii_uppercase();
+                    if let Some(idx) = agents.iter().position(|a| a.shortcut_key() == upper) {
+                        selected_index = idx;
+                        break AgentSelection::Selected(agents[selected_index].clone());
+                    }
+                }
+                _ => {}
+            }
+        }
+    };
+
+    // Exit raw mode and clear menu
+    let _ = terminal::disable_raw_mode();
+    clear_agent_menu(&mut stdout, agents.len());
+
+    result
+}
+
+/// Draws the agent selection menu.
+fn draw_agent_menu(
+    stdout: &mut io::Stdout,
+    agents: &[&crate::agents::Agent],
+    selected_index: usize,
+) {
+    use crossterm::{cursor, QueueableCommand};
+
+    let (ar, ag, ab) = colors::AMBER;
+    let (tr, tg, tb) = colors::TEXT_SECONDARY;
+    let (mr, mg, mb) = colors::TEXT_MUTED;
+    let (gr, gg, gb) = colors::GREEN;
+    let (cr, cg, cb) = colors::CYAN;
+
+    // Move to start
+    let _ = stdout.queue(cursor::MoveToColumn(0));
+
+    // Print header
+    print!(
+        "\r\n  {}{}Select an agent:{}\r\n\r\n",
+        BOLD,
+        fg_color(ar, ag, ab),
+        RESET
+    );
+
+    // Print each agent
+    for (idx, agent) in agents.iter().enumerate() {
+        let is_selected = idx == selected_index;
+        let shortcut = agent.shortcut_key();
+
+        // Selection indicator
+        let indicator = if is_selected { ">" } else { " " };
+
+        // Color based on selection
+        let (name_color, shortcut_color) = if is_selected {
+            ((ar, ag, ab), (cr, cg, cb))
+        } else {
+            ((tr, tg, tb), (mr, mg, mb))
+        };
+
+        // Hooks indicator
+        let hooks_indicator = if agent.supports_hooks() {
+            format!(" {}(hooks){}", fg_color(gr, gg, gb), RESET)
+        } else {
+            String::new()
+        };
+
+        print!(
+            "  {} {}[{}]{} {}{}{}{}\r\n",
+            indicator,
+            fg_color(shortcut_color.0, shortcut_color.1, shortcut_color.2),
+            shortcut,
+            RESET,
+            fg_color(name_color.0, name_color.1, name_color.2),
+            agent.name,
+            RESET,
+            hooks_indicator
+        );
+    }
+
+    // Print instructions
+    print!(
+        "\r\n  {}Use ↑↓ arrows, press shortcut, or Enter. Esc to cancel.{}\r\n",
+        fg_color(mr, mg, mb),
+        RESET
+    );
+
+    let _ = stdout.flush();
+}
+
+/// Clears the agent selection menu from the terminal.
+fn clear_agent_menu(stdout: &mut io::Stdout, agent_count: usize) {
+    use crossterm::{cursor, terminal, QueueableCommand};
+
+    // Move up to clear all lines (header + agents + footer + blank lines)
+    let lines_to_clear = agent_count + 5;
+
+    for _ in 0..lines_to_clear {
+        let _ = stdout.queue(cursor::MoveUp(1));
+        let _ = stdout.queue(terminal::Clear(terminal::ClearType::CurrentLine));
+    }
+
+    let _ = stdout.flush();
+}
+
+/// Displays a notice that hooks are available but not configured.
+///
+/// This is shown when an agent supports hooks (like Claude Code or Gemini CLI)
+/// but the user hasn't set up the klaas hook in their settings yet.
+pub fn display_hooks_available_notice(agent: &crate::agents::Agent) {
+    let (cr, cg, cb) = colors::CYAN;
+    let (mr, mg, mb) = colors::TEXT_MUTED;
+    let (ar, ag, ab) = colors::AMBER_LIGHT;
+
+    println!();
+    println!(
+        "  {}{}ℹ{} {} supports hooks for permission notifications",
+        BOLD,
+        fg_color(cr, cg, cb),
+        RESET,
+        agent.name
+    );
+    println!();
+    println!(
+        "    {}To enable, add to your {} settings:{}\r",
+        fg_color(mr, mg, mb),
+        agent.name,
+        RESET
+    );
+    println!();
+    println!(
+        "    {}klaas hooks setup --{}{}\r",
+        fg_color(ar, ag, ab),
+        agent.id,
+        RESET
+    );
+    println!();
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

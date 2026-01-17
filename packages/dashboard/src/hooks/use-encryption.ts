@@ -41,12 +41,11 @@ interface CryptoModule {
 }
 
 /**
- * Lazy-loads the crypto module to avoid WASM bundle issues with webpack.
- * Uses webpack magic comment to tell webpack to ignore this import during
- * static analysis and only load it at runtime.
+ * Lazy-loads the crypto module to avoid issues with SSR.
+ * The module uses Web Crypto API which is only available in the browser.
  */
 async function getCryptoModule(): Promise<CryptoModule> {
-  return import(/* webpackIgnore: true */ '../lib/crypto')
+  return import('../lib/crypto')
 }
 
 /**

@@ -196,7 +196,30 @@ export type ServerToWebMessage =
       timestamp: string;
     }
   | { type: 'session_status'; session_id: string; status: 'attached' | 'detached' }
+  | {
+      type: 'notification';
+      session_id: string;
+      event: string;
+      tool?: string;
+      message?: string;
+      timestamp: string;
+    }
   | { type: 'error'; code: string; message: string };
+
+/**
+ * Hook notification payload from CLI to API.
+ * Sent via HTTP POST, not WebSocket, because hooks are separate processes.
+ */
+export interface HookNotification {
+  /** Session ID this notification belongs to */
+  session_id: string;
+  /** Event type (e.g., "permission", "notification", "stop") */
+  event: string;
+  /** Tool name for tool-related hooks */
+  tool?: string;
+  /** Human-readable message */
+  message?: string;
+}
 
 /**
  * JWT payload for access tokens.

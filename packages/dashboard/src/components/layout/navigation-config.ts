@@ -1,4 +1,4 @@
-import { Terminal, Settings } from 'lucide-react'
+import { LayoutDashboard, Terminal, Settings, HelpCircle } from 'lucide-react'
 
 /**
  * Navigation item type for sidebar navigation
@@ -14,21 +14,47 @@ export interface NavigationItem {
 /**
  * Navigation items for the Klaas dashboard sidebar
  *
- * Minimal navigation with Sessions as the primary feature.
+ * Dashboard home, sessions management, and navigation items.
  */
 export const navigationItems: NavigationItem[] = [
   {
-    name: 'Sessions',
+    name: 'Dashboard',
     href: '/',
+    icon: LayoutDashboard,
+    description: 'Overview and statistics',
+  },
+  {
+    name: 'Sessions',
+    href: '/sessions',
     icon: Terminal,
-    description: 'Active Claude Code sessions',
+    description: 'Active terminal sessions',
   },
 ]
 
 /**
- * Settings navigation item
+ * Footer navigation items
  *
- * Separated from main navigation as it appears in the footer.
+ * Support and settings appear in the footer.
+ */
+export const footerNavigationItems: NavigationItem[] = [
+  {
+    name: 'Support',
+    href: '/support',
+    icon: HelpCircle,
+    description: 'Get help and support',
+  },
+  {
+    name: 'Settings',
+    href: '/settings',
+    icon: Settings,
+    description: 'Account settings',
+  },
+]
+
+/**
+ * Settings navigation item (for backwards compatibility)
+ *
+ * @deprecated Use footerNavigationItems instead
  */
 export const settingsItem: NavigationItem = {
   name: 'Settings',

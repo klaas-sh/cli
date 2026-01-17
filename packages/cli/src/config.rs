@@ -1,13 +1,24 @@
-//! Configuration constants for the CLI.
+//! Configuration constants and file loading for the CLI.
 //!
 //! This module provides default configuration values and functions to load
-//! configuration from environment variables. Environment variables take
-//! precedence over defaults.
+//! configuration from environment variables and TOML files.
+//!
+//! Configuration sources (in order of precedence):
+//! 1. Environment variables (KLAAS_API_URL, KLAAS_WS_URL)
+//! 2. Project-level config: `./.klaas/config.toml`
+//! 3. User-level config: `~/.klaas/config.toml`
+//! 4. Built-in defaults
 //!
 //! In debug builds, the CLI defaults to localhost:8787 for local development.
 //! In release builds, it defaults to api.klaas.sh.
 
+use crate::agents::Agent;
+use serde::Deserialize;
+use std::collections::HashMap;
 use std::env;
+use std::fs;
+use std::path::PathBuf;
+use tracing::{debug, warn};
 
 /// Default API base URL for remote services (production).
 pub const DEFAULT_API_URL_PROD: &str = "https://api.klaas.sh";
@@ -77,8 +88,172 @@ pub const DEFAULT_TERMINAL_COLS: u16 = 80;
 /// Default terminal height if detection fails.
 pub const DEFAULT_TERMINAL_ROWS: u16 = 24;
 
-/// Claude Code command name.
-pub const CLAUDE_COMMAND: &str = "claude";
+/// Default agent command name (fallback if no config).
+pub const DEFAULT_AGENT: &str = "claude";
+
+/// Project-level config directory name.
+pub const PROJECT_CONFIG_DIR: &str = ".klaas";
+
+/// Config file name.
+pub const CONFIG_FILE_NAME: &str = "config.toml";
+
+/// TOML configuration file structure.
+#[derive(Debug, Default, Deserialize)]
+pub struct KlaasConfig {
+    /// Default agent to use when multiple are available.
+    pub default_agent: Option<String>,
+
+    /// Only show these agents (even if others are installed).
+    /// Mutually exclusive with `also`.
+    #[serde(default)]
+    pub only: Vec<String>,
+
+    /// Add these custom agents alongside built-in ones.
+    /// Mutually exclusive with `only`.
+    #[serde(default)]
+    pub also: Vec<String>,
+
+    /// Custom agent definitions.
+    #[serde(default)]
+    pub agents: HashMap<String, AgentConfig>,
+
+    /// Notification settings.
+    #[serde(default)]
+    pub notifications: NotificationConfig,
+}
+
+/// Custom agent configuration from TOML.
+#[derive(Debug, Clone, Deserialize)]
+pub struct AgentConfig {
+    /// Command to execute.
+    pub command: String,
+    /// Human-readable name.
+    pub name: String,
+    /// Alternative binary names to check for installation.
+    #[serde(default)]
+    pub detect: Vec<String>,
+    /// Whether to run through shell.
+    #[serde(default)]
+    pub shell: bool,
+    /// Default arguments.
+    #[serde(default)]
+    pub args: Vec<String>,
+    /// Hooks type: "claude", "gemini", "codex", "none".
+    #[serde(default)]
+    pub hooks_type: Option<String>,
+    /// Single-letter shortcut for interactive selection.
+    #[serde(default)]
+    pub shortcut: Option<char>,
+}
+
+impl From<AgentConfig> for Agent {
+    fn from(config: AgentConfig) -> Self {
+        use crate::agents::HooksType;
+
+        let hooks_type = match config.hooks_type.as_deref() {
+            Some("claude") => HooksType::Claude,
+            Some("gemini") => HooksType::Gemini,
+            Some("codex") => HooksType::Codex,
+            _ => HooksType::None,
+        };
+
+        Agent {
+            id: String::new(), // Will be set by registry
+            name: config.name,
+            command: config.command.clone(),
+            detect: if config.detect.is_empty() {
+                vec![config.command]
+            } else {
+                config.detect
+            },
+            hooks_type,
+            shell: config.shell,
+            args: config.args,
+            description: String::new(),
+            shortcut: config.shortcut,
+        }
+    }
+}
+
+/// Notification configuration.
+#[derive(Debug, Default, Deserialize)]
+pub struct NotificationConfig {
+    /// Whether notifications are enabled.
+    #[serde(default)]
+    pub enabled: bool,
+
+    /// Events to notify on.
+    #[serde(default)]
+    pub events: Vec<String>,
+}
+
+/// Loads configuration from TOML files.
+///
+/// Checks project-level config first, then user-level config.
+/// Project-level settings override user-level settings.
+pub fn load_config() -> KlaasConfig {
+    // Try project-level config first
+    if let Some(config) = load_config_from_path(project_config_path()) {
+        debug!("Loaded project-level config");
+        return config;
+    }
+
+    // Try user-level config
+    if let Some(config) = load_config_from_path(user_config_path()) {
+        debug!("Loaded user-level config");
+        return config;
+    }
+
+    debug!("No config file found, using defaults");
+    KlaasConfig::default()
+}
+
+/// Loads config from a specific path.
+fn load_config_from_path(path: Option<PathBuf>) -> Option<KlaasConfig> {
+    let path = path?;
+
+    if !path.exists() {
+        return None;
+    }
+
+    debug!(path = %path.display(), "Reading config file");
+
+    match fs::read_to_string(&path) {
+        Ok(contents) => match toml::from_str(&contents) {
+            Ok(config) => Some(config),
+            Err(e) => {
+                warn!(
+                    path = %path.display(),
+                    error = %e,
+                    "Failed to parse config file"
+                );
+                None
+            }
+        },
+        Err(e) => {
+            warn!(
+                path = %path.display(),
+                error = %e,
+                "Failed to read config file"
+            );
+            None
+        }
+    }
+}
+
+/// Returns the project-level config path (./.klaas/config.toml).
+pub fn project_config_path() -> Option<PathBuf> {
+    let cwd = env::current_dir().ok()?;
+    let path = cwd.join(PROJECT_CONFIG_DIR).join(CONFIG_FILE_NAME);
+    Some(path)
+}
+
+/// Returns the user-level config path (~/.klaas/config.toml).
+pub fn user_config_path() -> Option<PathBuf> {
+    let home = dirs::home_dir()?;
+    let path = home.join(PROJECT_CONFIG_DIR).join(CONFIG_FILE_NAME);
+    Some(path)
+}
 
 /// Runtime configuration loaded from environment variables.
 #[derive(Debug, Clone)]
@@ -203,5 +378,67 @@ mod tests {
             assert_eq!(default_api_url(), DEFAULT_API_URL_PROD);
             assert_eq!(default_ws_url(), DEFAULT_WS_URL_PROD);
         }
+    }
+
+    #[test]
+    fn test_parse_klaas_config() {
+        let toml_str = r#"
+            default_agent = "claude"
+            only = ["claude", "gemini"]
+
+            [agents.my-agent]
+            command = "/path/to/agent"
+            name = "My Agent"
+            hooks_type = "claude"
+
+            [notifications]
+            enabled = true
+            events = ["permission_request", "task_complete"]
+        "#;
+
+        let config: KlaasConfig = toml::from_str(toml_str).unwrap();
+
+        assert_eq!(config.default_agent, Some("claude".to_string()));
+        assert_eq!(config.only, vec!["claude", "gemini"]);
+        assert!(config.agents.contains_key("my-agent"));
+
+        let agent = &config.agents["my-agent"];
+        assert_eq!(agent.command, "/path/to/agent");
+        assert_eq!(agent.name, "My Agent");
+        assert_eq!(agent.hooks_type, Some("claude".to_string()));
+
+        assert!(config.notifications.enabled);
+        assert_eq!(config.notifications.events.len(), 2);
+    }
+
+    #[test]
+    fn test_empty_config() {
+        let config: KlaasConfig = toml::from_str("").unwrap();
+
+        assert_eq!(config.default_agent, None);
+        assert!(config.only.is_empty());
+        assert!(config.also.is_empty());
+        assert!(config.agents.is_empty());
+    }
+
+    #[test]
+    fn test_agent_config_conversion() {
+        let agent_config = AgentConfig {
+            command: "my-cli".to_string(),
+            name: "My CLI".to_string(),
+            detect: vec!["my-cli".to_string(), "mycli".to_string()],
+            shell: false,
+            args: vec!["--verbose".to_string()],
+            hooks_type: Some("claude".to_string()),
+            shortcut: Some('X'),
+        };
+
+        let agent: crate::agents::Agent = agent_config.into();
+
+        assert_eq!(agent.name, "My CLI");
+        assert_eq!(agent.command, "my-cli");
+        assert_eq!(agent.detect.len(), 2);
+        assert_eq!(agent.hooks_type, crate::agents::HooksType::Claude);
+        assert_eq!(agent.shortcut, Some('X'));
     }
 }

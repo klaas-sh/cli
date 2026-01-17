@@ -138,10 +138,19 @@ export class SessionHub implements DurableObject {
   }
 
   /**
-   * Handle incoming HTTP requests (WebSocket upgrades).
+   * Handle incoming HTTP requests.
+   *
+   * Supports:
+   * - POST /notification - Receive hook notifications and broadcast to web
+   * - WebSocket upgrades - CLI and web client connections
    */
   async fetch(request: Request): Promise<Response> {
     const url = new URL(request.url);
+
+    // Handle notification POST requests (from hooks route)
+    if (url.pathname === '/notification' && request.method === 'POST') {
+      return this.handleNotificationRequest(request);
+    }
 
     // Get session_id from URL - this is how we know which session this DO manages
     const sessionIdFromUrl = url.searchParams.get('session_id');
@@ -171,6 +180,56 @@ export class SessionHub implements DurableObject {
       status: 101,
       webSocket: client,
     });
+  }
+
+  /**
+   * Handle notification POST request from hooks route.
+   * Broadcasts notification to connected web clients.
+   */
+  private async handleNotificationRequest(request: Request): Promise<Response> {
+    try {
+      const body = await request.json() as {
+        event: string;
+        tool?: string;
+        message?: string;
+        timestamp: string;
+      };
+
+      if (!this.sessionId) {
+        return new Response(
+          JSON.stringify({ error: 'Session not initialized' }),
+          { status: 400, headers: { 'Content-Type': 'application/json' } }
+        );
+      }
+
+      // Broadcast notification to all connected web clients
+      const notification: ServerToWebMessage = {
+        type: 'notification',
+        session_id: this.sessionId,
+        event: body.event,
+        tool: body.tool,
+        message: body.message,
+        timestamp: body.timestamp,
+      };
+
+      this.broadcastToWeb(notification);
+
+      console.log(
+        `[SessionHub] Broadcast notification to web clients: ` +
+        `session=${this.sessionId}, event=${body.event}, tool=${body.tool}`
+      );
+
+      return new Response(
+        JSON.stringify({ success: true }),
+        { status: 200, headers: { 'Content-Type': 'application/json' } }
+      );
+    } catch (error) {
+      console.error('[SessionHub] Error handling notification:', error);
+      return new Response(
+        JSON.stringify({ error: 'Failed to process notification' }),
+        { status: 500, headers: { 'Content-Type': 'application/json' } }
+      );
+    }
   }
 
   /**

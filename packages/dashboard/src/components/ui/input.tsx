@@ -7,38 +7,40 @@ interface InputProps extends React.InputHTMLAttributes<HTMLInputElement> {
   helper?: string
 }
 
+/**
+ * Input component with klaas dark theme styling.
+ */
 export const Input = React.forwardRef<HTMLInputElement, InputProps>(
   ({ label, error, helper, className, ...props }, ref): React.JSX.Element => {
     return (
       <div className="space-y-2">
         {label && (
-          <label className="block text-sm font-medium text-gray-700
-                         dark:text-gray-300">
+          <label className="block text-sm font-medium text-[#a1a1aa]">
             {label}
           </label>
         )}
         <input
           ref={ref}
           className={clsx(
-            'block w-full px-3 py-2 border rounded-lg shadow-sm ' +
-            'placeholder-gray-400 focus:outline-none focus:ring-2 ' +
-            'focus:ring-app-primary focus:border-app-primary sm:text-sm',
+            'block w-full px-3 py-2 border rounded-lg',
+            'placeholder-[#71717a] focus:outline-none focus:ring-1',
+            'focus:ring-[#f59e0b]/30 focus:border-[#f59e0b] sm:text-sm',
+            'bg-[#09090b] text-[#fafafa]',
             error
-              ? 'border-red-300 text-red-900 placeholder-red-300 ' +
-                'focus:ring-red-500 focus:border-red-500'
-              : 'border-gray-300 dark:border-gray-600 bg-white ' +
-                'dark:bg-gray-900 text-gray-900 dark:text-white',
+              ? 'border-[#ef4444] focus:ring-[#ef4444]/30 ' +
+                'focus:border-[#ef4444]'
+              : 'border-white/10',
             className
           )}
           {...props}
         />
         {error && (
-          <p className="text-sm text-red-600 dark:text-red-400">
+          <p className="text-sm text-[#ef4444]">
             {error}
           </p>
         )}
         {helper && !error && (
-          <p className="text-sm text-gray-500 dark:text-gray-400">
+          <p className="text-sm text-[#71717a]">
             {helper}
           </p>
         )}

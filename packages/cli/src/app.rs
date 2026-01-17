@@ -1,8 +1,9 @@
 //! Application orchestration and main I/O loop.
 //!
-//! Wraps Claude Code in a PTY and captures all I/O for remote streaming.
+//! Wraps AI coding agents in a PTY and captures all I/O for remote streaming.
 //! Handles authentication, WebSocket connection, and full-duplex I/O.
 
+use std::collections::HashMap;
 use std::sync::Arc;
 use std::time::Duration;
 
@@ -10,11 +11,13 @@ use crossterm::event::{Event, KeyCode, KeyEvent, KeyModifiers};
 use tokio::sync::{mpsc, Mutex};
 use tracing::{debug, error, info, warn};
 
+use crate::agents::Agent;
 use crate::auth::{authenticate, refresh_token, AuthError};
-use crate::config::{get_api_config, ApiConfig, CLAUDE_COMMAND};
+use crate::config::{get_api_config, ApiConfig};
 use crate::credentials::CredentialStore;
 use crate::crypto::SecretKey;
 use crate::error::{CliError, Result};
+use crate::hook::{ENV_API_URL, ENV_HOOK_TOKEN, ENV_SESSION_ID};
 use crate::pty::PtyManager;
 use crate::terminal::TerminalManager;
 use crate::types::{ConnectionState, DeviceId, SessionId};
@@ -29,17 +32,18 @@ const WS_RECV_TIMEOUT_MS: u64 = 10;
 
 /// Runs the CLI application.
 ///
-/// Spawns Claude Code in a PTY, captures all I/O, and connects to the remote
-/// session for streaming. Handles authentication, reconnection, and graceful
-/// shutdown.
+/// Spawns the selected agent in a PTY, captures all I/O, and connects to the
+/// remote session for streaming. Handles authentication, reconnection, and
+/// graceful shutdown.
 ///
 /// # Arguments
-/// * `claude_args` - Arguments to pass through to Claude Code.
+/// * `agent` - The selected agent to run.
+/// * `agent_args` - Arguments to pass through to the agent.
 /// * `new_session` - If true, start a new session instead of resuming.
 ///
 /// # Returns
-/// Exit code from Claude Code.
-pub async fn run(claude_args: Vec<String>, new_session: bool) -> Result<i32> {
+/// Exit code from the agent.
+pub async fn run(agent: Agent, agent_args: Vec<String>, new_session: bool) -> Result<i32> {
     // Load configuration from environment
     let config = get_api_config();
     info!(api_url = %config.api_url, ws_url = %config.ws_url, "Loaded configuration");
@@ -92,15 +96,44 @@ pub async fn run(claude_args: Vec<String>, new_session: bool) -> Result<i32> {
     let mut terminal = TerminalManager::new()?;
     terminal.enter_raw_mode()?;
 
-    // Spawn Claude Code in PTY
-    let pty = match PtyManager::spawn(CLAUDE_COMMAND, &claude_args) {
+    // Log agent info
+    info!(
+        agent = %agent.name,
+        command = %agent.command,
+        hooks = agent.supports_hooks(),
+        "Starting agent"
+    );
+
+    // Show notification if agent supports hooks but user hasn't configured them
+    if agent.supports_hooks() && !hooks_configured(&agent) {
+        terminal.exit_raw_mode()?;
+        ui::display_hooks_available_notice(&agent);
+        terminal.enter_raw_mode()?;
+    }
+
+    // Build environment variables for session correlation
+    let mut env_vars: HashMap<String, String> = HashMap::new();
+    env_vars.insert(ENV_SESSION_ID.to_string(), session_id.to_string());
+    env_vars.insert(ENV_API_URL.to_string(), config.api_url.clone());
+    // TODO: Generate a short-lived hook token for authentication
+    // For now, we use the access token if available
+    if let Some(ref token) = access_token {
+        env_vars.insert(ENV_HOOK_TOKEN.to_string(), token.clone());
+    }
+
+    // Build full argument list (agent defaults + user args)
+    let mut full_args = agent.args.clone();
+    full_args.extend(agent_args);
+
+    // Spawn agent in PTY
+    let pty = match PtyManager::spawn_with_env(&agent.command, &full_args, env_vars) {
         Ok(pty) => pty,
         Err(e) => {
             terminal.exit_raw_mode()?;
             return Err(CliError::SpawnError(format!(
-                "Could not start Claude Code. Is it installed and in your PATH?\n\
+                "Could not start {}. Is it installed and in your PATH?\n\
                  Error: {}",
-                e
+                agent.name, e
             )));
         }
     };
@@ -697,6 +730,38 @@ async fn handle_reconnection(
             *connection_state.lock().await = ConnectionState::Detached;
             warn!("Failed to establish new connection, continuing locally");
         }
+    }
+}
+
+/// Checks if hooks are configured for the given agent.
+///
+/// For Claude Code, checks ~/.claude/settings.json for hooks configuration.
+/// For Gemini CLI, checks ~/.gemini/settings.json.
+fn hooks_configured(agent: &Agent) -> bool {
+    use crate::agents::HooksType;
+    use std::path::PathBuf;
+
+    let settings_path: Option<PathBuf> = match agent.hooks_type {
+        HooksType::Claude => dirs::home_dir().map(|h| h.join(".claude").join("settings.json")),
+        HooksType::Gemini => dirs::home_dir().map(|h| h.join(".gemini").join("settings.json")),
+        _ => return false,
+    };
+
+    let Some(path) = settings_path else {
+        return false;
+    };
+
+    if !path.exists() {
+        return false;
+    }
+
+    // Read and check if hooks are configured
+    if let Ok(contents) = std::fs::read_to_string(&path) {
+        // Simple check: look for "klaas" in the hooks configuration
+        // A proper implementation would parse JSON and check the hooks section
+        contents.contains("klaas")
+    } else {
+        false
     }
 }
 

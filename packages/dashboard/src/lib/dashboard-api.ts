@@ -5,6 +5,70 @@ import type { Session, GetSessionsParams } from '@/types/session'
 export type { Session }
 
 /**
+ * Ticket status type
+ */
+export type TicketStatus = 'open' | 'resolved'
+
+/**
+ * Support ticket list item
+ */
+export interface SupportTicketListItem {
+  id: string
+  subject: string
+  status: TicketStatus
+  messageCount: number
+  hasUnreadMessages: boolean
+  createdAt: string
+  updatedAt: string
+}
+
+/**
+ * Support message
+ */
+export interface SupportMessage {
+  id: string
+  ticketId: string
+  body: string
+  senderType: 'user' | 'admin' | 'system'
+  senderName?: string
+  isRead: boolean
+  readAt?: string
+  createdAt: string
+}
+
+/**
+ * Support ticket detail
+ */
+export interface SupportTicketDetail {
+  ticket: {
+    id: string
+    subject: string
+    status: TicketStatus
+    createdAt: string
+    updatedAt: string
+  }
+  messages: SupportMessage[]
+}
+
+/**
+ * Support status
+ */
+export interface SupportStatus {
+  isOnline: boolean
+  agentCount: number
+  expectedResponseTime?: string
+}
+
+/**
+ * User profile
+ */
+export interface UserProfile {
+  id: string
+  email: string
+  createdAt: string
+}
+
+/**
  * Paginated response wrapper
  */
 export interface PaginatedResponse<T> {
@@ -137,6 +201,132 @@ class DashboardApi {
       { method: 'DELETE' }
     )
   }
+
+  /**
+   * Get user profile
+   */
+  async getProfile(): Promise<UserProfile> {
+    const response = await apiClient.request<SingleResponse<UserProfile>>(
+      '/dashboard/profile'
+    )
+    return response.data
+  }
 }
 
 export const dashboardApi = new DashboardApi()
+
+/**
+ * Get support tickets
+ */
+export async function getSupportTickets(params?: {
+  limit?: number
+  status?: TicketStatus
+  sort?: string
+  order?: 'asc' | 'desc'
+}): Promise<PaginatedResponse<SupportTicketListItem>> {
+  const searchParams = new URLSearchParams()
+  if (params?.limit) {
+    searchParams.set('limit', params.limit.toString())
+  }
+  if (params?.status) {
+    searchParams.set('status', params.status)
+  }
+  if (params?.sort) {
+    searchParams.set('sortBy', params.sort)
+  }
+  if (params?.order) {
+    searchParams.set('sortOrder', params.order)
+  }
+
+  const queryString = searchParams.toString()
+  const endpoint = `/dashboard/support${queryString ? `?${queryString}` : ''}`
+
+  return apiClient.request<PaginatedResponse<SupportTicketListItem>>(endpoint)
+}
+
+/**
+ * Get support status (online/offline status)
+ */
+export async function getSupportStatus(): Promise<SupportStatus> {
+  const response = await apiClient.request<SingleResponse<SupportStatus>>(
+    '/dashboard/support/status'
+  )
+  return response.data
+}
+
+/**
+ * Get a single support ticket with messages
+ */
+export async function getSupportTicket(
+  ticketId: string
+): Promise<SupportTicketDetail> {
+  const response = await apiClient.request<SingleResponse<SupportTicketDetail>>(
+    `/dashboard/support/${ticketId}`
+  )
+  return response.data
+}
+
+/**
+ * Create a new support ticket
+ */
+export async function createSupportTicket(data: {
+  subject: string
+  body: string
+}): Promise<{ ticket: { id: string } }> {
+  return apiClient.request<{ ticket: { id: string } }>(
+    '/dashboard/support',
+    {
+      method: 'POST',
+      body: JSON.stringify(data),
+    }
+  )
+}
+
+/**
+ * Add a message to a support ticket
+ */
+export async function addTicketMessage(
+  ticketId: string,
+  data: { body: string }
+): Promise<{ message: SupportMessage }> {
+  return apiClient.request<{ message: SupportMessage }>(
+    `/dashboard/support/${ticketId}/messages`,
+    {
+      method: 'POST',
+      body: JSON.stringify(data),
+    }
+  )
+}
+
+/**
+ * Mark a support ticket as resolved
+ */
+export async function resolveTicket(ticketId: string): Promise<void> {
+  await apiClient.request<void>(
+    `/dashboard/support/${ticketId}/resolve`,
+    { method: 'POST' }
+  )
+}
+
+/**
+ * Reopen a resolved support ticket
+ */
+export async function reopenTicket(ticketId: string): Promise<void> {
+  await apiClient.request<void>(
+    `/dashboard/support/${ticketId}/reopen`,
+    { method: 'POST' }
+  )
+}
+
+/**
+ * Mark a support message as read
+ */
+export async function markMessageRead(
+  ticketId: string,
+  messageId: string
+): Promise<void> {
+  await apiClient.request<void>(
+    `/dashboard/support/${ticketId}/messages/${messageId}/read`,
+    { method: 'POST' }
+  )
+}

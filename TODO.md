@@ -15,6 +15,15 @@ plugin suggestions
 ## OTHERS
 https://dev.to/rajeshroyal/claude-code-remote-your-ai-anywhere-you-go-l94
 https://teleportation.dev/
+    teleportation alternatives: https://claude.ai/chat/840ab361-c51b-4318-8e47-e089df04677d
+
+https://agentclientprotocol.com/
+https://github.com/coder/agentapi
+
+### CLI tools
+- https://claude.ai/chat/98301e76-f191-4b7a-ac7e-6642ed2c77bd
+- https://kilo.ai/
+- https://github.com/anthropics/claude-code/tree/main
 
 ### CLI Background Reconnection
 

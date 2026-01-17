@@ -1,0 +1,2367 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>klaas - Remote Access for Claude Code</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+  <style>
+    /* ================================
+       DESIGN DNA: klaas
+       Layout: asymmetric-editorial
+       Color: dark-monochromatic-accent
+       Typography: technical-refined
+       Spatial: spacious-breathing
+       Visual: terminal-glass
+    ================================ */
+
+    :root {
+      /* Core palette - deep blacks with warmth */
+      --bg-void: #09090b;
+      --bg-deep: #0c0c0f;
+      --bg-surface: #121216;
+      --bg-elevated: #18181c;
+      --bg-glass: rgba(24, 24, 28, 0.7);
+
+      /* Text hierarchy */
+      --text-primary: #fafafa;
+      --text-secondary: #a1a1aa;
+      --text-muted: #71717a;
+      --text-dim: #52525b;
+
+      /* Brand accent - warm amber */
+      --accent: #f59e0b;
+      --accent-light: #fbbf24;
+      --accent-dark: #b45309;
+      --accent-muted: rgba(245, 158, 11, 0.15);
+      --accent-glow: rgba(245, 158, 11, 0.4);
+
+      /* Status colors */
+      --status-connected: #22c55e;
+      --status-connecting: #eab308;
+      --status-disconnected: #ef4444;
+
+      /* Terminal colors */
+      --terminal-green: #4ade80;
+      --terminal-cyan: #22d3ee;
+      --terminal-purple: #a78bfa;
+
+      /* Borders & lines */
+      --border-subtle: rgba(255, 255, 255, 0.06);
+      --border-visible: rgba(255, 255, 255, 0.1);
+      --border-accent: rgba(245, 158, 11, 0.3);
+
+      /* Spacing scale */
+      --space-xs: 4px;
+      --space-sm: 8px;
+      --space-md: 16px;
+      --space-lg: 24px;
+      --space-xl: 32px;
+      --space-2xl: 48px;
+      --space-3xl: 64px;
+      --space-4xl: 96px;
+
+      /* Typography */
+      --font-sans: 'Outfit', -apple-system, sans-serif;
+      --font-mono: 'JetBrains Mono', 'SF Mono', monospace;
+
+      /* Transitions */
+      --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
+      --ease-bounce: cubic-bezier(0.34, 1.56, 0.64, 1);
+    }
+
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+
+    html {
+      scroll-behavior: smooth;
+    }
+
+    body {
+      font-family: var(--font-sans);
+      background: var(--bg-void);
+      color: var(--text-primary);
+      line-height: 1.6;
+      overflow-x: hidden;
+      -webkit-font-smoothing: antialiased;
+    }
+
+    /* ================================
+       BACKGROUND ATMOSPHERE
+    ================================ */
+
+    .bg-grid {
+      position: fixed;
+      inset: 0;
+      background-image:
+        linear-gradient(rgba(255,255,255,0.02) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(255,255,255,0.02) 1px, transparent 1px);
+      background-size: 64px 64px;
+      pointer-events: none;
+      z-index: 0;
+    }
+
+    .bg-glow {
+      position: fixed;
+      width: 800px;
+      height: 800px;
+      background: radial-gradient(circle, var(--accent-glow) 0%, transparent 70%);
+      filter: blur(120px);
+      opacity: 0.15;
+      pointer-events: none;
+      z-index: 0;
+    }
+
+    .bg-glow-1 {
+      top: -400px;
+      right: -200px;
+    }
+
+    .bg-glow-2 {
+      bottom: -200px;
+      left: -300px;
+      background: radial-gradient(circle, rgba(34, 211, 238, 0.3) 0%, transparent 70%);
+      opacity: 0.08;
+    }
+
+    /* Scan line effect */
+    .scanlines {
+      position: fixed;
+      inset: 0;
+      background: repeating-linear-gradient(
+        0deg,
+        transparent,
+        transparent 2px,
+        rgba(0, 0, 0, 0.03) 2px,
+        rgba(0, 0, 0, 0.03) 4px
+      );
+      pointer-events: none;
+      z-index: 1000;
+    }
+
+    /* ================================
+       NAVIGATION
+    ================================ */
+
+    .nav {
+      position: fixed;
+      top: 0;
+      left: 0;
+      right: 0;
+      z-index: 100;
+      padding: var(--space-md) var(--space-xl);
+      background: linear-gradient(to bottom, var(--bg-void) 0%, transparent 100%);
+    }
+
+    .nav-inner {
+      max-width: 1400px;
+      margin: 0 auto;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+
+    .logo {
+      display: flex;
+      align-items: center;
+      gap: var(--space-sm);
+      text-decoration: none;
+    }
+
+    .logo-icon {
+      width: 32px;
+      height: 32px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+
+    .logo-text {
+      font-family: var(--font-mono);
+      font-size: 18px;
+      font-weight: 600;
+      color: var(--text-primary);
+      letter-spacing: -0.02em;
+    }
+
+    .nav-links {
+      display: flex;
+      align-items: center;
+      gap: var(--space-xl);
+    }
+
+    .nav-link {
+      font-size: 14px;
+      color: var(--text-secondary);
+      text-decoration: none;
+      transition: color 0.2s var(--ease-out);
+    }
+
+    .nav-link:hover {
+      color: var(--text-primary);
+    }
+
+    .nav-cta {
+      padding: 10px 20px;
+      background: var(--bg-elevated);
+      border: 1px solid var(--border-visible);
+      border-radius: 8px;
+      color: var(--text-primary);
+      font-size: 14px;
+      font-weight: 500;
+      text-decoration: none;
+      transition: all 0.2s var(--ease-out);
+    }
+
+    .nav-cta:hover {
+      background: var(--accent);
+      border-color: var(--accent);
+      color: var(--bg-void);
+    }
+
+    /* ================================
+       HERO SECTION
+    ================================ */
+
+    .hero {
+      min-height: 100vh;
+      display: grid;
+      grid-template-columns: 1fr 1.2fr;
+      gap: var(--space-4xl);
+      align-items: center;
+      padding: var(--space-4xl) var(--space-xl);
+      max-width: 1400px;
+      margin: 0 auto;
+      position: relative;
+      z-index: 1;
+    }
+
+    .hero-content {
+      animation: fadeInUp 0.8s var(--ease-out) forwards;
+      opacity: 0;
+    }
+
+    @keyframes fadeInUp {
+      from {
+        opacity: 0;
+        transform: translateY(30px);
+      }
+      to {
+        opacity: 1;
+        transform: translateY(0);
+      }
+    }
+
+    .hero-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: var(--space-sm);
+      padding: 6px 14px;
+      background: var(--accent-muted);
+      border: 1px solid var(--border-accent);
+      border-radius: 100px;
+      font-family: var(--font-mono);
+      font-size: 12px;
+      color: var(--accent-light);
+      margin-bottom: var(--space-lg);
+    }
+
+    .badge-dot {
+      width: 6px;
+      height: 6px;
+      background: var(--accent);
+      border-radius: 50%;
+      animation: pulse 2s ease-in-out infinite;
+    }
+
+    @keyframes pulse {
+      0%, 100% { opacity: 1; transform: scale(1); }
+      50% { opacity: 0.5; transform: scale(0.8); }
+    }
+
+    .hero-title {
+      font-size: clamp(48px, 6vw, 72px);
+      font-weight: 600;
+      line-height: 1.05;
+      letter-spacing: -0.03em;
+      margin-bottom: var(--space-lg);
+    }
+
+    .hero-title .highlight {
+      color: var(--accent);
+      position: relative;
+    }
+
+    .hero-subtitle {
+      font-size: 18px;
+      color: var(--text-secondary);
+      max-width: 480px;
+      line-height: 1.7;
+      margin-bottom: var(--space-2xl);
+    }
+
+    /* Install command block */
+    .install-block {
+      background: var(--bg-surface);
+      border: 1px solid var(--border-visible);
+      border-radius: 12px;
+      padding: var(--space-md);
+      margin-bottom: var(--space-xl);
+      position: relative;
+      overflow: hidden;
+    }
+
+    .install-block::before {
+      content: '';
+      position: absolute;
+      top: 0;
+      left: 0;
+      right: 0;
+      height: 1px;
+      background: linear-gradient(90deg, transparent, var(--accent), transparent);
+      opacity: 0.5;
+    }
+
+    .install-label {
+      font-family: var(--font-mono);
+      font-size: 11px;
+      color: var(--text-muted);
+      text-transform: uppercase;
+      letter-spacing: 0.1em;
+      margin-bottom: var(--space-sm);
+    }
+
+    .install-command {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: var(--space-md);
+    }
+
+    .command-text {
+      font-family: var(--font-mono);
+      font-size: 15px;
+      color: var(--text-primary);
+    }
+
+    .command-text .prompt {
+      color: var(--terminal-green);
+    }
+
+    .copy-btn {
+      padding: 8px 16px;
+      background: var(--bg-elevated);
+      border: 1px solid var(--border-subtle);
+      border-radius: 6px;
+      color: var(--text-secondary);
+      font-family: var(--font-mono);
+      font-size: 12px;
+      cursor: pointer;
+      transition: all 0.2s var(--ease-out);
+    }
+
+    .copy-btn:hover {
+      background: var(--accent);
+      border-color: var(--accent);
+      color: var(--bg-void);
+    }
+
+    .hero-actions {
+      display: flex;
+      gap: var(--space-md);
+      align-items: center;
+    }
+
+    .btn-primary {
+      padding: 14px 28px;
+      background: var(--accent);
+      border: none;
+      border-radius: 10px;
+      color: var(--bg-void);
+      font-size: 15px;
+      font-weight: 600;
+      text-decoration: none;
+      cursor: pointer;
+      transition: all 0.2s var(--ease-out);
+      display: inline-flex;
+      align-items: center;
+      gap: var(--space-sm);
+    }
+
+    .btn-primary:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 8px 30px var(--accent-glow);
+    }
+
+    .btn-secondary {
+      padding: 14px 28px;
+      background: transparent;
+      border: 1px solid var(--border-visible);
+      border-radius: 10px;
+      color: var(--text-primary);
+      font-size: 15px;
+      font-weight: 500;
+      text-decoration: none;
+      cursor: pointer;
+      transition: all 0.2s var(--ease-out);
+    }
+
+    .btn-secondary:hover {
+      background: var(--bg-elevated);
+      border-color: var(--text-muted);
+    }
+
+    /* ================================
+       TERMINAL DEMO
+    ================================ */
+
+    .hero-terminal {
+      animation: fadeInUp 0.8s var(--ease-out) 0.2s forwards;
+      opacity: 0;
+    }
+
+    .terminal-wrapper {
+      position: relative;
+    }
+
+    .terminal-glow {
+      position: absolute;
+      inset: -2px;
+      background: linear-gradient(135deg, var(--accent), var(--terminal-cyan));
+      border-radius: 18px;
+      opacity: 0.15;
+      filter: blur(20px);
+    }
+
+    .terminal {
+      position: relative;
+      background: var(--bg-deep);
+      border: 1px solid var(--border-visible);
+      border-radius: 16px;
+      overflow: hidden;
+      box-shadow:
+        0 4px 6px rgba(0,0,0,0.3),
+        0 20px 40px rgba(0,0,0,0.4),
+        inset 0 1px 0 rgba(255,255,255,0.05);
+    }
+
+    .terminal-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 14px 18px;
+      background: var(--bg-surface);
+      border-bottom: 1px solid var(--border-subtle);
+    }
+
+    .terminal-dots {
+      display: flex;
+      gap: 8px;
+    }
+
+    .terminal-dot {
+      width: 12px;
+      height: 12px;
+      border-radius: 50%;
+    }
+
+    .dot-red { background: #ff5f57; }
+    .dot-yellow { background: #febc2e; }
+    .dot-green { background: #28c840; }
+
+    .terminal-title {
+      font-family: var(--font-mono);
+      font-size: 12px;
+      color: var(--text-muted);
+    }
+
+    .terminal-status {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      font-family: var(--font-mono);
+      font-size: 11px;
+      color: var(--status-connected);
+    }
+
+    .status-indicator {
+      width: 8px;
+      height: 8px;
+      background: var(--status-connected);
+      border-radius: 50%;
+      animation: pulse 2s ease-in-out infinite;
+    }
+
+    .terminal-body {
+      padding: var(--space-lg);
+      min-height: 400px;
+      font-family: var(--font-mono);
+      font-size: 13px;
+      line-height: 1.8;
+    }
+
+    .terminal-line {
+      opacity: 0;
+      animation: typeIn 0.3s var(--ease-out) forwards;
+    }
+
+    .terminal-line:nth-child(1) { animation-delay: 0.5s; }
+    .terminal-line:nth-child(2) { animation-delay: 0.8s; }
+    .terminal-line:nth-child(3) { animation-delay: 1.1s; }
+    .terminal-line:nth-child(4) { animation-delay: 1.4s; }
+    .terminal-line:nth-child(5) { animation-delay: 1.7s; }
+    .terminal-line:nth-child(6) { animation-delay: 2.0s; }
+    .terminal-line:nth-child(7) { animation-delay: 2.3s; }
+    .terminal-line:nth-child(8) { animation-delay: 2.6s; }
+    .terminal-line:nth-child(9) { animation-delay: 2.9s; }
+
+    @keyframes typeIn {
+      from {
+        opacity: 0;
+        transform: translateX(-10px);
+      }
+      to {
+        opacity: 1;
+        transform: translateX(0);
+      }
+    }
+
+    .terminal-line .prompt {
+      color: var(--terminal-green);
+    }
+
+    .terminal-line .command {
+      color: var(--text-primary);
+    }
+
+    .terminal-line .output {
+      color: var(--text-secondary);
+    }
+
+    .terminal-line .highlight {
+      color: var(--accent-light);
+    }
+
+    .terminal-line .cyan {
+      color: var(--terminal-cyan);
+    }
+
+    .terminal-line .purple {
+      color: var(--terminal-purple);
+    }
+
+    .terminal-line .dim {
+      color: var(--text-dim);
+    }
+
+    .cursor {
+      display: inline-block;
+      width: 8px;
+      height: 18px;
+      background: var(--accent);
+      animation: blink 1s step-end infinite;
+      vertical-align: middle;
+      margin-left: 2px;
+    }
+
+    @keyframes blink {
+      0%, 100% { opacity: 1; }
+      50% { opacity: 0; }
+    }
+
+    /* Remote indicator overlay */
+    .remote-badge {
+      position: absolute;
+      top: var(--space-lg);
+      right: var(--space-lg);
+      display: flex;
+      align-items: center;
+      gap: var(--space-sm);
+      padding: 8px 14px;
+      background: var(--bg-glass);
+      backdrop-filter: blur(10px);
+      border: 1px solid var(--border-visible);
+      border-radius: 8px;
+      font-family: var(--font-mono);
+      font-size: 11px;
+      color: var(--text-secondary);
+    }
+
+    .remote-badge svg {
+      color: var(--accent);
+    }
+
+    /* ================================
+       ANIMATED BORDER CARDS
+    ================================ */
+
+    @property --border-angle {
+      syntax: '<angle>';
+      initial-value: 0deg;
+      inherits: false;
+    }
+
+    .glow-card {
+      position: relative;
+      background: var(--bg-surface);
+      border-radius: 16px;
+      padding: var(--space-xl);
+      overflow: hidden;
+      transition: transform 0.4s var(--ease-out);
+    }
+
+    .glow-card::before {
+      content: '';
+      position: absolute;
+      inset: 0;
+      border-radius: 16px;
+      padding: 1px;
+      background: linear-gradient(
+        var(--border-angle),
+        transparent 30%,
+        var(--accent) 50%,
+        transparent 70%
+      );
+      -webkit-mask:
+        linear-gradient(#fff 0 0) content-box,
+        linear-gradient(#fff 0 0);
+      mask:
+        linear-gradient(#fff 0 0) content-box,
+        linear-gradient(#fff 0 0);
+      -webkit-mask-composite: xor;
+      mask-composite: exclude;
+      opacity: 0;
+      transition: opacity 0.4s var(--ease-out);
+    }
+
+    .glow-card::after {
+      content: '';
+      position: absolute;
+      inset: 0;
+      border-radius: 16px;
+      background: radial-gradient(
+        600px circle at var(--mouse-x, 50%) var(--mouse-y, 50%),
+        rgba(245, 158, 11, 0.06) 0%,
+        transparent 40%
+      );
+      opacity: 0;
+      transition: opacity 0.4s var(--ease-out);
+    }
+
+    .glow-card:hover {
+      transform: translateY(-4px) scale(1.01);
+    }
+
+    .glow-card:hover::before {
+      opacity: 1;
+      animation: rotateBorder 3s linear infinite;
+    }
+
+    .glow-card:hover::after {
+      opacity: 1;
+    }
+
+    @keyframes rotateBorder {
+      from { --border-angle: 0deg; }
+      to { --border-angle: 360deg; }
+    }
+
+    /* ================================
+       ILLUMINATED ICONS
+    ================================ */
+
+    .icon-glow {
+      width: 48px;
+      height: 48px;
+      background: var(--accent-muted);
+      border: 1px solid var(--border-accent);
+      border-radius: 12px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      position: relative;
+      margin-bottom: var(--space-lg);
+      transition: all 0.4s var(--ease-out);
+    }
+
+    .icon-glow::before {
+      content: '';
+      position: absolute;
+      inset: -4px;
+      background: radial-gradient(circle, var(--accent-glow) 0%, transparent 70%);
+      border-radius: 16px;
+      opacity: 0;
+      filter: blur(8px);
+      transition: opacity 0.4s var(--ease-out);
+      z-index: -1;
+    }
+
+    .icon-glow svg {
+      width: 24px;
+      height: 24px;
+      color: var(--accent);
+      transition: all 0.4s var(--ease-out);
+    }
+
+    .glow-card:hover .icon-glow {
+      transform: rotate(8deg) scale(1.1);
+      background: var(--accent);
+      border-color: var(--accent);
+    }
+
+    .glow-card:hover .icon-glow::before {
+      opacity: 1;
+    }
+
+    .glow-card:hover .icon-glow svg {
+      color: var(--bg-void);
+      filter: drop-shadow(0 0 8px var(--accent-glow));
+    }
+
+    /* ================================
+       FEATURES SECTION
+    ================================ */
+
+    .features {
+      padding: var(--space-4xl) var(--space-xl);
+      max-width: 1400px;
+      margin: 0 auto;
+      position: relative;
+      z-index: 1;
+    }
+
+    .section-header {
+      text-align: center;
+      margin-bottom: var(--space-4xl);
+    }
+
+    .section-label {
+      font-family: var(--font-mono);
+      font-size: 12px;
+      color: var(--accent);
+      text-transform: uppercase;
+      letter-spacing: 0.15em;
+      margin-bottom: var(--space-md);
+    }
+
+    .section-title {
+      font-size: clamp(32px, 4vw, 48px);
+      font-weight: 600;
+      letter-spacing: -0.02em;
+      margin-bottom: var(--space-md);
+    }
+
+    .section-subtitle {
+      font-size: 18px;
+      color: var(--text-secondary);
+      max-width: 600px;
+      margin: 0 auto;
+    }
+
+    .features-grid {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: var(--space-lg);
+    }
+
+    .feature-title {
+      font-size: 18px;
+      font-weight: 600;
+      margin-bottom: var(--space-sm);
+    }
+
+    .feature-desc {
+      font-size: 14px;
+      color: var(--text-secondary);
+      line-height: 1.7;
+    }
+
+    /* ================================
+       HOW IT WORKS
+    ================================ */
+
+    .how-it-works {
+      padding: var(--space-4xl) var(--space-xl);
+      max-width: 1400px;
+      margin: 0 auto;
+      position: relative;
+      z-index: 1;
+    }
+
+    .steps-container {
+      display: grid;
+      grid-template-columns: repeat(5, 1fr);
+      gap: var(--space-lg);
+      position: relative;
+    }
+
+    .steps-line {
+      position: absolute;
+      top: 44px;
+      left: 10%;
+      right: 10%;
+      height: 2px;
+      background: linear-gradient(90deg, var(--border-subtle), var(--accent), var(--border-subtle));
+      opacity: 0.3;
+    }
+
+    .step {
+      text-align: center;
+      position: relative;
+    }
+
+    .step-number {
+      width: 48px;
+      height: 48px;
+      background: var(--bg-surface);
+      border: 2px solid var(--border-visible);
+      border-radius: 50%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-family: var(--font-mono);
+      font-size: 16px;
+      font-weight: 600;
+      color: var(--accent);
+      margin: 0 auto var(--space-lg);
+      position: relative;
+      z-index: 1;
+      transition: all 0.3s var(--ease-out);
+    }
+
+    .step:hover .step-number {
+      background: var(--accent);
+      border-color: var(--accent);
+      color: var(--bg-void);
+      transform: scale(1.1);
+      box-shadow: 0 0 20px var(--accent-glow);
+    }
+
+    .step-title {
+      font-size: 15px;
+      font-weight: 600;
+      margin-bottom: var(--space-xs);
+    }
+
+    .step-code {
+      font-family: var(--font-mono);
+      font-size: 12px;
+      color: var(--terminal-green);
+      background: var(--bg-deep);
+      padding: 4px 10px;
+      border-radius: 4px;
+      display: inline-block;
+    }
+
+    .step-desc {
+      font-size: 13px;
+      color: var(--text-muted);
+      margin-top: var(--space-sm);
+    }
+
+    /* ================================
+       PRICING SECTION
+    ================================ */
+
+    .pricing {
+      padding: var(--space-4xl) var(--space-xl);
+      max-width: 1000px;
+      margin: 0 auto;
+      position: relative;
+      z-index: 1;
+    }
+
+    .pricing-grid {
+      display: grid;
+      grid-template-columns: repeat(2, 1fr);
+      gap: var(--space-lg);
+      margin-top: var(--space-3xl);
+    }
+
+    .pricing-card {
+      position: relative;
+      background: var(--bg-surface);
+      border-radius: 20px;
+      padding: var(--space-2xl);
+      overflow: hidden;
+      transition: transform 0.4s var(--ease-out);
+    }
+
+    .pricing-card::before {
+      content: '';
+      position: absolute;
+      inset: 0;
+      border-radius: 20px;
+      padding: 1px;
+      background: linear-gradient(
+        var(--border-angle),
+        transparent 30%,
+        var(--accent) 50%,
+        transparent 70%
+      );
+      -webkit-mask:
+        linear-gradient(#fff 0 0) content-box,
+        linear-gradient(#fff 0 0);
+      mask:
+        linear-gradient(#fff 0 0) content-box,
+        linear-gradient(#fff 0 0);
+      -webkit-mask-composite: xor;
+      mask-composite: exclude;
+      opacity: 0;
+      transition: opacity 0.4s var(--ease-out);
+    }
+
+    .pricing-card:hover {
+      transform: translateY(-4px);
+    }
+
+    .pricing-card:hover::before {
+      opacity: 1;
+      animation: rotateBorder 3s linear infinite;
+    }
+
+    .pricing-card.featured {
+      background: linear-gradient(135deg, var(--bg-surface), var(--bg-elevated));
+      border: 1px solid var(--border-accent);
+    }
+
+    .pricing-card.featured::after {
+      content: '';
+      position: absolute;
+      top: 0;
+      left: 0;
+      right: 0;
+      height: 2px;
+      background: linear-gradient(90deg, transparent, var(--accent), transparent);
+    }
+
+    .pricing-badge {
+      position: absolute;
+      top: var(--space-lg);
+      right: var(--space-lg);
+      padding: 4px 12px;
+      background: var(--accent);
+      border-radius: 100px;
+      font-family: var(--font-mono);
+      font-size: 10px;
+      font-weight: 600;
+      color: var(--bg-void);
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+    }
+
+    .pricing-name {
+      font-size: 14px;
+      font-weight: 600;
+      color: var(--text-muted);
+      text-transform: uppercase;
+      letter-spacing: 0.1em;
+      margin-bottom: var(--space-sm);
+    }
+
+    .pricing-price {
+      display: flex;
+      align-items: baseline;
+      gap: var(--space-xs);
+      margin-bottom: var(--space-sm);
+    }
+
+    .price-amount {
+      font-size: 48px;
+      font-weight: 700;
+      letter-spacing: -0.03em;
+    }
+
+    .price-period {
+      font-size: 14px;
+      color: var(--text-muted);
+    }
+
+    .pricing-annual {
+      font-size: 13px;
+      color: var(--accent);
+      margin-bottom: var(--space-lg);
+    }
+
+    .pricing-desc {
+      font-size: 14px;
+      color: var(--text-secondary);
+      margin-bottom: var(--space-xl);
+      line-height: 1.6;
+    }
+
+    .pricing-features {
+      list-style: none;
+      margin-bottom: var(--space-xl);
+    }
+
+    .pricing-features li {
+      display: flex;
+      align-items: center;
+      gap: var(--space-sm);
+      padding: var(--space-sm) 0;
+      font-size: 14px;
+      color: var(--text-secondary);
+      border-bottom: 1px solid var(--border-subtle);
+    }
+
+    .pricing-features li:last-child {
+      border-bottom: none;
+    }
+
+    .pricing-features li svg {
+      width: 18px;
+      height: 18px;
+      color: var(--terminal-green);
+      flex-shrink: 0;
+    }
+
+    .pricing-features li.disabled {
+      color: var(--text-dim);
+    }
+
+    .pricing-features li.disabled svg {
+      color: var(--text-dim);
+    }
+
+    .pricing-cta {
+      width: 100%;
+      padding: 14px 24px;
+      background: var(--bg-elevated);
+      border: 1px solid var(--border-visible);
+      border-radius: 10px;
+      color: var(--text-primary);
+      font-size: 14px;
+      font-weight: 600;
+      text-decoration: none;
+      cursor: pointer;
+      transition: all 0.2s var(--ease-out);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: var(--space-sm);
+    }
+
+    .pricing-cta:hover {
+      background: var(--bg-glass);
+      border-color: var(--text-muted);
+    }
+
+    .pricing-card.featured .pricing-cta {
+      background: var(--accent);
+      border-color: var(--accent);
+      color: var(--bg-void);
+    }
+
+    .pricing-card.featured .pricing-cta:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 8px 30px var(--accent-glow);
+    }
+
+    /* ================================
+       DASHBOARD PREVIEW
+    ================================ */
+
+    .dashboard-section {
+      padding: var(--space-4xl) var(--space-xl);
+      max-width: 1400px;
+      margin: 0 auto;
+      position: relative;
+      z-index: 1;
+    }
+
+    .dashboard-wrapper {
+      position: relative;
+      margin-top: var(--space-3xl);
+    }
+
+    .dashboard-glow {
+      position: absolute;
+      inset: -40px;
+      background: radial-gradient(ellipse at center, var(--accent-glow) 0%, transparent 70%);
+      opacity: 0.2;
+      filter: blur(60px);
+    }
+
+    .dashboard-preview {
+      position: relative;
+      background: var(--bg-surface);
+      border: 1px solid var(--border-visible);
+      border-radius: 20px;
+      overflow: hidden;
+      box-shadow:
+        0 4px 6px rgba(0,0,0,0.2),
+        0 30px 60px rgba(0,0,0,0.4);
+    }
+
+    .dashboard-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: var(--space-md) var(--space-xl);
+      background: var(--bg-deep);
+      border-bottom: 1px solid var(--border-subtle);
+    }
+
+    .dashboard-nav {
+      display: flex;
+      align-items: center;
+      gap: var(--space-xl);
+    }
+
+    .dashboard-nav-item {
+      font-size: 13px;
+      color: var(--text-muted);
+      padding: var(--space-sm) 0;
+      border-bottom: 2px solid transparent;
+      cursor: pointer;
+      transition: all 0.2s var(--ease-out);
+    }
+
+    .dashboard-nav-item.active {
+      color: var(--text-primary);
+      border-color: var(--accent);
+    }
+
+    .dashboard-user {
+      display: flex;
+      align-items: center;
+      gap: var(--space-sm);
+      font-size: 13px;
+      color: var(--text-secondary);
+    }
+
+    .user-avatar {
+      width: 28px;
+      height: 28px;
+      background: var(--accent-muted);
+      border-radius: 6px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+
+    .user-avatar svg {
+      width: 16px;
+      height: 16px;
+      color: var(--accent);
+    }
+
+    .dashboard-body {
+      display: grid;
+      grid-template-columns: 280px 1fr;
+      min-height: 500px;
+    }
+
+    .sessions-list {
+      background: var(--bg-deep);
+      border-right: 1px solid var(--border-subtle);
+      padding: var(--space-md);
+    }
+
+    .sessions-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: var(--space-sm) var(--space-sm);
+      margin-bottom: var(--space-md);
+    }
+
+    .sessions-title {
+      font-size: 12px;
+      font-weight: 600;
+      color: var(--text-muted);
+      text-transform: uppercase;
+      letter-spacing: 0.1em;
+    }
+
+    .sessions-count {
+      font-family: var(--font-mono);
+      font-size: 11px;
+      color: var(--accent);
+      background: var(--accent-muted);
+      padding: 2px 8px;
+      border-radius: 10px;
+    }
+
+    .session-item {
+      padding: var(--space-md);
+      background: var(--bg-surface);
+      border: 1px solid var(--border-subtle);
+      border-radius: 10px;
+      margin-bottom: var(--space-sm);
+      cursor: pointer;
+      transition: all 0.2s var(--ease-out);
+    }
+
+    .session-item:hover {
+      border-color: var(--border-visible);
+    }
+
+    .session-item.active {
+      border-color: var(--accent);
+      background: var(--accent-muted);
+    }
+
+    .session-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: var(--space-sm);
+    }
+
+    .session-name {
+      font-family: var(--font-mono);
+      font-size: 13px;
+      font-weight: 500;
+    }
+
+    .session-status {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background: var(--status-connected);
+    }
+
+    .session-status.inactive {
+      background: var(--text-dim);
+    }
+
+    .session-meta {
+      font-size: 11px;
+      color: var(--text-muted);
+    }
+
+    .session-view {
+      padding: var(--space-lg);
+      display: flex;
+      flex-direction: column;
+    }
+
+    .session-view-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: var(--space-lg);
+    }
+
+    .session-info {
+      display: flex;
+      align-items: center;
+      gap: var(--space-md);
+    }
+
+    .session-info-icon {
+      width: 40px;
+      height: 40px;
+      background: var(--accent-muted);
+      border-radius: 10px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+
+    .session-info-icon svg {
+      width: 20px;
+      height: 20px;
+      color: var(--accent);
+    }
+
+    .session-info-text h3 {
+      font-size: 16px;
+      font-weight: 600;
+      margin-bottom: 2px;
+    }
+
+    .session-info-text span {
+      font-size: 12px;
+      color: var(--text-muted);
+    }
+
+    .session-actions {
+      display: flex;
+      gap: var(--space-sm);
+    }
+
+    .session-action-btn {
+      padding: 8px 14px;
+      background: var(--bg-elevated);
+      border: 1px solid var(--border-subtle);
+      border-radius: 6px;
+      color: var(--text-secondary);
+      font-size: 12px;
+      cursor: pointer;
+      transition: all 0.2s var(--ease-out);
+    }
+
+    .session-action-btn:hover {
+      background: var(--bg-glass);
+      border-color: var(--border-visible);
+    }
+
+    .session-terminal {
+      flex: 1;
+      background: var(--bg-deep);
+      border: 1px solid var(--border-subtle);
+      border-radius: 12px;
+      overflow: hidden;
+    }
+
+    .session-terminal-body {
+      padding: var(--space-lg);
+      font-family: var(--font-mono);
+      font-size: 12px;
+      line-height: 1.8;
+      max-height: 320px;
+      overflow-y: auto;
+    }
+
+    .session-input {
+      display: flex;
+      align-items: center;
+      gap: var(--space-md);
+      padding: var(--space-md);
+      background: var(--bg-surface);
+      border-top: 1px solid var(--border-subtle);
+    }
+
+    .session-input-field {
+      flex: 1;
+      padding: 10px 14px;
+      background: var(--bg-deep);
+      border: 1px solid var(--border-subtle);
+      border-radius: 8px;
+      color: var(--text-primary);
+      font-family: var(--font-mono);
+      font-size: 13px;
+      outline: none;
+      transition: border-color 0.2s var(--ease-out);
+    }
+
+    .session-input-field:focus {
+      border-color: var(--accent);
+    }
+
+    .session-input-btn {
+      padding: 10px 18px;
+      background: var(--accent);
+      border: none;
+      border-radius: 8px;
+      color: var(--bg-void);
+      font-size: 13px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: all 0.2s var(--ease-out);
+    }
+
+    .session-input-btn:hover {
+      transform: translateY(-1px);
+      box-shadow: 0 4px 12px var(--accent-glow);
+    }
+
+    /* ================================
+       SECURITY SECTION
+    ================================ */
+
+    .security {
+      padding: var(--space-4xl) var(--space-xl);
+      max-width: 1000px;
+      margin: 0 auto;
+      position: relative;
+      z-index: 1;
+    }
+
+    .security-grid {
+      display: grid;
+      grid-template-columns: repeat(2, 1fr);
+      gap: var(--space-lg);
+      margin-top: var(--space-3xl);
+    }
+
+    .security-item {
+      display: flex;
+      gap: var(--space-md);
+      padding: var(--space-lg);
+      background: var(--bg-surface);
+      border: 1px solid var(--border-subtle);
+      border-radius: 12px;
+      transition: all 0.3s var(--ease-out);
+    }
+
+    .security-item:hover {
+      border-color: var(--border-visible);
+      transform: translateY(-2px);
+    }
+
+    .security-icon {
+      width: 40px;
+      height: 40px;
+      background: var(--accent-muted);
+      border-radius: 10px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      flex-shrink: 0;
+      transition: all 0.3s var(--ease-out);
+    }
+
+    .security-icon svg {
+      width: 20px;
+      height: 20px;
+      color: var(--accent);
+    }
+
+    .security-item:hover .security-icon {
+      background: var(--accent);
+      transform: rotate(8deg);
+    }
+
+    .security-item:hover .security-icon svg {
+      color: var(--bg-void);
+    }
+
+    .security-content h4 {
+      font-size: 15px;
+      font-weight: 600;
+      margin-bottom: var(--space-xs);
+    }
+
+    .security-content p {
+      font-size: 13px;
+      color: var(--text-secondary);
+      line-height: 1.6;
+    }
+
+    /* ================================
+       CTA SECTION
+    ================================ */
+
+    .cta {
+      padding: var(--space-4xl) var(--space-xl);
+      max-width: 900px;
+      margin: 0 auto;
+      text-align: center;
+      position: relative;
+      z-index: 1;
+    }
+
+    .cta-box {
+      background: linear-gradient(135deg, var(--bg-surface), var(--bg-elevated));
+      border: 1px solid var(--border-visible);
+      border-radius: 24px;
+      padding: var(--space-4xl) var(--space-3xl);
+      position: relative;
+      overflow: hidden;
+    }
+
+    .cta-box::before {
+      content: '';
+      position: absolute;
+      top: 0;
+      left: 0;
+      right: 0;
+      height: 2px;
+      background: linear-gradient(90deg, transparent, var(--accent), transparent);
+    }
+
+    .cta-title {
+      font-size: clamp(28px, 4vw, 40px);
+      font-weight: 600;
+      margin-bottom: var(--space-md);
+      letter-spacing: -0.02em;
+    }
+
+    .cta-subtitle {
+      font-size: 16px;
+      color: var(--text-secondary);
+      margin-bottom: var(--space-xl);
+      max-width: 500px;
+      margin-left: auto;
+      margin-right: auto;
+    }
+
+    .cta-install {
+      max-width: 500px;
+      margin: 0 auto var(--space-lg);
+    }
+
+    /* ================================
+       FOOTER
+    ================================ */
+
+    .footer {
+      padding: var(--space-3xl) var(--space-xl);
+      border-top: 1px solid var(--border-subtle);
+      position: relative;
+      z-index: 1;
+    }
+
+    .footer-inner {
+      max-width: 1400px;
+      margin: 0 auto;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+
+    .footer-left {
+      display: flex;
+      align-items: center;
+      gap: var(--space-xl);
+    }
+
+    .footer-links {
+      display: flex;
+      gap: var(--space-lg);
+    }
+
+    .footer-link {
+      font-size: 13px;
+      color: var(--text-muted);
+      text-decoration: none;
+      transition: color 0.2s var(--ease-out);
+    }
+
+    .footer-link:hover {
+      color: var(--text-primary);
+    }
+
+    .footer-right {
+      font-size: 12px;
+      color: var(--text-dim);
+    }
+
+    /* ================================
+       RESPONSIVE
+    ================================ */
+
+    @media (max-width: 1200px) {
+      .hero {
+        grid-template-columns: 1fr;
+        text-align: center;
+        gap: var(--space-3xl);
+      }
+
+      .hero-content {
+        order: 1;
+      }
+
+      .hero-terminal {
+        order: 2;
+      }
+
+      .hero-subtitle {
+        max-width: 600px;
+        margin-left: auto;
+        margin-right: auto;
+      }
+
+      .hero-actions {
+        justify-content: center;
+      }
+
+      .install-block {
+        max-width: 500px;
+        margin-left: auto;
+        margin-right: auto;
+      }
+    }
+
+    @media (max-width: 900px) {
+      .features-grid {
+        grid-template-columns: repeat(2, 1fr);
+      }
+
+      .steps-container {
+        grid-template-columns: repeat(3, 1fr);
+      }
+
+      .step:nth-child(4),
+      .step:nth-child(5) {
+        grid-column: span 1;
+      }
+
+      .steps-line {
+        display: none;
+      }
+
+      .pricing-grid {
+        grid-template-columns: 1fr;
+        max-width: 400px;
+        margin-left: auto;
+        margin-right: auto;
+      }
+
+      .dashboard-body {
+        grid-template-columns: 1fr;
+      }
+
+      .sessions-list {
+        border-right: none;
+        border-bottom: 1px solid var(--border-subtle);
+        display: flex;
+        gap: var(--space-sm);
+        overflow-x: auto;
+        padding: var(--space-md);
+      }
+
+      .sessions-header {
+        display: none;
+      }
+
+      .session-item {
+        min-width: 200px;
+        margin-bottom: 0;
+      }
+    }
+
+    @media (max-width: 768px) {
+      .nav-links {
+        display: none;
+      }
+
+      .features-grid {
+        grid-template-columns: 1fr;
+      }
+
+      .steps-container {
+        grid-template-columns: 1fr;
+        gap: var(--space-md);
+      }
+
+      .security-grid {
+        grid-template-columns: 1fr;
+      }
+
+      .footer-inner {
+        flex-direction: column;
+        gap: var(--space-lg);
+        text-align: center;
+      }
+
+      .footer-left {
+        flex-direction: column;
+        gap: var(--space-md);
+      }
+    }
+  </style>
+</head>
+<body>
+<!-- Background elements -->
+<div class="bg-grid"></div>
+<div class="bg-glow bg-glow-1"></div>
+<div class="bg-glow bg-glow-2"></div>
+<div class="scanlines"></div>
+
+<!-- Navigation -->
+<nav class="nav">
+  <div class="nav-inner">
+    <a href="#" class="logo">
+      <div class="logo-icon">
+        <svg width="32" height="32" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+          <rect x="2" y="3" width="20" height="18" rx="2" fill="#92400e"/>
+          <rect x="2" y="3" width="20" height="4" rx="2" fill="#f59e0b"/>
+          <rect x="2" y="5" width="20" height="2" fill="#f59e0b"/>
+          <path d="M6 11L10 14.5L6 18" stroke="#fef3c7" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+          <path d="M13 18H18" stroke="#fef3c7" stroke-width="2" stroke-linecap="round"/>
+        </svg>
+      </div>
+      <span class="logo-text">klaas</span>
+    </a>
+    <div class="nav-links">
+      <a href="#features" class="nav-link">Features</a>
+      <a href="#how-it-works" class="nav-link">How it works</a>
+      <a href="#pricing" class="nav-link">Pricing</a>
+      <a href="#security" class="nav-link">Security</a>
+      <a href="https://github.com/klaas" class="nav-link">GitHub</a>
+      <a href="/login" class="nav-cta">Dashboard →</a>
+    </div>
+  </div>
+</nav>
+
+<!-- Hero Section -->
+<section class="hero">
+  <div class="hero-content">
+    <div class="hero-badge">
+      <span class="badge-dot"></span>
+      Now in public beta
+    </div>
+    <h1 class="hero-title">
+      Never lose track of<br>
+      <span class="highlight">Claude Code</span>
+    </h1>
+    <p class="hero-subtitle">
+      Access your Claude Code terminal sessions from anywhere. Start on your desktop, continue from your phone. Real-time streaming, secure access.
+    </p>
+
+    <div class="install-block">
+      <div class="install-label">Get started in seconds</div>
+      <div class="install-command">
+        <code class="command-text">
+          <span class="prompt">$</span> npm install -g klaas
+        </code>
+        <button class="copy-btn" onclick="copyCommand()">Copy</button>
+      </div>
+    </div>
+
+    <div class="hero-actions">
+      <a href="/signup" class="btn-primary">
+        Start for free
+        <span>→</span>
+      </a>
+      <a href="#how-it-works" class="btn-secondary">See how it works</a>
+    </div>
+  </div>
+
+  <div class="hero-terminal">
+    <div class="terminal-wrapper">
+      <div class="terminal-glow"></div>
+      <div class="terminal">
+        <div class="terminal-header">
+          <div class="terminal-dots">
+            <div class="terminal-dot dot-red"></div>
+            <div class="terminal-dot dot-yellow"></div>
+            <div class="terminal-dot dot-green"></div>
+          </div>
+          <div class="terminal-title">klaas — ~/projects/api</div>
+          <div class="terminal-status">
+            <span class="status-indicator"></span>
+            Connected
+          </div>
+        </div>
+        <div class="terminal-body">
+          <div class="terminal-line">
+            <span class="prompt">$</span> <span class="command">klaas</span>
+          </div>
+          <div class="terminal-line">
+            <span class="output">Starting klaas wrapper...</span>
+          </div>
+          <div class="terminal-line">
+            <span class="cyan">✓</span> <span class="output">Session started: </span><span class="highlight">klaas.sh/s/7x9k2m</span>
+          </div>
+          <div class="terminal-line">
+            <span class="dim">───────────────────────────────────────</span>
+          </div>
+          <div class="terminal-line">
+            <span class="purple">Claude:</span> <span class="output">I'll help you refactor that API</span>
+          </div>
+          <div class="terminal-line">
+            <span class="purple">        </span> <span class="output">endpoint. Let me analyze the</span>
+          </div>
+          <div class="terminal-line">
+            <span class="purple">        </span> <span class="output">current implementation...</span>
+          </div>
+          <div class="terminal-line">
+            &nbsp;
+          </div>
+          <div class="terminal-line">
+            <span class="prompt">></span> <span class="cursor"></span>
+          </div>
+        </div>
+        <div class="remote-badge">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M2 20h.01"/>
+            <path d="M7 20v-4"/>
+            <path d="M12 20v-8"/>
+            <path d="M17 20V8"/>
+            <path d="M22 4v16"/>
+          </svg>
+          <span>Streaming to 2 devices</span>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- Features Section -->
+<section class="features" id="features">
+  <div class="section-header">
+    <div class="section-label">Features</div>
+    <h2 class="section-title">Everything you need for remote sessions</h2>
+    <p class="section-subtitle">
+      klaas wraps Claude Code transparently, adding remote access capabilities without changing your workflow.
+    </p>
+  </div>
+
+  <div class="features-grid">
+    <div class="glow-card">
+      <div class="icon-glow">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="m22 8-6 4 6 4V8Z"/>
+          <rect width="14" height="12" x="2" y="6" rx="2" ry="2"/>
+        </svg>
+      </div>
+      <h3 class="feature-title">Real-time Streaming</h3>
+      <p class="feature-desc">
+        See exactly what Claude is outputting, character by character, from any device with a browser.
+      </p>
+    </div>
+
+    <div class="glow-card">
+      <div class="icon-glow">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/>
+          <polyline points="17 21 17 13 7 13 7 21"/>
+          <polyline points="7 3 7 8 15 8"/>
+        </svg>
+      </div>
+      <h3 class="feature-title">Session Persistence</h3>
+      <p class="feature-desc">
+        Close your laptop and walk away. Your session keeps running and you can reconnect anytime.
+      </p>
+    </div>
+
+    <div class="glow-card">
+      <div class="icon-glow">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <rect width="7" height="12" x="2" y="6" rx="1"/>
+          <rect width="9" height="14" x="13" y="5" rx="1"/>
+          <path d="M5 18v3"/>
+          <path d="M17.5 19v3"/>
+        </svg>
+      </div>
+      <h3 class="feature-title">Multi-device Access</h3>
+      <p class="feature-desc">
+        Start a task on your desktop, check progress from your phone while grabbing coffee.
+      </p>
+    </div>
+
+    <div class="glow-card">
+      <div class="icon-glow">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M17 11h1a3 3 0 0 1 0 6h-1"/>
+          <path d="M9 12v6"/>
+          <path d="M13 12v6"/>
+          <path d="M14 7.5c-1 0-1.44.5-3 .5s-2-.5-3-.5-1.72.5-2.5.5a2.5 2.5 0 0 1 0-5c.78 0 1.57.5 2.5.5S9.44 3 11 3s2 .5 3 .5 1.72-.5 2.5-.5a2.5 2.5 0 0 1 0 5c-.78 0-1.5-.5-2.5-.5Z"/>
+        </svg>
+      </div>
+      <h3 class="feature-title">Remote Input</h3>
+      <p class="feature-desc">
+        Type prompts directly from the web interface. No need to be at your terminal.
+      </p>
+    </div>
+
+    <div class="glow-card">
+      <div class="icon-glow">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M12 8v4l3 3"/>
+          <circle cx="12" cy="12" r="10"/>
+        </svg>
+      </div>
+      <h3 class="feature-title">Message History</h3>
+      <p class="feature-desc">
+        Scroll back through terminal output to see what happened while you were away.
+      </p>
+    </div>
+
+    <div class="glow-card">
+      <div class="icon-glow">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <rect width="18" height="11" x="3" y="11" rx="2" ry="2"/>
+          <path d="M7 11V7a5 5 0 0 1 10 0v4"/>
+        </svg>
+      </div>
+      <h3 class="feature-title">Secure Auth</h3>
+      <p class="feature-desc">
+        OAuth-style device flow for CLI authentication. No passwords stored on disk.
+      </p>
+    </div>
+  </div>
+</section>
+
+<!-- How It Works -->
+<section class="how-it-works" id="how-it-works">
+  <div class="section-header">
+    <div class="section-label">How it works</div>
+    <h2 class="section-title">Up and running in 60 seconds</h2>
+    <p class="section-subtitle">
+      klaas is a drop-in replacement for the claude command. Your workflow stays the same.
+    </p>
+  </div>
+
+  <div class="steps-container">
+    <div class="steps-line"></div>
+
+    <div class="step">
+      <div class="step-number">1</div>
+      <h4 class="step-title">Install</h4>
+      <code class="step-code">npm i -g klaas</code>
+      <p class="step-desc">One command install</p>
+    </div>
+
+    <div class="step">
+      <div class="step-number">2</div>
+      <h4 class="step-title">Run</h4>
+      <code class="step-code">klaas</code>
+      <p class="step-desc">Instead of claude</p>
+    </div>
+
+    <div class="step">
+      <div class="step-number">3</div>
+      <h4 class="step-title">Authenticate</h4>
+      <code class="step-code">XXXX-XXXX</code>
+      <p class="step-desc">Confirm device code</p>
+    </div>
+
+    <div class="step">
+      <div class="step-number">4</div>
+      <h4 class="step-title">Work</h4>
+      <code class="step-code">_</code>
+      <p class="step-desc">Use Claude normally</p>
+    </div>
+
+    <div class="step">
+      <div class="step-number">5</div>
+      <h4 class="step-title">Access</h4>
+      <code class="step-code">klaas.sh</code>
+      <p class="step-desc">From any device</p>
+    </div>
+  </div>
+</section>
+
+<!-- Pricing Section -->
+<section class="pricing" id="pricing">
+  <div class="section-header">
+    <div class="section-label">Pricing</div>
+    <h2 class="section-title">Simple, transparent pricing</h2>
+    <p class="section-subtitle">
+      Start free, upgrade when you need more power. No hidden fees.
+    </p>
+  </div>
+
+  <div class="pricing-grid">
+    <div class="pricing-card">
+      <div class="pricing-name">Free</div>
+      <div class="pricing-price">
+        <span class="price-amount">$0</span>
+        <span class="price-period">/month</span>
+      </div>
+      <div class="pricing-annual">&nbsp;</div>
+      <p class="pricing-desc">
+        Perfect for trying out klaas and light usage.
+      </p>
+      <ul class="pricing-features">
+        <li>
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <polyline points="20 6 9 17 4 12"/>
+          </svg>
+          1 session at a time
+        </li>
+        <li>
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <polyline points="20 6 9 17 4 12"/>
+          </svg>
+          1 device connected
+        </li>
+        <li>
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <polyline points="20 6 9 17 4 12"/>
+          </svg>
+          24-hour history
+        </li>
+        <li>
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <polyline points="20 6 9 17 4 12"/>
+          </svg>
+          Device authentication
+        </li>
+        <li class="disabled">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <line x1="18" y1="6" x2="6" y2="18"/>
+            <line x1="6" y1="6" x2="18" y2="18"/>
+          </svg>
+          Team sharing
+        </li>
+      </ul>
+      <a href="/signup" class="pricing-cta">
+        Get started free
+      </a>
+    </div>
+
+    <div class="pricing-card featured">
+      <div class="pricing-badge">Popular</div>
+      <div class="pricing-name">Pro</div>
+      <div class="pricing-price">
+        <span class="price-amount">$7</span>
+        <span class="price-period">/month</span>
+      </div>
+      <div class="pricing-annual">$56/year (save $28)</div>
+      <p class="pricing-desc">
+        For developers who need full remote access.
+      </p>
+      <ul class="pricing-features">
+        <li>
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <polyline points="20 6 9 17 4 12"/>
+          </svg>
+          Unlimited sessions
+        </li>
+        <li>
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <polyline points="20 6 9 17 4 12"/>
+          </svg>
+          Unlimited devices
+        </li>
+        <li>
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <polyline points="20 6 9 17 4 12"/>
+          </svg>
+          Full message history
+        </li>
+        <li>
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <polyline points="20 6 9 17 4 12"/>
+          </svg>
+          Device authentication
+        </li>
+        <li>
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <polyline points="20 6 9 17 4 12"/>
+          </svg>
+          Team sharing (coming soon)
+        </li>
+      </ul>
+      <a href="/signup?plan=pro" class="pricing-cta">
+        Start Pro trial
+        <span>→</span>
+      </a>
+    </div>
+  </div>
+</section>
+
+<!-- Dashboard Preview -->
+<section class="dashboard-section">
+  <div class="section-header">
+    <div class="section-label">Dashboard</div>
+    <h2 class="section-title">Monitor all your sessions</h2>
+    <p class="section-subtitle">
+      A clean, responsive interface to view and interact with your Claude Code sessions from anywhere.
+    </p>
+  </div>
+
+  <div class="dashboard-wrapper">
+    <div class="dashboard-glow"></div>
+    <div class="dashboard-preview">
+      <div class="dashboard-header">
+        <div class="logo">
+          <div class="logo-icon">
+            <svg width="28" height="28" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+              <rect x="2" y="3" width="20" height="18" rx="2" fill="#92400e"/>
+              <rect x="2" y="3" width="20" height="4" rx="2" fill="#f59e0b"/>
+              <rect x="2" y="5" width="20" height="2" fill="#f59e0b"/>
+              <path d="M6 11L10 14.5L6 18" stroke="#fef3c7" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+              <path d="M13 18H18" stroke="#fef3c7" stroke-width="2" stroke-linecap="round"/>
+            </svg>
+          </div>
+          <span class="logo-text">klaas</span>
+        </div>
+        <div class="dashboard-nav">
+          <div class="dashboard-nav-item active">Sessions</div>
+          <div class="dashboard-nav-item">Settings</div>
+          <div class="dashboard-nav-item">Usage</div>
+        </div>
+        <div class="dashboard-user">
+          <div class="user-avatar">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M19 21v-2a4 4 0 0 0-4-4H9a4 4 0 0 0-4 4v2"/>
+              <circle cx="12" cy="7" r="4"/>
+            </svg>
+          </div>
+          <span>developer@company.com</span>
+        </div>
+      </div>
+      <div class="dashboard-body">
+        <div class="sessions-list">
+          <div class="sessions-header">
+            <span class="sessions-title">Active Sessions</span>
+            <span class="sessions-count">3</span>
+          </div>
+          <div class="session-item active">
+            <div class="session-header">
+              <span class="session-name">api-refactor</span>
+              <span class="session-status"></span>
+            </div>
+            <div class="session-meta">MacBook Pro • 2 min ago</div>
+          </div>
+          <div class="session-item">
+            <div class="session-header">
+              <span class="session-name">frontend-fixes</span>
+              <span class="session-status"></span>
+            </div>
+            <div class="session-meta">Desktop • 15 min ago</div>
+          </div>
+          <div class="session-item">
+            <div class="session-header">
+              <span class="session-name">db-migration</span>
+              <span class="session-status inactive"></span>
+            </div>
+            <div class="session-meta">Ended • 1 hour ago</div>
+          </div>
+        </div>
+        <div class="session-view">
+          <div class="session-view-header">
+            <div class="session-info">
+              <div class="session-info-icon">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/>
+                </svg>
+              </div>
+              <div class="session-info-text">
+                <h3>api-refactor</h3>
+                <span>~/projects/api • Running</span>
+              </div>
+            </div>
+            <div class="session-actions">
+              <button class="session-action-btn">Share</button>
+              <button class="session-action-btn">Settings</button>
+            </div>
+          </div>
+          <div class="session-terminal">
+            <div class="session-terminal-body">
+              <div><span style="color: var(--terminal-purple)">Claude:</span> I've analyzed the endpoint structure.</div>
+              <div>&nbsp;</div>
+              <div><span style="color: var(--text-secondary)">Here's my plan for the refactor:</span></div>
+              <div><span style="color: var(--text-muted)">1. Extract validation logic</span></div>
+              <div><span style="color: var(--text-muted)">2. Add proper error handling</span></div>
+              <div><span style="color: var(--text-muted)">3. Implement rate limiting</span></div>
+              <div>&nbsp;</div>
+              <div><span style="color: var(--terminal-cyan)">Creating file:</span> <span style="color: var(--accent)">src/middleware/validate.ts</span></div>
+              <div>&nbsp;</div>
+              <div style="color: var(--text-dim)">───────────────────────────────────</div>
+              <div>&nbsp;</div>
+              <div><span style="color: var(--terminal-green)">✓</span> File created successfully</div>
+            </div>
+            <div class="session-input">
+              <input type="text" class="session-input-field" placeholder="Type a message to Claude...">
+              <button class="session-input-btn">Send</button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- Security Section -->
+<section class="security" id="security">
+  <div class="section-header">
+    <div class="section-label">Security</div>
+    <h2 class="section-title">Your sessions are secure</h2>
+    <p class="section-subtitle">
+      We take security seriously. Your code and conversations stay private.
+    </p>
+  </div>
+
+  <div class="security-grid">
+    <div class="security-item">
+      <div class="security-icon">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <rect width="18" height="11" x="3" y="11" rx="2" ry="2"/>
+          <path d="M7 11V7a5 5 0 0 1 10 0v4"/>
+        </svg>
+      </div>
+      <div class="security-content">
+        <h4>End-to-end encryption</h4>
+        <p>All terminal data is encrypted in transit and at rest. We can't read your sessions.</p>
+      </div>
+    </div>
+
+    <div class="security-item">
+      <div class="security-icon">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <path d="M21 2l-2 2m-7.61 7.61a5.5 5.5 0 1 1-7.778 7.778 5.5 5.5 0 0 1 7.777-7.777zm0 0L15.5 7.5m0 0l3 3L22 7l-3-3m-3.5 3.5L19 4"/>
+        </svg>
+      </div>
+      <div class="security-content">
+        <h4>Device authentication</h4>
+        <p>OAuth-style device flow ensures only your authorized devices can access sessions.</p>
+      </div>
+    </div>
+
+    <div class="security-item">
+      <div class="security-icon">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <circle cx="12" cy="12" r="10"/>
+          <polyline points="12 6 12 12 16 14"/>
+        </svg>
+      </div>
+      <div class="security-content">
+        <h4>Auto-expiring sessions</h4>
+        <p>Inactive sessions automatically close. No stale connections hanging around.</p>
+      </div>
+    </div>
+
+    <div class="security-item">
+      <div class="security-icon">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
+          <polyline points="14 2 14 8 20 8"/>
+          <line x1="16" y1="13" x2="8" y2="13"/>
+          <line x1="16" y1="17" x2="8" y2="17"/>
+          <polyline points="10 9 9 9 8 9"/>
+        </svg>
+      </div>
+      <div class="security-content">
+        <h4>Audit logging</h4>
+        <p>See exactly which devices accessed your sessions and when.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- CTA Section -->
+<section class="cta">
+  <div class="cta-box">
+    <h2 class="cta-title">Ready to try klaas?</h2>
+    <p class="cta-subtitle">
+      Free tier includes 1 session with 24-hour history. No credit card required.
+    </p>
+
+    <div class="cta-install install-block">
+      <div class="install-label">Get started now</div>
+      <div class="install-command">
+        <code class="command-text">
+          <span class="prompt">$</span> npm install -g klaas
+        </code>
+        <button class="copy-btn" onclick="copyCommand()">Copy</button>
+      </div>
+    </div>
+
+    <div class="hero-actions" style="justify-content: center;">
+      <a href="/signup" class="btn-primary">
+        Create free account
+        <span>→</span>
+      </a>
+      <a href="https://github.com/klaas" class="btn-secondary">View on GitHub</a>
+    </div>
+  </div>
+</section>
+
+<!-- Footer -->
+<footer class="footer">
+  <div class="footer-inner">
+    <div class="footer-left">
+      <a href="#" class="logo">
+        <div class="logo-icon">
+          <svg width="28" height="28" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+            <rect x="2" y="3" width="20" height="18" rx="2" fill="#92400e"/>
+            <rect x="2" y="3" width="20" height="4" rx="2" fill="#f59e0b"/>
+            <rect x="2" y="5" width="20" height="2" fill="#f59e0b"/>
+            <path d="M6 11L10 14.5L6 18" stroke="#fef3c7" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+            <path d="M13 18H18" stroke="#fef3c7" stroke-width="2" stroke-linecap="round"/>
+          </svg>
+        </div>
+        <span class="logo-text">klaas</span>
+      </a>
+      <div class="footer-links">
+        <a href="/docs" class="footer-link">Documentation</a>
+        <a href="#pricing" class="footer-link">Pricing</a>
+        <a href="/privacy" class="footer-link">Privacy</a>
+        <a href="/terms" class="footer-link">Terms</a>
+        <a href="https://github.com/klaas" class="footer-link">GitHub</a>
+      </div>
+    </div>
+    <div class="footer-right">
+      © 2025 klaas. Built for developers.
+    </div>
+  </div>
+</footer>
+
+<script>
+  function copyCommand() {
+    navigator.clipboard.writeText('npm install -g klaas');
+
+    const btns = document.querySelectorAll('.copy-btn');
+    btns.forEach(btn => {
+      const originalText = btn.textContent;
+      btn.textContent = 'Copied!';
+      btn.style.background = 'var(--status-connected)';
+      btn.style.borderColor = 'var(--status-connected)';
+      btn.style.color = 'var(--bg-void)';
+
+      setTimeout(() => {
+        btn.textContent = originalText;
+        btn.style.background = '';
+        btn.style.borderColor = '';
+        btn.style.color = '';
+      }, 2000);
+    });
+  }
+
+  // Smooth scroll for anchor links
+  document.querySelectorAll('a[href^="#"]').forEach(anchor => {
+    anchor.addEventListener('click', function (e) {
+      e.preventDefault();
+      const target = document.querySelector(this.getAttribute('href'));
+      if (target) {
+        target.scrollIntoView({
+          behavior: 'smooth',
+          block: 'start'
+        });
+      }
+    });
+  });
+
+  // Track mouse position for glow cards
+  document.querySelectorAll('.glow-card').forEach(card => {
+    card.addEventListener('mousemove', (e) => {
+      const rect = card.getBoundingClientRect();
+      const x = ((e.clientX - rect.left) / rect.width) * 100;
+      const y = ((e.clientY - rect.top) / rect.height) * 100;
+      card.style.setProperty('--mouse-x', `${x}%`);
+      card.style.setProperty('--mouse-y', `${y}%`);
+    });
+  });
+
+  // Add intersection observer for scroll animations
+  const observer = new IntersectionObserver((entries) => {
+    entries.forEach(entry => {
+      if (entry.isIntersecting) {
+        entry.target.style.opacity = '1';
+        entry.target.style.transform = 'translateY(0)';
+      }
+    });
+  }, {
+    threshold: 0.1,
+    rootMargin: '0px 0px -50px 0px'
+  });
+
+  // Observe glow cards
+  document.querySelectorAll('.glow-card').forEach((card, index) => {
+    card.style.opacity = '0';
+    card.style.transform = 'translateY(30px)';
+    card.style.transition = `opacity 0.6s var(--ease-out) ${index * 0.1}s, transform 0.6s var(--ease-out) ${index * 0.1}s`;
+    observer.observe(card);
+  });
+
+  // Observe security items
+  document.querySelectorAll('.security-item').forEach((item, index) => {
+    item.style.opacity = '0';
+    item.style.transform = 'translateY(20px)';
+    item.style.transition = `opacity 0.5s var(--ease-out) ${index * 0.1}s, transform 0.5s var(--ease-out) ${index * 0.1}s`;
+    observer.observe(item);
+  });
+
+  // Observe steps
+  document.querySelectorAll('.step').forEach((step, index) => {
+    step.style.opacity = '0';
+    step.style.transform = 'translateY(20px)';
+    step.style.transition = `opacity 0.5s var(--ease-out) ${index * 0.1}s, transform 0.5s var(--ease-out) ${index * 0.1}s`;
+    observer.observe(step);
+  });
+
+  // Observe pricing cards
+  document.querySelectorAll('.pricing-card').forEach((card, index) => {
+    card.style.opacity = '0';
+    card.style.transform = 'translateY(30px)';
+    card.style.transition = `opacity 0.6s var(--ease-out) ${index * 0.15}s, transform 0.6s var(--ease-out) ${index * 0.15}s`;
+    observer.observe(card);
+  });
+</script>
+</body>
+</html>

@@ -49,11 +49,12 @@ export default function RootLayout({
   return (
     <html lang="en" suppressHydrationWarning>
       <body
-        className={`${outfit.variable} ${jetbrainsMono.variable} font-sans`}
+        className={`${outfit.variable} ${jetbrainsMono.variable} font-sans bg-grid`}
         suppressHydrationWarning
       >
-        {/* Background grid pattern */}
-        <div className="bg-grid" />
+        {/* Ambient glow effects */}
+        <div className="bg-glow bg-glow-top-right" aria-hidden="true" />
+        <div className="bg-glow bg-glow-bottom-left" aria-hidden="true" />
         {children}
       </body>
     </html>

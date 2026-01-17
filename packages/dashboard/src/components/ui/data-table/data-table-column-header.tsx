@@ -7,8 +7,7 @@ import type { DataTableColumnHeaderProps } from './types'
 
 /**
  * Sortable column header component for the DataTable.
- * Displays the column title with sort indicators.
- * Click to toggle between ascending, descending, and no sort.
+ * Uses the klaas dark theme with amber accent for sort indicators.
  */
 export function DataTableColumnHeader({
   column,
@@ -22,7 +21,7 @@ export function DataTableColumnHeader({
     return (
       <span className={clsx(
         'text-xs font-medium uppercase tracking-wider',
-        'text-gray-500 dark:text-gray-400',
+        'text-app-text-muted',
         className
       )}>
         {title}
@@ -45,17 +44,17 @@ export function DataTableColumnHeader({
       }}
       className={clsx(
         'flex items-center gap-1.5 text-xs font-medium uppercase',
-        'tracking-wider text-gray-500 dark:text-gray-400',
-        'hover:text-gray-700 dark:hover:text-gray-200',
+        'tracking-wider text-app-text-muted',
+        'hover:text-app-text-primary',
         'transition-colors cursor-pointer select-none',
         className
       )}
     >
       {title}
       {sortDirection === 'asc' ? (
-        <ArrowUp className="h-3.5 w-3.5 text-purple-600 dark:text-purple-400" />
+        <ArrowUp className="h-3.5 w-3.5 text-app-accent" />
       ) : sortDirection === 'desc' ? (
-        <ArrowDown className="h-3.5 w-3.5 text-purple-600 dark:text-purple-400" />
+        <ArrowDown className="h-3.5 w-3.5 text-app-accent" />
       ) : (
         <ArrowUpDown className="h-3.5 w-3.5 opacity-50" />
       )}

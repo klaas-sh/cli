@@ -10,10 +10,10 @@ import { AppIcon } from '@/components/icons/app-icon'
 function SignupFormWrapper(): ReactElement {
   return (
     <Suspense fallback={
-      <div className="bg-white dark:bg-gray-800 shadow rounded-lg p-6">
+      <div className="rounded-xl bg-[#121216]/50 border border-white/5 p-6">
         <div className="flex items-center justify-center py-8">
           <div className="animate-spin rounded-full h-8 w-8 border-b-2
-            border-app-primary"></div>
+            border-[#f59e0b]"></div>
         </div>
       </div>
     }>
@@ -24,21 +24,21 @@ function SignupFormWrapper(): ReactElement {
 
 /**
  * Client-side signup page component.
- * Displays the Klaas branding and signup form.
+ * Displays the Klaas branding and signup form with dark theme.
  */
 export default function SignupPageClient(): ReactElement {
   return (
     <div className="signup-page min-h-screen flex items-center justify-center
-      bg-gray-50 dark:bg-gray-900">
+      px-4">
       <div className="max-w-md w-full">
         <div className="text-center mb-8">
           <div className="flex items-center justify-center mb-4">
             <AppIcon className="mr-3" size={40} />
-            <h1 className="text-3xl font-bold text-gray-900 dark:text-white">
-              Klaas
+            <h1 className="text-3xl font-bold font-mono text-[#fafafa]">
+              klaas
             </h1>
           </div>
-          <p className="text-gray-600 dark:text-gray-400">
+          <p className="text-[#a1a1aa]">
             Create your account
           </p>
         </div>
@@ -46,12 +46,11 @@ export default function SignupPageClient(): ReactElement {
         <SignupFormWrapper />
 
         <div className="mt-6 text-center">
-          <p className="text-sm text-gray-600 dark:text-gray-400">
+          <p className="text-sm text-[#a1a1aa]">
             Already have an account?{' '}
             <a
               href="/login"
-              className="text-app-primary dark:text-app-primary-dark hover:underline
-                font-medium"
+              className="text-[#f59e0b] hover:text-[#fbbf24] font-medium"
             >
               Sign in
             </a>

@@ -1,6 +1,14 @@
 # Klaas Dashboard
 
-Web dashboard for remote access and control of Claude Code sessions.
+Web dashboard for remote access and control of AI coding agent sessions.
+
+## Features
+
+- **Real-time terminal streaming** - View agent output character by character
+- **Multi-session support** - Monitor multiple sessions simultaneously
+- **Remote input** - Send prompts and keystrokes to your agents
+- **E2EE decryption** - All decryption happens client-side in your browser
+- **Responsive design** - Works on desktop and mobile
 
 ## Development
 

@@ -16,7 +16,7 @@ import type { DataTableProps } from './types'
 
 /**
  * Unified DataTable component built on TanStack Table.
- * Provides sorting, filtering, pagination, and row selection.
+ * Uses the klaas dark theme with amber accents.
  */
 export function DataTable<TData extends { id: string }>({
   data,
@@ -88,8 +88,8 @@ export function DataTable<TData extends { id: string }>({
             type="checkbox"
             checked={table.getIsAllPageRowsSelected()}
             onChange={(e) => table.toggleAllPageRowsSelected(e.target.checked)}
-            className="rounded border-gray-300 dark:border-gray-600
-              text-purple-600 focus:ring-purple-500"
+            className="rounded border-app-border-visible bg-app-bg-deep
+              text-app-accent focus:ring-app-accent"
             aria-label="Select all"
           />
         </div>
@@ -110,8 +110,8 @@ export function DataTable<TData extends { id: string }>({
             type="checkbox"
             checked={row.getIsSelected()}
             onChange={(e) => row.toggleSelected(e.target.checked)}
-            className="rounded border-gray-300 dark:border-gray-600
-              text-purple-600 focus:ring-purple-500"
+            className="rounded border-app-border-visible bg-app-bg-deep
+              text-app-accent focus:ring-app-accent"
             aria-label="Select row"
           />
         </div>
@@ -188,8 +188,8 @@ export function DataTable<TData extends { id: string }>({
 
   return (
     <div className={clsx(
-      'rounded-xl border border-gray-200 dark:border-gray-700',
-      'bg-white dark:bg-gray-800 shadow-sm overflow-hidden',
+      'rounded-xl border border-app-border-visible',
+      'bg-app-bg-surface overflow-hidden',
       className
     )}>
       {/* Header with search, filters, count, pagination */}
@@ -215,8 +215,7 @@ export function DataTable<TData extends { id: string }>({
       <div className="overflow-x-auto">
         <table className="w-full">
           <thead>
-            <tr className="border-b border-gray-200 dark:border-gray-700
-              bg-gray-50 dark:bg-gray-900">
+            <tr className="border-b border-app-border-subtle bg-app-bg-elevated">
               {table.getHeaderGroups().map((headerGroup) =>
                 headerGroup.headers.map((header) => (
                   <th
@@ -243,7 +242,7 @@ export function DataTable<TData extends { id: string }>({
               )}
             </tr>
           </thead>
-          <tbody className="divide-y divide-gray-100 dark:divide-gray-700">
+          <tbody className="divide-y divide-app-border-subtle">
             {loading ? (
               <tr>
                 <td
@@ -251,7 +250,7 @@ export function DataTable<TData extends { id: string }>({
                   className="px-4 py-8 text-center"
                 >
                   <div className="inline-block h-6 w-6 animate-spin
-                    rounded-full border-2 border-purple-600 border-t-transparent"
+                    rounded-full border-2 border-app-accent border-t-transparent"
                   />
                 </td>
               </tr>
@@ -262,13 +261,11 @@ export function DataTable<TData extends { id: string }>({
                   className="px-4 py-12 text-center"
                 >
                   <div className="flex flex-col items-center gap-2">
-                    <span className="text-gray-500 dark:text-gray-400
-                      font-medium">
+                    <span className="text-app-text-secondary font-medium">
                       {emptyMessage}
                     </span>
                     {emptyDescription && (
-                      <span className="text-sm text-gray-400
-                        dark:text-gray-500">
+                      <span className="text-sm text-app-text-muted">
                         {emptyDescription}
                       </span>
                     )}
@@ -280,17 +277,16 @@ export function DataTable<TData extends { id: string }>({
                 <tr
                   key={row.id}
                   className={clsx(
-                    'hover:bg-gray-50 dark:hover:bg-gray-700',
+                    'hover:bg-app-bg-elevated transition-colors',
                     onRowClick && 'cursor-pointer',
-                    row.getIsSelected() && 'bg-purple-50 dark:bg-purple-900/20'
+                    row.getIsSelected() && 'bg-app-accent-muted'
                   )}
                   onClick={() => onRowClick?.(row.original)}
                 >
                   {row.getVisibleCells().map((cell) => (
                     <td
                       key={cell.id}
-                      className="px-4 py-4 text-sm text-gray-900
-                        dark:text-gray-100"
+                      className="px-4 py-4 text-sm text-app-text-primary"
                     >
                       {flexRender(
                         cell.column.columnDef.cell,

@@ -138,10 +138,11 @@ export function LoginForm(): React.JSX.Element {
   }
 
   return (
-    <div className="bg-white dark:bg-gray-800 shadow rounded-lg p-6">
-      {returnUrl && (
-        <div className="mb-4 p-3 bg-app-highlight dark:bg-app-highlight-dark rounded-lg">
-          <p className="text-sm text-app-primary dark:text-app-primary-dark">
+    <div className="rounded-xl bg-[#121216]/50 border border-white/5 p-6">
+      {returnUrl && returnUrl !== '%2F' && returnUrl !== '/' && (
+        <div className="mb-4 p-3 bg-[#f59e0b]/10 border border-[#f59e0b]/30
+          rounded-lg">
+          <p className="text-sm text-[#f59e0b]">
             Your session has expired. You&apos;ll be redirected after signing
             in.
           </p>
@@ -155,7 +156,7 @@ export function LoginForm(): React.JSX.Element {
             <div>
               <label
                 htmlFor="email"
-                className="block text-sm font-medium text-gray-700 dark:text-gray-300"
+                className="block text-sm font-medium text-[#a1a1aa]"
               >
                 Email
               </label>
@@ -180,7 +181,7 @@ export function LoginForm(): React.JSX.Element {
             <div>
               <label
                 htmlFor="current-password"
-                className="block text-sm font-medium text-gray-700 dark:text-gray-300"
+                className="block text-sm font-medium text-[#a1a1aa]"
               >
                 Password
               </label>
@@ -202,8 +203,9 @@ export function LoginForm(): React.JSX.Element {
         ) : (
           // MFA verification form
           <>
-            <div className="bg-app-highlight dark:bg-app-highlight-dark p-4 rounded-lg">
-              <p className="text-sm text-app-primary dark:text-app-primary-dark">
+            <div className="p-4 bg-[#f59e0b]/10 border border-[#f59e0b]/30
+              rounded-lg">
+              <p className="text-sm text-[#f59e0b]">
                 Multi-factor authentication is enabled for your account.
               </p>
             </div>
@@ -212,8 +214,7 @@ export function LoginForm(): React.JSX.Element {
               <div>
                 <label
                   htmlFor="mfa-code"
-                  className="block text-sm font-medium text-gray-700
-                    dark:text-gray-300 mb-3"
+                  className="block text-sm font-medium text-[#a1a1aa] mb-3"
                 >
                   Authentication Code
                 </label>
@@ -226,13 +227,11 @@ export function LoginForm(): React.JSX.Element {
                       inputMode="numeric"
                       autoComplete={index === 0 ? "one-time-code" : "off"}
                       maxLength={1}
-                      className="block w-[52px] h-[52px] text-center border-2
-                               border-gray-300 rounded-lg text-xl font-medium
-                               focus:border-app-primary focus:ring-2
-                               focus:ring-app-border focus:outline-none
-                               dark:bg-gray-800 dark:border-gray-600
-                               dark:text-white dark:focus:border-app-primary-dark
-                               dark:focus:ring-app-border-dark"
+                      className="block w-[52px] h-[52px] text-center border
+                               border-white/10 rounded-lg text-xl font-medium
+                               bg-[#09090b] text-[#fafafa]
+                               focus:border-[#f59e0b] focus:ring-1
+                               focus:ring-[#f59e0b]/30 focus:outline-none"
                       value={mfaToken[index] || ''}
                       onChange={(e) => {
                         const value = e.target.value.replace(/[^0-9]/g, '')
@@ -287,8 +286,7 @@ export function LoginForm(): React.JSX.Element {
                     />
                   ))}
                 </div>
-                <p className="text-xs text-gray-500 dark:text-gray-400
-                  mt-3 text-center">
+                <p className="text-xs text-[#71717a] mt-3 text-center">
                   Enter the 6-digit code from your authenticator app
                 </p>
               </div>
@@ -296,8 +294,7 @@ export function LoginForm(): React.JSX.Element {
               <div>
                 <label
                   htmlFor="backup-code"
-                  className="block text-sm font-medium text-gray-700
-                    dark:text-gray-300"
+                  className="block text-sm font-medium text-[#a1a1aa]"
                 >
                   Backup Code
                 </label>
@@ -316,7 +313,7 @@ export function LoginForm(): React.JSX.Element {
                   spellCheck="false"
                   required
                 />
-                <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
+                <p className="text-xs text-[#71717a] mt-1">
                   Enter one of your 8-character backup codes
                 </p>
               </div>
@@ -331,8 +328,7 @@ export function LoginForm(): React.JSX.Element {
                   setBackupCode('')
                   setError('')
                 }}
-                className="text-sm text-gray-500 dark:text-gray-400
-                  hover:text-gray-700 dark:hover:text-gray-200 underline"
+                className="text-sm text-[#71717a] hover:text-[#a1a1aa] underline"
               >
                 {useBackupCode
                   ? 'Use authenticator app instead'
@@ -343,8 +339,8 @@ export function LoginForm(): React.JSX.Element {
         )}
 
         {error && (
-          <div className="text-red-600 dark:text-red-400 text-sm bg-red-50
-                        dark:bg-red-900/20 p-3 rounded-lg">
+          <div className="text-[#ef4444] text-sm bg-[#ef4444]/10
+            border border-[#ef4444]/30 p-3 rounded-lg">
             {error}
           </div>
         )}
@@ -352,7 +348,7 @@ export function LoginForm(): React.JSX.Element {
         <div className="space-y-3">
           <Button
             type="submit"
-            className="w-full bg-app-primary hover:bg-app-primary-hover text-white"
+            className="w-full"
             disabled={isLoading
               || (mfaRequired && !useBackupCode && !mfaToken.trim())
               || (mfaRequired && useBackupCode && !backupCode.trim())}

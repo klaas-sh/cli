@@ -106,22 +106,18 @@ html {
 }
 
 body {
-  background: var(--color-app-bg-deep);
+  background: var(--color-app-bg-void);
   color: var(--color-app-text-primary);
   line-height: 1.6;
   -webkit-font-smoothing: antialiased;
 }
 
-/* Background grid pattern */
+/* Background grid pattern - applied to body, class kept for backwards compat */
 .bg-grid {
-  position: fixed;
-  inset: 0;
   background-image:
     linear-gradient(rgba(255, 255, 255, 0.02) 1px, transparent 1px),
     linear-gradient(90deg, rgba(255, 255, 255, 0.02) 1px, transparent 1px);
   background-size: 64px 64px;
-  pointer-events: none;
-  z-index: 0;
 }
 
 /* Ambient glow effects */
@@ -336,4 +332,24 @@ body {
 .login-page > div[data-lastpass-root],
 .login-page ~ div[data-lastpass-root] {
   display: block !important;
+}
+
+/*
+ * Autofill styles for dark theme
+ * Override Chrome/Safari autofill background colors
+ */
+input:-webkit-autofill,
+input:-webkit-autofill:hover,
+input:-webkit-autofill:focus,
+input:-webkit-autofill:active {
+  -webkit-box-shadow: 0 0 0 30px var(--color-app-bg-void) inset !important;
+  -webkit-text-fill-color: var(--color-app-text-primary) !important;
+  caret-color: var(--color-app-text-primary) !important;
+  transition: background-color 5000s ease-in-out 0s;
+}
+
+/* Firefox autofill */
+input:autofill {
+  background-color: var(--color-app-bg-void) !important;
+  color: var(--color-app-text-primary) !important;
 }

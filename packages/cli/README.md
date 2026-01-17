@@ -5,8 +5,8 @@
 <h1 align="center">klaas</h1>
 
 <p align="center">
-  <strong>Remote access CLI for Claude Code</strong><br>
-  Control your Claude Code sessions from anywhere
+  <strong>Remote terminal access for agentic coding tools</strong><br>
+  Stream your sessions to any device with E2EE
 </p>
 
 <p align="center">
@@ -26,12 +26,26 @@
 
 ## What is klaas?
 
-**klaas** wraps your Claude Code sessions and streams them to the cloud, enabling remote access from any device via a web interface. Perfect for:
+**klaas** wraps your AI coding agent sessions and streams them to the cloud,
+enabling remote access from any device via a web interface. Perfect for:
 
-- **Remote approval** - Approve tool calls from any device when Claude needs permission
-- **Remote instructions** - Send new prompts and instructions to Claude from anywhere
-- **Monitor sessions** - Watch long-running coding sessions from any device
-- **Stay in control** - Keep an eye on autonomous coding tasks wherever you are
+- **Real-time streaming** - See terminal output character by character, as it
+  happens
+- **Multi-device access** - Start on desktop, check progress from your phone
+- **Remote approval** - Approve tool calls from anywhere when your agent needs
+  permission
+- **Remote instructions** - Send prompts and guide your agent from any device
+- **End-to-end encrypted** - Your sessions are encrypted. We can't read them.
+
+## Supported Agents
+
+| Agent | Flag | Shortcut | Hooks |
+|-------|------|----------|-------|
+| [Claude Code](https://code.claude.com/) | `--claude` | `[A]` | Full |
+| [Gemini CLI](https://geminicli.com/) | `--gemini` | `[G]` | Full |
+| [Codex CLI](https://developers.openai.com/codex/cli/) | `--codex` | `[O]` | Partial |
+| [Copilot CLI](https://github.com/features/copilot/cli) | `--copilot` | `[C]` | - |
+| [Vibe CLI](https://mistral.ai/news/devstral-2-vibe-cli) | `--vibe` | `[M]` | - |
 
 ## Installation
 
@@ -62,35 +76,39 @@ scoop install klaas
 
 ## Usage
 
-Simply replace `claude` with `klaas`:
-
 ```bash
-# Start Claude Code with remote access
+# Auto-detect installed agent (interactive if multiple)
 klaas
 
-# Start with a prompt
-klaas -p "Review this codebase"
+# Use a specific agent
+klaas --claude
+klaas --gemini
+klaas --codex
 
 # Start a new session (instead of resuming)
 klaas --new-session
 
-# Pass any Claude Code arguments
-klaas --model sonnet --allowedTools Read,Write
+# Pass arguments to the agent
+klaas --claude -- --model sonnet --allowedTools "Bash(git*)"
+
+# List available agents
+klaas --list-agents
 ```
 
-On first run, you'll be prompted to authenticate via your browser. Once authenticated, your session is automatically streamed to the klaas dashboard.
+On first run, you'll be prompted to authenticate via your browser. Once
+authenticated, your session is automatically streamed to the klaas dashboard.
 
 ## How It Works
 
 ```
 ┌─────────────┐     ┌─────────────┐     ┌─────────────┐
-│   klaas     │────▶│  Claude     │────▶│  Terminal   │
-│   CLI       │◀────│  Code       │◀────│  Output     │
+│   klaas     │────▶│   Agent     │────▶│  Terminal   │
+│   CLI       │◀────│   CLI       │◀────│  Output     │
 └─────────────┘     └─────────────┘     └─────────────┘
        │                                       │
        │         ┌─────────────┐               │
        └────────▶│   klaas     │◀──────────────┘
-                 │   Cloud     │
+        (E2EE)   │   Cloud     │
                  └─────────────┘
                        │
                  ┌─────────────┐
@@ -99,23 +117,40 @@ On first run, you'll be prompted to authenticate via your browser. Once authenti
                  └─────────────┘
 ```
 
-1. **klaas** spawns Claude Code in a pseudo-terminal (PTY)
-2. All input/output is captured and forwarded
-3. Output is streamed to the klaas cloud in real-time
+1. **klaas** detects installed agents and spawns your choice in a PTY
+2. All input/output is captured and encrypted client-side
+3. Encrypted output is streamed to the klaas cloud in real-time
 4. Access your session from the web dashboard at [klaas.sh](https://klaas.sh)
+5. For agents with hooks support, permission requests trigger notifications
 
 ## Commands
 
 | Command | Description |
 |---------|-------------|
-| `klaas` | Start Claude Code with remote access |
-| `klaas update` | Update klaas to the latest version |
+| `klaas` | Start with auto-detected agent |
+| `klaas --claude` | Start with Claude Code |
+| `klaas --gemini` | Start with Gemini CLI |
+| `klaas --list-agents` | List available agents |
+| `klaas update` | Update to latest version |
 | `klaas --version` | Show version |
 | `klaas --help` | Show help |
 
 ## Configuration
 
-klaas stores credentials securely in your system keychain (macOS Keychain, Windows Credential Manager, or Linux Secret Service).
+klaas stores credentials securely in your system keychain (macOS Keychain,
+Windows Credential Manager, or Linux Secret Service).
+
+### Configuration File
+
+Create `.klaas/config.toml` in your project or `~/.klaas/config.toml` globally:
+
+```toml
+# Default agent when multiple are available
+default_agent = "claude"
+
+# Only show these agents (even if others are installed)
+only = ["claude", "gemini"]
+```
 
 ### Environment Variables
 

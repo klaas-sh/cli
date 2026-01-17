@@ -1,33 +1,37 @@
 # Klaas
 
-Remote access wrapper for Claude Code sessions. Run Claude Code locally and
-view/interact with it from anywhere via a web browser.
+Remote terminal access for agentic coding tools. Stream your terminal sessions
+to any device in real-time with end-to-end encryption.
 
 ## Features
 
-- **Remote Approval**: Approve tool calls from any device when Claude needs
-  permission - never miss a prompt while away from your desk
-- **Remote Instructions**: Send new prompts and instructions to Claude from
-  anywhere - keep your coding session moving forward
-- **Remote Viewing**: Stream terminal output in real-time to a web dashboard
-- **Transparent Wrapper**: Wraps Claude Code in a PTY without modifying its
-  behavior - all Claude Code commands work unchanged
-- **OAuth Authentication**: Secure device-based authentication flow
-- **Auto-reconnect**: Handles connection drops gracefully
+- **Real-time Streaming**: See terminal output character by character, from any
+  device, as it happens
+- **Multi-device Access**: Start on desktop, check progress from your phone
+  while grabbing coffee
+- **End-to-End Encrypted**: Your terminal sessions are encrypted client-side.
+  Not even the Klaas team can read your data
+- **Multi-Agent Support**: Works with Claude Code, Gemini CLI, Codex CLI,
+  GitHub Copilot, Aider, and more
+- **Permission Notifications**: Get notified when your agent needs approval
+  (Claude Code, Gemini CLI)
+- **Remote Input**: Send prompts and approve tool calls from anywhere
 
 ## Architecture
 
 ```
 ┌─────────────┐     WebSocket      ┌─────────────┐     WebSocket     ┌─────────────┐
-│  Klaas CLI   │◄──────────────────►│ Cloudflare  │◄────────────────►│    Web      │
-│  (Rust)     │                    │  Workers    │                   │  Dashboard  │
+│  Klaas CLI  │◄──────────────────►│ Cloudflare  │◄────────────────►│    Web      │
+│  (Rust)     │    (E2EE)          │  Workers    │     (E2EE)        │  Dashboard  │
 │             │                    │  + D1 + DO  │                   │  (Next.js)  │
 └─────────────┘                    └─────────────┘                   └─────────────┘
       │
       ▼
 ┌─────────────┐
-│ Claude Code │
-│   (PTY)     │
+│ Agent CLI   │
+│ (Claude,    │
+│  Gemini,    │
+│  Codex...)  │
 └─────────────┘
 ```
 
@@ -37,7 +41,17 @@ view/interact with it from anywhere via a web browser.
 
 - [Rust](https://rustup.rs/) (for the CLI)
 - [Node.js](https://nodejs.org/) >= 18 (for API and dashboard)
-- [Claude Code](https://claude.ai/claude-code) installed and in PATH
+- One of the supported agents installed
+
+### Supported Agents
+
+| Agent | Command | Hooks |
+|-------|---------|-------|
+| [Claude Code](https://code.claude.com/) | `klaas --claude` | Full |
+| [Gemini CLI](https://geminicli.com/) | `klaas --gemini` | Full |
+| [Codex CLI](https://developers.openai.com/codex/cli/) | `klaas --codex` | Partial |
+| [Copilot CLI](https://github.com/features/copilot/cli) | `klaas --copilot` | - |
+| [Vibe CLI](https://mistral.ai/news/devstral-2-vibe-cli) | `klaas --vibe` | - |
 
 ### 1. Install Dependencies
 
@@ -75,8 +89,7 @@ On first run, you'll be prompted to authenticate via the web dashboard.
 ### 4. View in Browser
 
 Open [http://localhost:3001](http://localhost:3001), log in, and navigate to
-Sessions. You should see your active Claude Code session and can interact with
-it remotely.
+Sessions. You should see your active session and can interact with it remotely.
 
 ## Project Structure
 
@@ -86,6 +99,7 @@ packages/
 │   └── src/
 │       ├── main.rs      # Entry point
 │       ├── app.rs       # Main event loop
+│       ├── agents.rs    # Agent detection & selection
 │       ├── pty.rs       # PTY management
 │       ├── websocket.rs # WebSocket client
 │       ├── auth.rs      # OAuth device flow
@@ -126,24 +140,26 @@ yarn typecheck      # TypeScript type checking
 cd packages/cli
 
 cargo build         # Build
-cargo run           # Run (wraps claude command)
+cargo run           # Run (auto-detects agents)
+cargo run -- --claude  # Run with specific agent
 cargo test          # Run tests
 cargo clippy        # Lint
 ```
 
 ## How It Works
 
-1. **CLI starts**: Spawns Claude Code in a PTY, authenticates via OAuth
+1. **CLI starts**: Detects installed agents, spawns selected one in a PTY
 2. **WebSocket connects**: CLI connects to SessionHub Durable Object
-3. **I/O streaming**: All PTY output is base64-encoded and sent to the server
-4. **Web viewing**: Dashboard connects to same SessionHub, receives output
-5. **Remote input**: Browser keystrokes sent via WebSocket to CLI, injected
-   into PTY
+3. **E2EE streaming**: All terminal I/O is encrypted client-side and streamed
+4. **Web viewing**: Dashboard connects to same SessionHub, decrypts locally
+5. **Remote input**: Browser input encrypted and sent to CLI, injected into PTY
+6. **Hook notifications**: For supported agents, permission requests trigger
+   notifications
 
 ## Security: End-to-End Encryption
 
 Klaas implements end-to-end encryption (E2EE) ensuring that **only you can read
-your terminal sessions** - not even the klaas team can decrypt your data.
+your terminal sessions** - not even the Klaas team can decrypt your data.
 
 ### How It Works
 
@@ -186,8 +202,8 @@ your terminal sessions** - not even the klaas team can decrypt your data.
 
 | Data | Encrypted |
 |------|-----------|
-| Terminal output | ✓ AES-256-GCM |
-| Terminal input (keystrokes) | ✓ AES-256-GCM |
+| Terminal output | AES-256-GCM |
+| Terminal input (keystrokes) | AES-256-GCM |
 | Session metadata (timestamps) | Plaintext (for functionality) |
 | Authentication tokens | Separate (JWT/OAuth) |
 

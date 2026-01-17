@@ -507,6 +507,254 @@ class ApiClient {
   getToken(): string | null {
     return localStorage.getItem(TOKEN_KEY)
   }
+
+  /**
+   * Sign up with email only (email-only flow).
+   * User sets password after email verification.
+   */
+  async signupWithEmail(email: string): Promise<void> {
+    const response = await fetch(
+      `${this.baseUrl}/auth/signup`,
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email }),
+      }
+    )
+
+    if (!response.ok) {
+      const error = await response.json() as { error?: string }
+      throw new Error(error.error || 'Signup failed')
+    }
+  }
+
+  /**
+   * Verify email with token.
+   * Returns passwordSetupToken for the next step.
+   */
+  async verifyEmail(
+    token: string
+  ): Promise<{ passwordSetupToken: string }> {
+    const response = await fetch(
+      `${this.baseUrl}/auth/verify-email`,
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ token }),
+      }
+    )
+
+    if (!response.ok) {
+      const error = await response.json() as { error?: string }
+      throw new Error(error.error || 'Email verification failed')
+    }
+
+    const result = await response.json() as {
+      data?: { passwordSetupToken: string }
+      passwordSetupToken?: string
+    }
+    return {
+      passwordSetupToken: result.data?.passwordSetupToken ||
+        result.passwordSetupToken || ''
+    }
+  }
+
+  /**
+   * Set password after email verification.
+   * Uses client-side key derivation with salt.
+   */
+  async setPassword(token: string, password: string): Promise<void> {
+    // Step 1: Generate salt and MEK client-side
+    const salt = generateSalt()
+    const mek = generateMEK()
+
+    // Step 2: Derive auth_key and enc_key from password
+    const [authKey, encKey] = await Promise.all([
+      deriveAuthKey(password, salt),
+      deriveEncKey(password, salt),
+    ])
+
+    // Step 3: Encrypt MEK with enc_key
+    const encryptedMek = await encryptMEK(encKey, mek)
+
+    // Step 4: Send to server
+    const response = await fetch(
+      `${this.baseUrl}/auth/set-password`,
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({
+          token,
+          salt: base64Encode(salt),
+          auth_key: base64Encode(authKey),
+          encrypted_mek: encryptedMek,
+        }),
+      }
+    )
+
+    if (!response.ok) {
+      const error = await response.json() as { error?: string }
+      throw new Error(error.error || 'Password setup failed')
+    }
+
+    const result = await response.json() as {
+      data?: { accessToken: string; refreshToken?: string }
+    }
+
+    // Step 5: Store MEK and tokens
+    if (result.data?.accessToken) {
+      await storeMEKLocally(mek)
+      localStorage.setItem(TOKEN_KEY, result.data.accessToken)
+      if (result.data.refreshToken) {
+        localStorage.setItem(REFRESH_TOKEN_KEY, result.data.refreshToken)
+      }
+
+      // Set cookies
+      const isHttps = window.location.protocol === 'https:'
+      const secureFlag = isHttps ? '; secure' : ''
+      const accessCookieOptions = `path=/; max-age=${60 * 60 * 24}; ` +
+        `samesite=strict${secureFlag}`
+      document.cookie = `${TOKEN_KEY}=${result.data.accessToken}; ` +
+        accessCookieOptions
+
+      if (result.data.refreshToken) {
+        const refreshCookieOptions = `path=/; max-age=${60 * 60 * 24 * 30}; ` +
+          `samesite=strict${secureFlag}`
+        document.cookie = `${REFRESH_TOKEN_COOKIE}=${result.data.refreshToken}` +
+          `; ${refreshCookieOptions}`
+      }
+    }
+  }
+
+  /**
+   * Request password reset email.
+   */
+  async requestPasswordReset(email: string): Promise<void> {
+    const response = await fetch(
+      `${this.baseUrl}/auth/forgot-password`,
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email }),
+      }
+    )
+
+    if (!response.ok) {
+      const error = await response.json() as { error?: string }
+      throw new Error(error.error || 'Password reset request failed')
+    }
+  }
+
+  /**
+   * Reset password with token.
+   * Uses client-side key derivation with new salt.
+   */
+  async resetPassword(token: string, password: string): Promise<void> {
+    // Step 1: Generate new salt and MEK client-side
+    const salt = generateSalt()
+    const mek = generateMEK()
+
+    // Step 2: Derive auth_key and enc_key from password
+    const [authKey, encKey] = await Promise.all([
+      deriveAuthKey(password, salt),
+      deriveEncKey(password, salt),
+    ])
+
+    // Step 3: Encrypt MEK with enc_key
+    const encryptedMek = await encryptMEK(encKey, mek)
+
+    // Step 4: Send to server
+    const response = await fetch(
+      `${this.baseUrl}/auth/reset-password`,
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({
+          token,
+          salt: base64Encode(salt),
+          auth_key: base64Encode(authKey),
+          encrypted_mek: encryptedMek,
+        }),
+      }
+    )
+
+    if (!response.ok) {
+      const error = await response.json() as { error?: string }
+      throw new Error(error.error || 'Password reset failed')
+    }
+
+    // Step 5: Store MEK locally (user will need to login again)
+    await storeMEKLocally(mek)
+  }
+
+  /**
+   * Setup MFA for the user.
+   * Returns QR code and backup codes.
+   */
+  async setupMFA(): Promise<{
+    secret: string
+    qrCodeDataUrl: string
+    backupCodes: string[]
+  }> {
+    const token = localStorage.getItem(TOKEN_KEY)
+    const response = await fetch(
+      `${this.baseUrl}/dashboard/auth/setup-mfa`,
+      {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json'
+        },
+        credentials: 'include',
+      }
+    )
+
+    const result = await response.json() as {
+      success?: boolean
+      data?: {
+        secret: string
+        qrCodeDataUrl: string
+        backupCodes: string[]
+      }
+      error?: string
+    }
+
+    if (!result.success || !result.data) {
+      throw new Error(result.error || 'Failed to setup MFA')
+    }
+
+    return result.data
+  }
+
+  /**
+   * Verify MFA setup with code from authenticator app.
+   */
+  async verifyMFA(mfaToken: string): Promise<void> {
+    const token = localStorage.getItem(TOKEN_KEY)
+    const response = await fetch(
+      `${this.baseUrl}/dashboard/auth/verify-mfa`,
+      {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json'
+        },
+        credentials: 'include',
+        body: JSON.stringify({ mfaToken }),
+      }
+    )
+
+    const result = await response.json() as {
+      success?: boolean
+      error?: string
+    }
+
+    if (!result.success) {
+      throw new Error(result.error || 'Invalid verification code')
+    }
+  }
 }
 
 export const apiClient = new ApiClient()
