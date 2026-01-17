@@ -62,9 +62,9 @@ struct Cli {
     #[arg(short = 'a', long = "agent", value_name = "AGENT")]
     agent: Option<String>,
 
-    /// Start a new session instead of resuming the previous one.
+    /// Resume the previous session instead of starting a new one.
     #[arg(long)]
-    new_session: bool,
+    resume: bool,
 
     /// Arguments to pass through to the agent.
     /// All unrecognized arguments are forwarded.
@@ -178,7 +178,7 @@ async fn main() -> anyhow::Result<()> {
     };
 
     // Run the application with selected agent
-    let exit_code = match app::run(selected_agent, cli.agent_args, cli.new_session).await {
+    let exit_code = match app::run(selected_agent, cli.agent_args, cli.resume).await {
         Ok(code) => {
             // Show update notification after agent exits
             update::display_update_notification();

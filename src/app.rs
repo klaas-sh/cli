@@ -39,11 +39,11 @@ const WS_RECV_TIMEOUT_MS: u64 = 10;
 /// # Arguments
 /// * `agent` - The selected agent to run.
 /// * `agent_args` - Arguments to pass through to the agent.
-/// * `new_session` - If true, start a new session instead of resuming.
+/// * `resume` - If true, resume the previous session instead of starting new.
 ///
 /// # Returns
 /// Exit code from the agent.
-pub async fn run(agent: Agent, agent_args: Vec<String>, new_session: bool) -> Result<i32> {
+pub async fn run(agent: Agent, agent_args: Vec<String>, resume: bool) -> Result<i32> {
     // Load configuration from environment
     let config = get_api_config();
     info!(api_url = %config.api_url, ws_url = %config.ws_url, "Loaded configuration");
@@ -70,11 +70,11 @@ pub async fn run(agent: Agent, agent_args: Vec<String>, new_session: bool) -> Re
     };
 
     // Get or create session ID (persisted for reconnection)
-    let session_id = get_or_create_session_id(&cred_store, new_session)?;
-    if new_session {
-        info!(session_id = %session_id, "Starting new session");
-    } else {
+    let session_id = get_or_create_session_id(&cred_store, resume)?;
+    if resume {
         info!(session_id = %session_id, "Resuming session");
+    } else {
+        info!(session_id = %session_id, "Starting new session");
     }
 
     // Get current working directory and device name
@@ -516,20 +516,19 @@ fn get_or_create_mek(cred_store: &CredentialStore) -> Result<SecretKey> {
 
 /// Gets or creates a session ID.
 ///
-/// If `new_session` is true, always creates a new session ID.
-/// Otherwise, attempts to reuse the stored session ID for reconnection.
-/// This allows the CLI to reconnect to the same session across restarts,
+/// If `resume` is true, attempts to reuse the stored session ID.
+/// Otherwise, creates a new session ID (default behavior).
+/// This allows the CLI to optionally reconnect to the same session,
 /// which means the web dashboard will show the same session.
-fn get_or_create_session_id(cred_store: &CredentialStore, new_session: bool) -> Result<SessionId> {
-    if new_session {
-        // User explicitly requested a new session
-        cred_store.clear_session_id()?;
-    } else {
+fn get_or_create_session_id(cred_store: &CredentialStore, resume: bool) -> Result<SessionId> {
+    if resume {
         // Try to reuse existing session ID
         if let Some(id) = cred_store.get_session_id()? {
             debug!("Retrieved existing session ID");
             return Ok(SessionId::from_string(id));
         }
+        // No existing session to resume, fall through to create new
+        debug!("No existing session to resume, creating new");
     }
 
     // Create and store new session ID
