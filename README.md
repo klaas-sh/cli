@@ -134,16 +134,22 @@ authenticated, your session is automatically streamed to the klaas dashboard.
 
 ## Commands
 
+### Flags
+
+| Short | Long | Description |
+|-------|------|-------------|
+| `-a` | `--agent <AGENT>` | Start with specific agent |
+| | `--resume` | Resume previous session |
+| `-v` | `--version` | Show version |
+| `-h` | `--help` | Show help |
+
+### Subcommands
+
 | Command | Description |
 |---------|-------------|
-| `klaas` | Start with auto-detected agent |
-| `klaas -a <agent>` | Start with specific agent |
-| `klaas --resume` | Resume previous session |
 | `klaas agents` | List installed agents |
 | `klaas upgrade` | Update to latest version |
 | `klaas uninstall` | Uninstall klaas |
-| `klaas --version` | Show version |
-| `klaas --help` | Show help |
 
 ## Configuration
 
@@ -172,13 +178,6 @@ hooks_type = "claude"  # "claude", "gemini", "codex", or "none"
 shortcut = "X"
 ```
 
-### Environment Variables
-
-| Variable | Description | Default |
-|----------|-------------|---------|
-| `KLAAS_API_URL` | API server URL | `https://api.klaas.sh` |
-| `KLAAS_WS_URL` | WebSocket URL | Derived from API URL |
-
 ## Building from Source
 
 ```bash
@@ -201,5 +200,5 @@ MIT License - see [LICENSE](LICENSE) for details.
 
 - [Website](https://klaas.sh)
 - [Documentation](https://klaas.sh/docs)
-- [Dashboard](https://klaas.sh/sessions)
+- [Dashboard](https://app.klaas.sh/)
 - [Report Issues](https://github.com/klaas-sh/cli/issues)
