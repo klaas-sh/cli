@@ -40,8 +40,7 @@ DASHBOARD_URL = "http://localhost:3001"
 [env.staging]
 name = "klaas-api-staging"
 routes = [
-  { pattern = "api-staging.klaas.sh", custom_domain = true },
-  { pattern = "app-staging.klaas.sh", custom_domain = true }
+  { pattern = "api-staging.klaas.sh", custom_domain = true }
 ]
 
 [[env.staging.d1_databases]]
@@ -70,8 +69,7 @@ DASHBOARD_URL = "https://app-staging.klaas.sh"
 [env.production]
 name = "klaas-api-production"
 routes = [
-  { pattern = "api.klaas.sh", custom_domain = true },
-  { pattern = "app.klaas.sh", custom_domain = true }
+  { pattern = "api.klaas.sh", custom_domain = true }
 ]
 
 [[env.production.d1_databases]]
