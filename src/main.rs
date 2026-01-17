@@ -116,6 +116,9 @@ enum Commands {
     /// Update klaas to the latest version.
     Update,
 
+    /// Uninstall klaas from this system.
+    Uninstall,
+
     /// Handle hook events from agents (internal use).
     /// Called by agent CLIs when hooks fire, not by users directly.
     Hook {
@@ -149,6 +152,13 @@ async fn main() -> anyhow::Result<()> {
                 Ok(()) => 0,
                 Err(e) => {
                     eprintln!("Update failed: {}", e);
+                    1
+                }
+            },
+            Commands::Uninstall => match perform_uninstall() {
+                Ok(()) => 0,
+                Err(e) => {
+                    eprintln!("Uninstall failed: {}", e);
                     1
                 }
             },
@@ -299,6 +309,132 @@ fn select_agent(cli: &Cli) -> agents::AgentSelection {
             ui::select_agent(&refs)
         }
     }
+}
+
+/// Uninstalls klaas from the system.
+fn perform_uninstall() -> anyhow::Result<()> {
+    use std::io::{self, Write};
+    use ui::colors;
+
+    // Find where klaas is installed
+    let current_exe = std::env::current_exe()?;
+    let binary_path = current_exe.canonicalize()?;
+
+    // Config directory
+    let config_dir = dirs::config_dir()
+        .map(|p| p.join("klaas"))
+        .unwrap_or_default();
+
+    println!();
+    println!(
+        "  {}Uninstalling klaas...{}",
+        fg_color(colors::AMBER),
+        reset()
+    );
+    println!();
+    println!("  This will remove:");
+    println!(
+        "    {}• {}{}",
+        fg_color(colors::TEXT_SECONDARY),
+        binary_path.display(),
+        reset()
+    );
+    if config_dir.exists() {
+        println!(
+            "    {}• {}{}",
+            fg_color(colors::TEXT_SECONDARY),
+            config_dir.display(),
+            reset()
+        );
+    }
+    println!();
+
+    // Confirm
+    print!(
+        "  {}Continue? [y/N]{} ",
+        fg_color(colors::TEXT_MUTED),
+        reset()
+    );
+    io::stdout().flush()?;
+
+    let mut input = String::new();
+    io::stdin().read_line(&mut input)?;
+    let input = input.trim().to_lowercase();
+
+    if input != "y" && input != "yes" {
+        println!();
+        println!("  Cancelled.");
+        println!();
+        return Ok(());
+    }
+
+    println!();
+
+    // Remove config directory if it exists
+    if config_dir.exists() {
+        std::fs::remove_dir_all(&config_dir)?;
+        println!(
+            "  {}✓{} Removed {}",
+            fg_color(colors::GREEN),
+            reset(),
+            config_dir.display()
+        );
+    }
+
+    // Remove binary (schedule for deletion on Windows, direct on Unix)
+    #[cfg(unix)]
+    {
+        std::fs::remove_file(&binary_path)?;
+        println!(
+            "  {}✓{} Removed {}",
+            fg_color(colors::GREEN),
+            reset(),
+            binary_path.display()
+        );
+    }
+
+    #[cfg(windows)]
+    {
+        // On Windows, we can't delete a running executable directly.
+        // Schedule deletion via a batch script that runs after we exit.
+        let batch_content = format!(
+            "@echo off\n\
+             :retry\n\
+             del \"{}\" >nul 2>&1\n\
+             if exist \"{}\" (\n\
+                 timeout /t 1 /nobreak >nul\n\
+                 goto retry\n\
+             )\n\
+             del \"%~f0\"\n",
+            binary_path.display(),
+            binary_path.display()
+        );
+        let temp_dir = std::env::temp_dir();
+        let batch_path = temp_dir.join("klaas_uninstall.bat");
+        std::fs::write(&batch_path, batch_content)?;
+
+        // Run the batch script detached
+        std::process::Command::new("cmd")
+            .args(["/C", "start", "/min", "", &batch_path.to_string_lossy()])
+            .spawn()?;
+
+        println!(
+            "  {}✓{} Scheduled removal of {}",
+            fg_color(colors::GREEN),
+            reset(),
+            binary_path.display()
+        );
+    }
+
+    println!();
+    println!(
+        "  {}klaas has been uninstalled.{}",
+        fg_color(colors::GREEN),
+        reset()
+    );
+    println!();
+
+    Ok(())
 }
 
 /// Lists available agents and their installation status.
