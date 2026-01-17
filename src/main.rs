@@ -62,26 +62,6 @@ struct Cli {
     #[arg(short = 'a', long = "agent", value_name = "AGENT")]
     agent: Option<String>,
 
-    /// Use Claude Code agent.
-    #[arg(long, conflicts_with_all = ["agent", "gemini", "codex", "aider"])]
-    claude: bool,
-
-    /// Use Gemini CLI agent.
-    #[arg(long, conflicts_with_all = ["agent", "claude", "codex", "aider"])]
-    gemini: bool,
-
-    /// Use OpenAI Codex CLI agent.
-    #[arg(long, conflicts_with_all = ["agent", "claude", "gemini", "aider"])]
-    codex: bool,
-
-    /// Use Aider agent.
-    #[arg(long, conflicts_with_all = ["agent", "claude", "gemini", "codex"])]
-    aider: bool,
-
-    /// List available agents and exit.
-    #[arg(long)]
-    list_agents: bool,
-
     /// Start a new session instead of resuming the previous one.
     #[arg(long)]
     new_session: bool,
@@ -92,31 +72,12 @@ struct Cli {
     agent_args: Vec<String>,
 }
 
-impl Cli {
-    /// Returns the selected agent ID from flags.
-    fn selected_agent(&self) -> Option<&str> {
-        if let Some(ref agent) = self.agent {
-            return Some(agent);
-        }
-        if self.claude {
-            return Some("claude");
-        }
-        if self.gemini {
-            return Some("gemini");
-        }
-        if self.codex {
-            return Some("codex");
-        }
-        if self.aider {
-            return Some("aider");
-        }
-        None
-    }
-}
-
 /// Available subcommands.
 #[derive(Subcommand)]
 enum Commands {
+    /// List installed agents.
+    Agents,
+
     /// Upgrade klaas to the latest version.
     #[command(alias = "update")]
     Upgrade,
@@ -157,6 +118,10 @@ async fn main() -> anyhow::Result<()> {
     // Handle subcommands
     if let Some(command) = cli.command {
         let exit_code = match command {
+            Commands::Agents => {
+                list_agents();
+                0
+            }
             Commands::Upgrade => match update::perform_update().await {
                 Ok(()) => 0,
                 Err(e) => {
@@ -180,12 +145,6 @@ async fn main() -> anyhow::Result<()> {
             },
         };
         std::process::exit(exit_code);
-    }
-
-    // Handle --list-agents
-    if cli.list_agents {
-        list_agents();
-        std::process::exit(0);
     }
 
     // Spawn background update check (non-blocking)
@@ -257,8 +216,8 @@ fn select_agent(cli: &Cli) -> agents::AgentSelection {
         registry.add_custom(custom);
     }
 
-    // Check if user specified an agent via CLI flag
-    if let Some(agent_id) = cli.selected_agent() {
+    // Check if user specified an agent via -a/--agent flag
+    if let Some(ref agent_id) = cli.agent {
         if let Some(agent) = registry.get(agent_id) {
             if agent.is_installed() {
                 return AgentSelection::Selected(agent.clone());
@@ -496,7 +455,7 @@ fn perform_uninstall(purge: bool) -> anyhow::Result<()> {
     Ok(())
 }
 
-/// Lists available agents and their installation status.
+/// Lists installed agents.
 fn list_agents() {
     use agents::AgentRegistry;
     use config::load_config;
@@ -519,18 +478,31 @@ fn list_agents() {
         registry.add_custom(custom);
     }
 
-    println!();
-    println!("  {}Available agents:{}", fg_color(colors::AMBER), reset());
-    println!();
+    // Filter to only installed agents
+    let installed: Vec<_> = registry
+        .all()
+        .into_iter()
+        .filter(|a| a.is_installed())
+        .collect();
 
-    for agent in registry.all() {
-        let status = if agent.is_installed() {
-            format!("{}(installed){}", fg_color(colors::GREEN), reset())
-        } else {
-            format!("{}(not found){}", fg_color(colors::TEXT_MUTED), reset())
-        };
-
-        println!("    {:<12} - {} {}", agent.id, agent.name, status);
+    println!();
+    if installed.is_empty() {
+        println!(
+            "  {}No agents installed.{}",
+            fg_color(colors::TEXT_MUTED),
+            reset()
+        );
+        println!();
+        println!("  Install one of the following:");
+        println!("    - Claude Code: https://claude.ai/download");
+        println!("    - Gemini CLI:  https://ai.google.dev/gemini-cli");
+        println!("    - Codex CLI:   https://openai.com/codex");
+    } else {
+        println!("  {}Installed agents:{}", fg_color(colors::AMBER), reset());
+        println!();
+        for agent in installed {
+            println!("    {:<12} - {}", agent.id, agent.name);
+        }
     }
     println!();
 }
