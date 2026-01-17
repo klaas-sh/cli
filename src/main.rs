@@ -117,11 +117,16 @@ impl Cli {
 /// Available subcommands.
 #[derive(Subcommand)]
 enum Commands {
-    /// Update klaas to the latest version.
-    Update,
+    /// Upgrade klaas to the latest version.
+    #[command(alias = "update")]
+    Upgrade,
 
     /// Uninstall klaas from this system.
-    Uninstall,
+    Uninstall {
+        /// Remove all user data (credentials and config) without prompting.
+        #[arg(long)]
+        purge: bool,
+    },
 
     /// Handle hook events from agents (internal use).
     /// Called by agent CLIs when hooks fire, not by users directly.
@@ -152,14 +157,14 @@ async fn main() -> anyhow::Result<()> {
     // Handle subcommands
     if let Some(command) = cli.command {
         let exit_code = match command {
-            Commands::Update => match update::perform_update().await {
+            Commands::Upgrade => match update::perform_update().await {
                 Ok(()) => 0,
                 Err(e) => {
-                    eprintln!("Update failed: {}", e);
+                    eprintln!("Upgrade failed: {}", e);
                     1
                 }
             },
-            Commands::Uninstall => match perform_uninstall() {
+            Commands::Uninstall { purge } => match perform_uninstall(purge) {
                 Ok(()) => 0,
                 Err(e) => {
                     eprintln!("Uninstall failed: {}", e);
@@ -316,7 +321,7 @@ fn select_agent(cli: &Cli) -> agents::AgentSelection {
 }
 
 /// Uninstalls klaas from the system.
-fn perform_uninstall() -> anyhow::Result<()> {
+fn perform_uninstall(purge: bool) -> anyhow::Result<()> {
     use std::io::{self, Write};
     use ui::colors;
 
@@ -324,9 +329,14 @@ fn perform_uninstall() -> anyhow::Result<()> {
     let current_exe = std::env::current_exe()?;
     let binary_path = current_exe.canonicalize()?;
 
-    // Config directory (~/.klaas/)
-    let config_dir = dirs::home_dir()
+    // User data directory (~/.klaas/) - contains credentials and config
+    let user_data_dir = dirs::home_dir()
         .map(|p| p.join(".klaas"))
+        .unwrap_or_default();
+
+    // Cache directory (~/Library/Caches/klaas/ on macOS, ~/.cache/klaas/ on Linux)
+    let cache_dir = dirs::cache_dir()
+        .map(|p| p.join("klaas"))
         .unwrap_or_default();
 
     println!();
@@ -336,6 +346,8 @@ fn perform_uninstall() -> anyhow::Result<()> {
         reset()
     );
     println!();
+
+    // Show what will be removed
     println!("  This will remove:");
     println!(
         "    {}• {}{}",
@@ -343,17 +355,17 @@ fn perform_uninstall() -> anyhow::Result<()> {
         binary_path.display(),
         reset()
     );
-    if config_dir.exists() {
+    if cache_dir.exists() {
         println!(
-            "    {}• {}{}",
+            "    {}• {}{} (cache)",
             fg_color(colors::TEXT_SECONDARY),
-            config_dir.display(),
+            cache_dir.display(),
             reset()
         );
     }
     println!();
 
-    // Confirm
+    // Confirm uninstall
     print!(
         "  {}Continue? [y/N]{} ",
         fg_color(colors::TEXT_MUTED),
@@ -363,25 +375,56 @@ fn perform_uninstall() -> anyhow::Result<()> {
 
     let mut input = String::new();
     io::stdin().read_line(&mut input)?;
-    let input = input.trim().to_lowercase();
+    let confirm = input.trim().to_lowercase();
 
-    if input != "y" && input != "yes" {
+    if confirm != "y" && confirm != "yes" {
         println!();
         println!("  Cancelled.");
         println!();
         return Ok(());
     }
 
+    // Ask about user data unless --purge was specified
+    let remove_user_data = if purge {
+        true
+    } else if user_data_dir.exists() {
+        println!();
+        print!(
+            "  {}Remove user data (credentials and config)? [y/N]{} ",
+            fg_color(colors::TEXT_MUTED),
+            reset()
+        );
+        io::stdout().flush()?;
+
+        input.clear();
+        io::stdin().read_line(&mut input)?;
+        let answer = input.trim().to_lowercase();
+        answer == "y" || answer == "yes"
+    } else {
+        false
+    };
+
     println!();
 
-    // Remove config directory if it exists
-    if config_dir.exists() {
-        std::fs::remove_dir_all(&config_dir)?;
+    // Remove cache directory
+    if cache_dir.exists() {
+        std::fs::remove_dir_all(&cache_dir)?;
         println!(
             "  {}✓{} Removed {}",
             fg_color(colors::GREEN),
             reset(),
-            config_dir.display()
+            cache_dir.display()
+        );
+    }
+
+    // Remove user data directory if requested
+    if remove_user_data && user_data_dir.exists() {
+        std::fs::remove_dir_all(&user_data_dir)?;
+        println!(
+            "  {}✓{} Removed {}",
+            fg_color(colors::GREEN),
+            reset(),
+            user_data_dir.display()
         );
     }
 
@@ -436,6 +479,18 @@ fn perform_uninstall() -> anyhow::Result<()> {
         fg_color(colors::GREEN),
         reset()
     );
+
+    // Note about preserved user data
+    if !remove_user_data && user_data_dir.exists() {
+        println!();
+        println!(
+            "  {}User data preserved at: {}{}",
+            fg_color(colors::TEXT_MUTED),
+            user_data_dir.display(),
+            reset()
+        );
+    }
+
     println!();
 
     Ok(())

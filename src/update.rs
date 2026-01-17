@@ -162,19 +162,23 @@ pub async fn check_for_updates() -> UpdateCheckResult {
     // Fetch latest release from GitHub
     let latest_version = fetch_latest_version().await;
 
+    // Only update cache if fetch succeeded (don't cache failures)
+    if let Some(ref version) = latest_version {
+        let update_available = is_newer_version(&current_version, version);
+
+        let cache = UpdateCache {
+            last_check: now_timestamp(),
+            latest_version: Some(version.clone()),
+            update_available,
+        };
+        write_cache(&cache);
+    }
+
     // Determine if update is available
     let update_available = latest_version
         .as_ref()
         .map(|v| is_newer_version(&current_version, v))
         .unwrap_or(false);
-
-    // Update cache
-    let cache = UpdateCache {
-        last_check: now_timestamp(),
-        latest_version: latest_version.clone(),
-        update_available,
-    };
-    write_cache(&cache);
 
     if update_available {
         info!(
