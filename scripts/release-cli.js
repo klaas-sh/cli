@@ -23,13 +23,14 @@ const LOGO = [
 ];
 
 /**
- * Displays the klaas logo in amber color.
+ * Displays the klaas logo with title.
  */
 function displayLogo() {
   console.log();
-  for (const line of LOGO) {
-    console.log(amber`  ${line}`);
-  }
+  console.log(amber`  ${LOGO[0]}`);
+  console.log(amber`  ${LOGO[1]}`);
+  console.log(amber`  ${LOGO[2]}` + dim` klaas CLI release`);
+  console.log(amber`  ${LOGO[3]}`);
 }
 
 /**
@@ -168,18 +169,17 @@ function resolveVersion(input, currentVersion) {
  */
 async function main() {
   displayLogo();
-  console.log(bold.yellow`  klaas CLI Release`);
+  console.log();
 
   // Get current version
   const currentVersion = getCurrentVersion();
   console.log(dim`  Current version: ${cyan`v${currentVersion}`}`);
-  console.log();
 
   // Show shortcuts
   const patchVersion = bumpVersion(currentVersion, 'patch');
   const minorVersion = bumpVersion(currentVersion, 'minor');
   const majorVersion = bumpVersion(currentVersion, 'major');
-  console.log(dim`  Shortcuts: ${cyan`p`}atch → ${patchVersion}, mi${cyan`n`}or → ${minorVersion}, ${cyan`m`}ajor → ${majorVersion}`);
+  console.log(dim`  [${cyan`p`}]atch → ${patchVersion}, mi[${cyan`n`}]or → ${minorVersion}, [${cyan`m`}]ajor → ${majorVersion}`);
   console.log();
 
   // Prompt for new version
