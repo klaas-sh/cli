@@ -689,9 +689,9 @@ pub async fn poll_for_pairing(
                     .map_err(|e| AuthError::CryptoError(e.to_string()))?;
 
                 // Take ownership of private key
-                let private_key = private_key_opt.take().ok_or_else(|| {
-                    AuthError::CryptoError("Private key already consumed".into())
-                })?;
+                let private_key = private_key_opt
+                    .take()
+                    .ok_or_else(|| AuthError::CryptoError("Private key already consumed".into()))?;
 
                 // Decrypt MEK using ECDH
                 let mek = decrypt_mek_from_pairing(private_key, &dash_public_key, &encrypted_mek)
@@ -702,7 +702,10 @@ pub async fn poll_for_pairing(
             }
             status => {
                 cleanup(&animation);
-                return Err(AuthError::ServerError(format!("Unknown status: {}", status)));
+                return Err(AuthError::ServerError(format!(
+                    "Unknown status: {}",
+                    status
+                )));
             }
         }
     }

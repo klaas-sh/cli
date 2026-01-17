@@ -1,13 +1,14 @@
-//! PTY management for spawning and communicating with Claude Code.
+//! PTY management for spawning and communicating with AI coding agents.
 
 use crate::config::{DEFAULT_TERMINAL_COLS, DEFAULT_TERMINAL_ROWS};
 use crate::error::{CliError, Result};
 use portable_pty::{native_pty_system, Child, CommandBuilder, MasterPty, PtySize};
+use std::collections::HashMap;
 use std::io::{Read, Write};
 use std::sync::Arc;
 use tokio::sync::Mutex;
 
-/// Manages the pseudo-terminal containing Claude Code.
+/// Manages the pseudo-terminal containing an AI coding agent.
 #[derive(Clone)]
 pub struct PtyManager {
     /// Master side of the PTY.
@@ -30,6 +31,26 @@ impl PtyManager {
     /// # Returns
     /// A PtyManager instance managing the spawned process.
     pub fn spawn(command: &str, args: &[String]) -> Result<Self> {
+        Self::spawn_with_env(command, args, HashMap::new())
+    }
+
+    /// Spawns a command in a new PTY with custom environment variables.
+    ///
+    /// Environment variables are added to the child process's environment,
+    /// allowing for session correlation and hook communication.
+    ///
+    /// # Arguments
+    /// * `command` - The command to execute (e.g., "claude", "gemini")
+    /// * `args` - Arguments to pass to the command
+    /// * `env_vars` - Additional environment variables to set
+    ///
+    /// # Returns
+    /// A PtyManager instance managing the spawned process.
+    pub fn spawn_with_env(
+        command: &str,
+        args: &[String],
+        env_vars: HashMap<String, String>,
+    ) -> Result<Self> {
         let pty_system = native_pty_system();
 
         // Get terminal size or use defaults
@@ -47,6 +68,11 @@ impl PtyManager {
         }
         for arg in args {
             cmd.arg(arg);
+        }
+
+        // Add custom environment variables for session correlation
+        for (key, value) in env_vars {
+            cmd.env(key, value);
         }
 
         // Spawn child process in the PTY
@@ -74,7 +100,7 @@ impl PtyManager {
         })
     }
 
-    /// Writes bytes to the PTY (sends input to Claude Code) - blocking version.
+    /// Writes bytes to the PTY (sends input to the agent) - blocking version.
     pub fn write_blocking(&self, data: &[u8]) -> Result<()> {
         let mut writer = self.writer.lock().unwrap();
         writer
@@ -86,7 +112,7 @@ impl PtyManager {
         Ok(())
     }
 
-    /// Reads bytes from the PTY (output from Claude Code) - blocking version.
+    /// Reads bytes from the PTY (output from the agent) - blocking version.
     /// Returns the number of bytes read.
     pub fn read_blocking(&self, buf: &mut [u8]) -> Result<usize> {
         let mut reader = self.reader.lock().unwrap();

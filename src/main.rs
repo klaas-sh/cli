@@ -1,30 +1,37 @@
-//! Remote access wrapper for Claude Code.
+//! Remote access wrapper for AI coding agents.
 //!
-//! Wraps Claude Code sessions and enables remote access via a web interface.
+//! Wraps AI agent CLI sessions and enables remote access via a web interface.
 //! Sessions auto-attach on startup for streaming to the cloud.
 //!
 //! # Usage
 //!
 //! ```bash
-//! # Start Claude Code with remote access
+//! # Start with auto-detected agent
 //! klaas
 //!
-//! # Start with a prompt
-//! klaas -p "Review this codebase"
+//! # Start with specific agent
+//! klaas --agent claude
+//! klaas --gemini
+//! klaas -a codex
 //!
-//! # Pass through Claude Code flags
-//! klaas --model sonnet --allowedTools Read,Write
+//! # List available agents
+//! klaas --list-agents
+//!
+//! # Pass through agent flags (after --)
+//! klaas --claude -- --model sonnet --allowedTools Read,Write
 //! ```
 
 use clap::{Parser, Subcommand};
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
 
+mod agents;
 mod app;
 mod auth;
 mod config;
 mod credentials;
 mod crypto;
 mod error;
+mod hook;
 mod pty;
 mod terminal;
 mod types;
@@ -35,26 +42,72 @@ mod websocket;
 /// CLI arguments.
 #[derive(Parser)]
 #[command(name = "klaas")]
-#[command(about = "Remote access wrapper for Claude Code")]
+#[command(about = "Remote access wrapper for AI coding agents")]
 #[command(version)]
-#[command(long_about = "Wraps Claude Code sessions and enables remote access \
+#[command(long_about = "Wraps AI agent CLI sessions and enables remote access \
     via a web interface. Sessions auto-attach on startup.\n\n\
-    All input is passed through to Claude Code. \
+    Supports Claude Code, Gemini CLI, Codex, Aider, and more.\n\
+    All input is passed through to the agent. \
     All output is captured for remote streaming.")]
 struct Cli {
     /// Subcommand to run.
     #[command(subcommand)]
     command: Option<Commands>,
 
+    /// Select which agent to run.
+    #[arg(short = 'a', long = "agent", value_name = "AGENT")]
+    agent: Option<String>,
+
+    /// Use Claude Code agent.
+    #[arg(long, conflicts_with_all = ["agent", "gemini", "codex", "aider"])]
+    claude: bool,
+
+    /// Use Gemini CLI agent.
+    #[arg(long, conflicts_with_all = ["agent", "claude", "codex", "aider"])]
+    gemini: bool,
+
+    /// Use OpenAI Codex CLI agent.
+    #[arg(long, conflicts_with_all = ["agent", "claude", "gemini", "aider"])]
+    codex: bool,
+
+    /// Use Aider agent.
+    #[arg(long, conflicts_with_all = ["agent", "claude", "gemini", "codex"])]
+    aider: bool,
+
+    /// List available agents and exit.
+    #[arg(long)]
+    list_agents: bool,
+
     /// Start a new session instead of resuming the previous one.
-    /// Without this flag, klaas will resume the last session if it exists.
     #[arg(long)]
     new_session: bool,
 
-    /// Arguments to pass through to Claude Code.
+    /// Arguments to pass through to the agent.
     /// All unrecognized arguments are forwarded.
     #[arg(trailing_var_arg = true, allow_hyphen_values = true)]
-    claude_args: Vec<String>,
+    agent_args: Vec<String>,
+}
+
+impl Cli {
+    /// Returns the selected agent ID from flags.
+    fn selected_agent(&self) -> Option<&str> {
+        if let Some(ref agent) = self.agent {
+            return Some(agent);
+        }
+        if self.claude {
+            return Some("claude");
+        }
+        if self.gemini {
+            return Some("gemini");
+        }
+        if self.codex {
+            return Some("codex");
+        }
+        if self.aider {
+            return Some("aider");
+        }
+        None
+    }
 }
 
 /// Available subcommands.
@@ -62,6 +115,14 @@ struct Cli {
 enum Commands {
     /// Update klaas to the latest version.
     Update,
+
+    /// Handle hook events from agents (internal use).
+    /// Called by agent CLIs when hooks fire, not by users directly.
+    Hook {
+        /// The hook event type.
+        #[arg(value_name = "EVENT")]
+        event: String,
+    },
 }
 
 #[tokio::main]
@@ -91,17 +152,48 @@ async fn main() -> anyhow::Result<()> {
                     1
                 }
             },
+            Commands::Hook { event } => match hook::handle_hook(&event).await {
+                Ok(()) => 0,
+                Err(e) => {
+                    eprintln!("{}", e);
+                    1
+                }
+            },
         };
         std::process::exit(exit_code);
+    }
+
+    // Handle --list-agents
+    if cli.list_agents {
+        list_agents();
+        std::process::exit(0);
     }
 
     // Spawn background update check (non-blocking)
     update::spawn_update_check();
 
-    // Run the application
-    let exit_code = match app::run(cli.claude_args, cli.new_session).await {
+    // Select agent to run
+    let selected_agent = match select_agent(&cli) {
+        agents::AgentSelection::Selected(agent) => agent,
+        agents::AgentSelection::Cancelled => {
+            std::process::exit(0);
+        }
+        agents::AgentSelection::NoneInstalled => {
+            eprintln!("Error: No supported AI coding agents found.");
+            eprintln!();
+            eprintln!("Install one of the following:");
+            eprintln!("  - Claude Code: https://claude.ai/download");
+            eprintln!("  - Gemini CLI: https://ai.google.dev/gemini-cli");
+            eprintln!("  - Codex CLI: https://openai.com/codex");
+            eprintln!("  - Aider: pip install aider-chat");
+            std::process::exit(1);
+        }
+    };
+
+    // Run the application with selected agent
+    let exit_code = match app::run(selected_agent, cli.agent_args, cli.new_session).await {
         Ok(code) => {
-            // Show update notification after Claude Code exits
+            // Show update notification after agent exits
             update::display_update_notification();
             code
         }
@@ -112,4 +204,128 @@ async fn main() -> anyhow::Result<()> {
     };
 
     std::process::exit(exit_code);
+}
+
+/// Selects an agent based on CLI flags and installed agents.
+fn select_agent(cli: &Cli) -> agents::AgentSelection {
+    use agents::{AgentRegistry, AgentSelection};
+    use config::{load_config, KlaasConfig};
+
+    // Load configuration
+    let klaas_config: KlaasConfig = load_config();
+
+    // Build registry with custom agents
+    let mut registry = AgentRegistry::new();
+    if !klaas_config.agents.is_empty() {
+        let custom: std::collections::HashMap<String, agents::Agent> = klaas_config
+            .agents
+            .into_iter()
+            .map(|(id, cfg)| {
+                let mut agent: agents::Agent = cfg.into();
+                agent.id = id.clone();
+                (id, agent)
+            })
+            .collect();
+        registry.add_custom(custom);
+    }
+
+    // Check if user specified an agent via CLI flag
+    if let Some(agent_id) = cli.selected_agent() {
+        if let Some(agent) = registry.get(agent_id) {
+            if agent.is_installed() {
+                return AgentSelection::Selected(agent.clone());
+            } else {
+                eprintln!(
+                    "Error: Agent '{}' ({}) is not installed.",
+                    agent_id, agent.name
+                );
+                eprintln!("Run 'klaas --list-agents' to see available agents.");
+                std::process::exit(1);
+            }
+        } else {
+            eprintln!("Error: Unknown agent '{}'.", agent_id);
+            eprintln!("Run 'klaas --list-agents' to see available agents.");
+            std::process::exit(1);
+        }
+    }
+
+    // Filter agents by config
+    let candidates: Vec<&agents::Agent> = if !klaas_config.only.is_empty() {
+        registry.filter_only(&klaas_config.only)
+    } else if !klaas_config.also.is_empty() {
+        registry.filter_also(&klaas_config.also)
+    } else {
+        registry.all()
+    };
+
+    // Detect which are installed
+    let installed = registry.detect_installed_from(&candidates);
+
+    match installed.len() {
+        0 => AgentSelection::NoneInstalled,
+        1 => {
+            // Auto-select the only installed agent
+            AgentSelection::Selected(installed[0].clone())
+        }
+        _ => {
+            // Check if there's a default agent specified in config
+            if let Some(ref default_id) = klaas_config.default_agent {
+                if let Some(agent) = installed.iter().find(|a| a.id == *default_id) {
+                    return AgentSelection::Selected((*agent).clone());
+                }
+            }
+
+            // Multiple agents - show interactive selection
+            ui::select_agent(&installed)
+        }
+    }
+}
+
+/// Lists available agents and their installation status.
+fn list_agents() {
+    use agents::AgentRegistry;
+    use config::load_config;
+    use ui::colors;
+
+    let klaas_config = load_config();
+    let mut registry = AgentRegistry::new();
+
+    // Add custom agents
+    if !klaas_config.agents.is_empty() {
+        let custom: std::collections::HashMap<String, agents::Agent> = klaas_config
+            .agents
+            .into_iter()
+            .map(|(id, cfg)| {
+                let mut agent: agents::Agent = cfg.into();
+                agent.id = id.clone();
+                (id, agent)
+            })
+            .collect();
+        registry.add_custom(custom);
+    }
+
+    println!();
+    println!("  {}Available agents:{}", fg_color(colors::AMBER), reset());
+    println!();
+
+    for agent in registry.all() {
+        let status = if agent.is_installed() {
+            format!("{}(installed){}", fg_color(colors::GREEN), reset())
+        } else {
+            format!("{}(not found){}", fg_color(colors::TEXT_MUTED), reset())
+        };
+
+        println!("    {:<12} - {} {}", agent.id, agent.name, status);
+    }
+    println!();
+}
+
+/// Generates ANSI escape code for 24-bit true color foreground.
+fn fg_color(color: (u8, u8, u8)) -> String {
+    format!("\x1b[38;2;{};{};{}m", color.0, color.1, color.2)
+}
+
+/// ANSI reset code.
+fn reset() -> &'static str {
+    "\x1b[0m"
 }
