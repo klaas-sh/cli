@@ -392,7 +392,7 @@ pub fn display_session_connected(session_url: Option<&str>) {
 }
 
 /// Displays offline mode warning.
-pub fn display_offline_warning(error: &str) {
+pub fn display_offline_warning() {
     let (yr, yg, yb) = colors::AMBER;
     let (mr, mg, mb) = colors::TEXT_MUTED;
 
@@ -409,7 +409,6 @@ pub fn display_offline_warning(error: &str) {
         fg_color(mr, mg, mb),
         RESET
     );
-    println!("    {}Error: {}{}", fg_color(mr, mg, mb), error, RESET);
     println!();
 }
 

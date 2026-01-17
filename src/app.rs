@@ -615,8 +615,8 @@ async fn try_authenticate(config: &ApiConfig, cred_store: &CredentialStore) -> A
             }
 
             // Other errors - show offline warning
-            ui::display_offline_warning(&error_str);
-            warn!(error = %e, "Starting in offline mode");
+            ui::display_offline_warning();
+            debug!(error = %e, "Starting in offline mode");
             AuthAttemptResult::Offline
         }
     }
