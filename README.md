@@ -47,6 +47,8 @@ enabling remote access from any device via a web interface. Perfect for:
 | [Copilot CLI](https://github.com/features/copilot/cli) | `--copilot` | `[C]` | - |
 | [Vibe CLI](https://mistral.ai/news/devstral-2-vibe-cli) | `--vibe` | `[M]` | - |
 
+You can also configure your own agent.
+
 ## Installation
 
 ### macOS / Linux / WSL
