@@ -14,10 +14,7 @@ const isWindows = process.platform === 'win32';
 console.error();
 console.error(red.bold`Error: npm installation of klaas is deprecated`);
 console.error();
-console.error(
-  'The npm package is a placeholder only. ' +
-    'Please install klaas using the native installer:'
-);
+console.error('Please install klaas using the native installer:');
 console.error();
 
 if (isWindows) {

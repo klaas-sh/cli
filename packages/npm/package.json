@@ -5,7 +5,7 @@
   "author": "magikMaker",
   "bin": "./bin/klaas.js",
   "dependencies": {
-    "barva": "^1.0.0"
+    "barva": "^1.0.1"
   },
   "deprecated": "npm installation is deprecated. Please use the native installer: curl -fsSL https://klaas.sh/install.sh | bash",
   "engines": {
