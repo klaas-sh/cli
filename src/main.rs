@@ -320,9 +320,9 @@ fn perform_uninstall() -> anyhow::Result<()> {
     let current_exe = std::env::current_exe()?;
     let binary_path = current_exe.canonicalize()?;
 
-    // Config directory
-    let config_dir = dirs::config_dir()
-        .map(|p| p.join("klaas"))
+    // Config directory (~/.klaas/)
+    let config_dir = dirs::home_dir()
+        .map(|p| p.join(".klaas"))
         .unwrap_or_default();
 
     println!();

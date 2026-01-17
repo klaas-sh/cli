@@ -469,12 +469,11 @@ impl CredentialStore {
 
 /// Gets the fallback credentials file path.
 ///
-/// Uses `~/.config/klaas/credentials.json` on Unix systems and the appropriate
-/// config directory on other platforms.
+/// Uses `~/.klaas/credentials.json` for consistency with config location.
 fn get_fallback_path() -> PathBuf {
-    dirs::config_dir()
+    dirs::home_dir()
         .unwrap_or_else(|| PathBuf::from("."))
-        .join("klaas")
+        .join(".klaas")
         .join(FALLBACK_CREDENTIALS_FILE)
 }
 
