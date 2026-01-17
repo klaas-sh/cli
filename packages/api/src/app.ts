@@ -109,6 +109,7 @@ export function createApp(): AppType {
       height: 64px;
     }
     .title {
+      font-family: 'SF Mono', 'Fira Code', 'JetBrains Mono', Menlo, Consolas, monospace;
       font-size: 2.5rem;
       font-weight: 700;
       color: #f59e0b;
