@@ -63,7 +63,7 @@ struct Cli {
     agent: Option<String>,
 
     /// Resume the previous session instead of starting a new one.
-    #[arg(long)]
+    #[arg(short = 'r', long)]
     resume: bool,
 
     /// Arguments to pass through to the agent.

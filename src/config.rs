@@ -1,16 +1,15 @@
 //! Configuration constants and file loading for the CLI.
 //!
 //! This module provides default configuration values and functions to load
-//! configuration from environment variables and TOML files.
+//! configuration from TOML files.
 //!
 //! Configuration sources (in order of precedence):
-//! 1. Environment variables (KLAAS_API_URL, KLAAS_WS_URL)
-//! 2. Project-level config: `./.klaas/config.toml`
-//! 3. User-level config: `~/.klaas/config.toml`
-//! 4. Built-in defaults
+//! 1. Project-level config: `./.klaas/config.toml`
+//! 2. User-level config: `~/.klaas/config.toml`
+//! 3. Built-in defaults
 //!
-//! In debug builds, the CLI defaults to localhost:8787 for local development.
-//! In release builds, it defaults to api.klaas.sh.
+//! In debug builds, the CLI connects to localhost:8787 for local development.
+//! In release builds, it connects to api.klaas.sh.
 
 use crate::agents::Agent;
 use serde::Deserialize;
@@ -255,72 +254,27 @@ pub fn user_config_path() -> Option<PathBuf> {
     Some(path)
 }
 
-/// Runtime configuration loaded from environment variables.
+/// API configuration with compile-time defaults.
 #[derive(Debug, Clone)]
 pub struct ApiConfig {
-    /// API base URL (from KLAAS_API_URL or default).
-    pub api_url: String,
-    /// WebSocket URL (from KLAAS_WS_URL or derived from api_url).
-    pub ws_url: String,
+    /// API base URL.
+    pub api_url: &'static str,
+    /// WebSocket URL.
+    pub ws_url: &'static str,
 }
 
 impl Default for ApiConfig {
     fn default() -> Self {
-        Self::from_env()
+        Self {
+            api_url: default_api_url(),
+            ws_url: default_ws_url(),
+        }
     }
 }
 
-impl ApiConfig {
-    /// Load API configuration from environment variables.
-    ///
-    /// Environment variables:
-    /// - `KLAAS_API_URL`: Override the default API URL
-    /// - `KLAAS_WS_URL`: Override the WebSocket URL (if not set, derived from
-    ///   API URL by replacing http(s) with ws(s))
-    ///
-    /// # Examples
-    ///
-    /// ```
-    /// use klaas::config::ApiConfig;
-    ///
-    /// let config = ApiConfig::from_env();
-    /// println!("API URL: {}", config.api_url);
-    /// println!("WS URL: {}", config.ws_url);
-    /// ```
-    pub fn from_env() -> Self {
-        let api_url = env::var("KLAAS_API_URL").unwrap_or_else(|_| default_api_url().to_string());
-
-        let ws_url = env::var("KLAAS_WS_URL").unwrap_or_else(|_| derive_ws_url(&api_url));
-
-        Self { api_url, ws_url }
-    }
-}
-
-/// Derive WebSocket URL from an HTTP API URL.
-///
-/// Converts `https://` to `wss://` and `http://` to `ws://`,
-/// then appends `/ws` path.
-fn derive_ws_url(api_url: &str) -> String {
-    let ws_base = if api_url.starts_with("https://") {
-        api_url.replacen("https://", "wss://", 1)
-    } else if api_url.starts_with("http://") {
-        api_url.replacen("http://", "ws://", 1)
-    } else {
-        // Assume wss if no scheme
-        format!("wss://{}", api_url)
-    };
-
-    // Remove trailing slash if present, then add /ws
-    let ws_base = ws_base.trim_end_matches('/');
-    format!("{}/ws", ws_base)
-}
-
-/// Get the API configuration from environment.
-///
-/// This is a convenience function that creates a new `ApiConfig` from
-/// environment variables.
+/// Get the API configuration.
 pub fn get_api_config() -> ApiConfig {
-    ApiConfig::from_env()
+    ApiConfig::default()
 }
 
 #[cfg(test)]
@@ -328,44 +282,10 @@ mod tests {
     use super::*;
 
     #[test]
-    fn test_derive_ws_url_https() {
-        assert_eq!(
-            derive_ws_url("https://api.klaas.sh"),
-            "wss://api.klaas.sh/ws"
-        );
-    }
-
-    #[test]
-    fn test_derive_ws_url_http() {
-        assert_eq!(
-            derive_ws_url("http://localhost:8787"),
-            "ws://localhost:8787/ws"
-        );
-    }
-
-    #[test]
-    fn test_derive_ws_url_with_trailing_slash() {
-        assert_eq!(
-            derive_ws_url("https://api.klaas.sh/"),
-            "wss://api.klaas.sh/ws"
-        );
-    }
-
-    #[test]
-    fn test_derive_ws_url_no_scheme() {
-        assert_eq!(derive_ws_url("api.klaas.sh"), "wss://api.klaas.sh/ws");
-    }
-
-    #[test]
-    fn test_default_config() {
-        // Clear env vars for deterministic test
-        env::remove_var("KLAAS_API_URL");
-        env::remove_var("KLAAS_WS_URL");
-
-        let config = ApiConfig::from_env();
-        // In debug builds (tests), should use localhost
+    fn test_api_config_defaults() {
+        let config = ApiConfig::default();
         assert_eq!(config.api_url, default_api_url());
-        assert_eq!(config.ws_url, derive_ws_url(default_api_url()));
+        assert_eq!(config.ws_url, default_ws_url());
     }
 
     #[test]

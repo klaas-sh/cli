@@ -97,7 +97,7 @@ klaas -- --model sonnet --allowedTools "Bash(git*)"
 # List installed agents
 klaas agents
 
-# Update to latest version
+# Upgrade to the latest version
 klaas upgrade
 
 # Uninstall klaas
@@ -139,7 +139,7 @@ authenticated, your session is automatically streamed to the klaas dashboard.
 | Short | Long | Description |
 |-------|------|-------------|
 | `-a` | `--agent <AGENT>` | Start with specific agent |
-| | `--resume` | Resume previous session |
+| `-r` | `--resume` | Resume previous session |
 | `-v` | `--version` | Show version |
 | `-h` | `--help` | Show help |
 
@@ -148,7 +148,7 @@ authenticated, your session is automatically streamed to the klaas dashboard.
 | Command | Description |
 |---------|-------------|
 | `klaas agents` | List installed agents |
-| `klaas upgrade` | Update to latest version |
+| `klaas upgrade` | Upgrade to the latest version |
 | `klaas uninstall` | Uninstall klaas |
 
 ## Configuration

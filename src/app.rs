@@ -114,7 +114,7 @@ pub async fn run(agent: Agent, agent_args: Vec<String>, resume: bool) -> Result<
     // Build environment variables for session correlation
     let mut env_vars: HashMap<String, String> = HashMap::new();
     env_vars.insert(ENV_SESSION_ID.to_string(), session_id.to_string());
-    env_vars.insert(ENV_API_URL.to_string(), config.api_url.clone());
+    env_vars.insert(ENV_API_URL.to_string(), config.api_url.to_string());
     // TODO: Generate a short-lived hook token for authentication
     // For now, we use the access token if available
     if let Some(ref token) = access_token {
