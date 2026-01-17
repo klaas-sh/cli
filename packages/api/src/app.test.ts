@@ -79,16 +79,17 @@ describe('Klaas API', () => {
   });
 
   describe('Root endpoint', () => {
-    it('should return API info', async () => {
+    it('should return styled landing page', async () => {
       const request = new Request('http://localhost/');
       const response = await app.fetch(request, mockEnv, {} as ExecutionContext);
 
       expect(response.status).toBe(200);
+      expect(response.headers.get('content-type')).toContain('text/html');
 
-      const data = await response.json() as JsonResponse;
-      expect(data.name).toBe('Klaas API');
-      expect(data.version).toBe('v1');
-      expect(data.environment).toBe('development');
+      const html = await response.text();
+      expect(html).toContain('klaas');
+      expect(html).toContain('Remote Terminal Access');
+      expect(html).toContain('https://klaas.sh');
     });
   });
 

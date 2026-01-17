@@ -71,13 +71,88 @@ export function createApp(): AppType {
   // Dashboard routes (user authentication)
   app.route('/dashboard', dashboardRoutes);
 
-  // Root endpoint
+  // Root endpoint - styled landing page
   app.get('/', (c) => {
-    return c.json({
-      name: 'Klaas API',
-      version: c.env.API_VERSION,
-      environment: c.env.ENVIRONMENT,
-    });
+    const html = `<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>klaas API</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      font-family: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+      background: #09090b;
+      background-image:
+        linear-gradient(rgba(255, 255, 255, 0.02) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(255, 255, 255, 0.02) 1px, transparent 1px);
+      background-size: 64px 64px;
+      min-height: 100vh;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      color: #fafafa;
+    }
+    .container {
+      text-align: center;
+      padding: 2rem;
+    }
+    .logo {
+      display: flex;
+      justify-content: center;
+      margin-bottom: 1rem;
+    }
+    .logo svg {
+      width: 64px;
+      height: 64px;
+    }
+    .title {
+      font-size: 2.5rem;
+      font-weight: 700;
+      color: #f59e0b;
+      margin-bottom: 0.5rem;
+      letter-spacing: -0.02em;
+    }
+    .subtitle {
+      font-size: 1rem;
+      color: #a1a1aa;
+      margin-bottom: 2rem;
+    }
+    a {
+      color: #f59e0b;
+      text-decoration: none;
+      font-size: 0.875rem;
+      padding: 0.5rem 1rem;
+      border: 1px solid rgba(245, 158, 11, 0.3);
+      border-radius: 6px;
+      transition: all 0.2s ease;
+    }
+    a:hover {
+      background: rgba(245, 158, 11, 0.1);
+      border-color: #f59e0b;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="logo">
+      <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+        <rect x="2" y="3" width="20" height="18" rx="2" fill="#92400e"/>
+        <rect x="2" y="3" width="20" height="4" rx="2" fill="#f59e0b"/>
+        <rect x="2" y="5" width="20" height="2" fill="#f59e0b"/>
+        <path d="M6 11L10 14.5L6 18" stroke="#fef3c7" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+        <path d="M13 18H18" stroke="#fef3c7" stroke-width="2" stroke-linecap="round"/>
+      </svg>
+    </div>
+    <div class="title">klaas</div>
+    <div class="subtitle">Remote Terminal Access</div>
+    <a href="https://klaas.sh">klaas.sh</a>
+  </div>
+</body>
+</html>`.trim();
+
+    return c.html(html);
   });
 
   // 404 handler
