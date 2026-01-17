@@ -480,9 +480,6 @@ pub fn display_auth_instructions(response: &DeviceFlowResponse) {
 /// println!("Authenticated! Access token: {}", tokens.access_token);
 /// ```
 pub async fn authenticate(api_url: &str) -> AuthResult<TokenResponse> {
-    // Display startup banner
-    ui::display_startup_banner();
-
     // Start the device flow
     let device_response = start_device_flow(api_url).await?;
 
@@ -734,9 +731,6 @@ pub fn display_pairing_instructions(data: &PairingData) {
 ///
 /// The decrypted Master Encryption Key (MEK).
 pub async fn pair_device(api_url: &str, device_name: &str) -> AuthResult<SecretKey> {
-    // Display startup banner
-    ui::display_startup_banner();
-
     // Start pairing
     let (pairing_data, private_key) = start_pairing(api_url, device_name).await?;
 
