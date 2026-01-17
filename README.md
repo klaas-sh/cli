@@ -38,13 +38,16 @@ enabling remote access from any device via a web interface. Perfect for:
 
 ## Supported Agents
 
-| Agent | Flag | Shortcut | Hooks |
-|-------|------|----------|-------|
-| [Claude Code](https://code.claude.com/) | `--claude` | `[A]` | Full |
-| [Gemini CLI](https://geminicli.com/) | `--gemini` | `[G]` | Full |
-| [Codex CLI](https://developers.openai.com/codex/cli/) | `--codex` | `[O]` | Partial |
-| [Copilot CLI](https://github.com/features/copilot/cli) | `--copilot` | `[C]` | - |
-| [Vibe CLI](https://mistral.ai/news/devstral-2-vibe-cli) | `--vibe` | `[M]` | - |
+| Agent | Shortcut | Hooks |
+|-------|----------|-------|
+| [Claude Code](https://code.claude.com/) | `[A]` | Full |
+| [Gemini CLI](https://ai.google.dev/gemini-cli) | `[G]` | Full |
+| [Codex CLI](https://openai.com/codex) | `[O]` | Partial |
+| [GitHub Copilot](https://github.com/features/copilot) | `[C]` | - |
+| [Vibe CLI](https://mistral.ai/) | `[M]` | - |
+| [Aider](https://aider.chat/) | - | - |
+| [Goose](https://github.com/block/goose) | - | - |
+| [Open Interpreter](https://openinterpreter.com/) | - | - |
 
 You can also configure your own agent.
 
@@ -82,18 +85,23 @@ scoop install klaas
 klaas
 
 # Use a specific agent
-klaas --claude
-klaas --gemini
-klaas --codex
+klaas --agent claude
+klaas -a gemini
 
-# Start a new session (instead of resuming)
-klaas --new-session
+# Resume the previous session
+klaas --resume
 
-# Pass arguments to the agent
-klaas --claude -- --model sonnet --allowedTools "Bash(git*)"
+# Pass arguments to the agent (after --)
+klaas -- --model sonnet --allowedTools "Bash(git*)"
 
-# List available agents
-klaas --list-agents
+# List installed agents
+klaas agents
+
+# Update to latest version
+klaas upgrade
+
+# Uninstall klaas
+klaas uninstall
 ```
 
 On first run, you'll be prompted to authenticate via your browser. Once
@@ -129,10 +137,11 @@ authenticated, your session is automatically streamed to the klaas dashboard.
 | Command | Description |
 |---------|-------------|
 | `klaas` | Start with auto-detected agent |
-| `klaas --claude` | Start with Claude Code |
-| `klaas --gemini` | Start with Gemini CLI |
-| `klaas --list-agents` | List available agents |
-| `klaas update` | Update to latest version |
+| `klaas -a <agent>` | Start with specific agent |
+| `klaas --resume` | Resume previous session |
+| `klaas agents` | List installed agents |
+| `klaas upgrade` | Update to latest version |
+| `klaas uninstall` | Uninstall klaas |
 | `klaas --version` | Show version |
 | `klaas --help` | Show help |
 
@@ -151,6 +160,16 @@ default_agent = "claude"
 
 # Only show these agents (even if others are installed)
 only = ["claude", "gemini"]
+
+# Or add custom agents alongside built-in ones
+also = ["my-custom-agent"]
+
+# Define custom agents
+[agents.my-custom-agent]
+command = "/path/to/my-agent"
+name = "My Custom Agent"
+hooks_type = "claude"  # "claude", "gemini", "codex", or "none"
+shortcut = "X"
 ```
 
 ### Environment Variables
@@ -158,7 +177,7 @@ only = ["claude", "gemini"]
 | Variable | Description | Default |
 |----------|-------------|---------|
 | `KLAAS_API_URL` | API server URL | `https://api.klaas.sh` |
-| `KLAAS_INSTALL_DIR` | Installation directory | Platform default |
+| `KLAAS_WS_URL` | WebSocket URL | Derived from API URL |
 
 ## Building from Source
 
