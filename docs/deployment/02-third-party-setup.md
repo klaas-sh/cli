@@ -329,50 +329,28 @@ base64 -i certificate.p12 | pbcopy
 
 ## 6. Hosting install.sh on klaas.sh
 
-The installer script needs to be accessible at `https://klaas.sh/install.sh`.
+The installer script is accessible at `https://klaas.sh/install.sh`.
 
-### Option A: Hugo Site (if klaas.sh uses Hugo)
+**✓ Already configured:** Redirects to GitHub raw content at
+`https://raw.githubusercontent.com/klaas-sh/cli/main/scripts/install.sh`
 
-Add `scripts/install.sh` to your Hugo static files:
-```
-hugo-sites/sites/klaas-sh/static/install.sh
-```
-
-### Option B: Cloudflare Worker
-
-Create a simple worker that serves the script:
-
-```typescript
-export default {
-  async fetch(request: Request): Promise<Response> {
-    const url = new URL(request.url);
-
-    if (url.pathname === '/install.sh') {
-      const script = await fetch(
-        'https://raw.githubusercontent.com/klaas-sh/cli/main/scripts/install.sh'
-      );
-      return new Response(script.body, {
-        headers: { 'Content-Type': 'text/plain' }
-      });
-    }
-
-    // ... rest of site
-  }
-}
-```
-
-### Option C: Redirect
-
-Add DNS/Worker rule to redirect `klaas.sh/install.sh` to GitHub raw content.
+This allows updating the install script by simply pushing to the cli repo.
 
 ---
 
 ## Setup Checklist
 
 ### Minimum Viable Distribution
-- [ ] First release created with `git tag v0.1.0 && git push origin v0.1.0`
-- [ ] Verify GitHub Release has all 5 binaries
-- [ ] Host `install.sh` at `https://klaas.sh/install.sh`
+- [ ] First release created with `yarn release:cli`
+- [ ] Verify GitHub Release has all 7 binaries:
+  - `klaas-darwin-x64.tar.gz` (macOS Intel)
+  - `klaas-darwin-arm64.tar.gz` (macOS Apple Silicon)
+  - `klaas-linux-x64.tar.gz` (Linux x64 glibc)
+  - `klaas-linux-arm64.tar.gz` (Linux ARM64 glibc)
+  - `klaas-linux-x64-musl.tar.gz` (Linux x64 musl/Alpine)
+  - `klaas-linux-arm64-musl.tar.gz` (Linux ARM64 musl/Alpine)
+  - `klaas-windows-x64.exe.zip` (Windows x64)
+- [x] Host `install.sh` at `https://klaas.sh/install.sh` (redirects to GitHub)
 - [ ] Test: `curl -fsSL https://klaas.sh/install.sh | bash`
 
 ### Recommended (Package Managers)

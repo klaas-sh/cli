@@ -220,18 +220,8 @@ The `scripts/install.sh` script allows users to install klaas via curl:
 curl -fsSL https://klaas.sh/install.sh | bash
 ```
 
-**To set up the redirect from klaas.sh/install.sh:**
-
-Option 1: Cloudflare redirect rule (recommended)
-- In Cloudflare dashboard for klaas.sh
-- Add a redirect rule: `klaas.sh/install.sh` ->
-  `https://raw.githubusercontent.com/smoking-media/klaas/main/scripts/install.sh`
-
-Option 2: Hugo site redirect
-- In the hugo-sites project, add a redirect in `_redirects` or `netlify.toml`
-
-Option 3: API worker
-- Add a route in the API worker to serve the install script
+**✓ Already configured:** `klaas.sh/install.sh` redirects to
+`https://raw.githubusercontent.com/klaas-sh/cli/main/scripts/install.sh`
 
 
 ## Future Features

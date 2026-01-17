@@ -104,6 +104,7 @@ function run(command, silent = false) {
     const output = execSync(command, {
       encoding: 'utf-8',
       stdio: silent ? 'pipe' : 'inherit',
+      shell: '/bin/bash',
     });
     return output;
   } catch (error) {
@@ -167,7 +168,7 @@ async function main() {
   console.log();
   console.log(dim`  Verifying Cargo.toml...`);
   try {
-    run('cd packages/cli && cargo check --quiet', true);
+    run('source ~/.cargo/env 2>/dev/null; cd packages/cli && cargo check --quiet', true);
     console.log(green`  ✓ Cargo.toml is valid`);
   } catch {
     console.log(red`  ✗ Cargo.toml validation failed`);
