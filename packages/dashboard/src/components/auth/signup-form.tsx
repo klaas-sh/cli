@@ -146,7 +146,7 @@ export function SignupForm(): React.JSX.Element {
             terms of service
           </a>
           .<br />
-          Your data is encrypted end-to-end.
+          Your data is end-to-end encrypted (E2EE).
         </p>
       </form>
     </div>
