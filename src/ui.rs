@@ -208,7 +208,8 @@ impl WaitingAnimation {
 
         // Clear current line, print main text, then newline and timer
         // Use \x1b[K to clear to end of line (removes stale characters)
-        print!("\r{}\x1b[K\n{}\x1b[K\x1b[1A", output, timer_line);
+        // Use \r before timer_line to ensure it starts at column 0
+        print!("\r{}\x1b[K\n\r{}\x1b[K\x1b[1A", output, timer_line);
         let _ = io::stdout().flush();
 
         // Advance star animation

@@ -8,8 +8,9 @@
 //! 2. User-level config: `~/.klaas/config.toml`
 //! 3. Built-in defaults
 //!
-//! In debug builds, the CLI connects to localhost:8787 for local development.
-//! In release builds, it connects to api.klaas.sh.
+//! API URLs are set at compile time:
+//! - Release builds: hardcoded to api.klaas.sh
+//! - Debug builds: read from .env file if present, otherwise localhost:8787
 
 use crate::agents::Agent;
 use serde::Deserialize;
@@ -19,37 +20,11 @@ use std::fs;
 use std::path::PathBuf;
 use tracing::{debug, warn};
 
-/// Default API base URL for remote services (production).
-pub const DEFAULT_API_URL_PROD: &str = "https://api.klaas.sh";
+/// API base URL (set at compile time by build.rs).
+pub const API_URL: &str = env!("KLAAS_API_URL");
 
-/// Default API base URL for local development.
-pub const DEFAULT_API_URL_DEV: &str = "http://localhost:8787";
-
-/// Default WebSocket URL for real-time communication (production).
-pub const DEFAULT_WS_URL_PROD: &str = "wss://api.klaas.sh/ws";
-
-/// Default WebSocket URL for local development.
-pub const DEFAULT_WS_URL_DEV: &str = "ws://localhost:8787/ws";
-
-/// Get the default API URL based on build type.
-#[inline]
-pub fn default_api_url() -> &'static str {
-    if cfg!(debug_assertions) {
-        DEFAULT_API_URL_DEV
-    } else {
-        DEFAULT_API_URL_PROD
-    }
-}
-
-/// Get the default WebSocket URL based on build type.
-#[inline]
-pub fn default_ws_url() -> &'static str {
-    if cfg!(debug_assertions) {
-        DEFAULT_WS_URL_DEV
-    } else {
-        DEFAULT_WS_URL_PROD
-    }
-}
+/// WebSocket URL (set at compile time by build.rs).
+pub const WS_URL: &str = env!("KLAAS_WS_URL");
 
 /// Keychain service name for credential storage.
 pub const KEYCHAIN_SERVICE: &str = "sh.klaas.cli";
@@ -254,7 +229,7 @@ pub fn user_config_path() -> Option<PathBuf> {
     Some(path)
 }
 
-/// API configuration with compile-time defaults.
+/// API configuration with compile-time values.
 #[derive(Debug, Clone)]
 pub struct ApiConfig {
     /// API base URL.
@@ -266,8 +241,8 @@ pub struct ApiConfig {
 impl Default for ApiConfig {
     fn default() -> Self {
         Self {
-            api_url: default_api_url(),
-            ws_url: default_ws_url(),
+            api_url: API_URL,
+            ws_url: WS_URL,
         }
     }
 }
@@ -282,22 +257,17 @@ mod tests {
     use super::*;
 
     #[test]
-    fn test_api_config_defaults() {
+    fn test_api_config_uses_compile_time_values() {
         let config = ApiConfig::default();
-        assert_eq!(config.api_url, default_api_url());
-        assert_eq!(config.ws_url, default_ws_url());
+        assert_eq!(config.api_url, API_URL);
+        assert_eq!(config.ws_url, WS_URL);
     }
 
     #[test]
-    fn test_debug_defaults_to_localhost() {
-        // This test verifies that debug builds use localhost
-        if cfg!(debug_assertions) {
-            assert_eq!(default_api_url(), DEFAULT_API_URL_DEV);
-            assert_eq!(default_ws_url(), DEFAULT_WS_URL_DEV);
-        } else {
-            assert_eq!(default_api_url(), DEFAULT_API_URL_PROD);
-            assert_eq!(default_ws_url(), DEFAULT_WS_URL_PROD);
-        }
+    fn test_api_urls_are_valid() {
+        // Verify the compile-time URLs are well-formed
+        assert!(API_URL.starts_with("http://") || API_URL.starts_with("https://"));
+        assert!(WS_URL.starts_with("ws://") || WS_URL.starts_with("wss://"));
     }
 
     #[test]
