@@ -172,6 +172,9 @@ async fn main() -> anyhow::Result<()> {
     // Spawn background update check (non-blocking)
     update::spawn_update_check();
 
+    // Display startup banner
+    ui::display_startup_banner();
+
     // Select agent to run
     let selected_agent = match select_agent(&cli) {
         agents::AgentSelection::Selected(agent) => agent,
