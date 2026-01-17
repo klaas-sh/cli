@@ -121,20 +121,17 @@ pub async fn run(agent: Agent, agent_args: Vec<String>, new_session: bool) -> Re
         env_vars.insert(ENV_HOOK_TOKEN.to_string(), token.clone());
     }
 
-    // Set custom prompt for shell agent
-    if agent.id == "shell" {
-        // Amber color prompt: "klaas › "
-        // Bash/sh: uses \[ \] for non-printing chars, \033 for escape
-        let bash_prompt = "\\[\\033[38;2;245;158;11m\\]klaas ›\\[\\033[0m\\] ";
-        // Zsh: uses %{ %} for non-printing chars, %F{} for colors
-        let zsh_prompt = "%{\x1b[38;2;245;158;11m%}klaas ›%{\x1b[0m%} ";
-        env_vars.insert("PS1".to_string(), bash_prompt.to_string());
-        env_vars.insert("PROMPT".to_string(), zsh_prompt.to_string());
-    }
-
     // Build full argument list (agent defaults + user args)
     let mut full_args = agent.args.clone();
     full_args.extend(agent_args);
+
+    // Set custom prompt for shell agent using ZDOTDIR (zsh) or --rcfile (bash)
+    // This sources user's config first, then overrides the prompt
+    let _temp_dir = if agent.id == "shell" {
+        setup_shell_prompt(&agent.command, &mut env_vars, &mut full_args)
+    } else {
+        None
+    };
 
     // Spawn agent in PTY
     let pty = match PtyManager::spawn_with_env(&agent.command, &full_args, env_vars) {
@@ -821,5 +818,77 @@ fn key_event_to_bytes(event: KeyEvent) -> Vec<u8> {
             }
         }
         _ => vec![],
+    }
+}
+
+/// Sets up custom shell prompt by creating a temp config that sources user's
+/// config then sets our prompt.
+///
+/// Returns a TempDir that must be kept alive for the duration of the shell.
+fn setup_shell_prompt(
+    command: &str,
+    env_vars: &mut HashMap<String, String>,
+    args: &mut Vec<String>,
+) -> Option<tempfile::TempDir> {
+    use std::io::Write;
+
+    let shell_name = std::path::Path::new(command)
+        .file_name()
+        .and_then(|n| n.to_str())
+        .unwrap_or(command);
+
+    // Amber color prompt: "klaas › "
+    let zsh_prompt = "%{\x1b[38;2;245;158;11m%}klaas ›%{\x1b[0m%} ";
+    let bash_prompt = "\\[\\033[38;2;245;158;11m\\]klaas ›\\[\\033[0m\\] ";
+
+    match shell_name {
+        "zsh" => {
+            // Create temp dir with custom .zshrc
+            if let Ok(temp_dir) = tempfile::tempdir() {
+                let zshrc_path = temp_dir.path().join(".zshrc");
+                if let Ok(mut file) = std::fs::File::create(&zshrc_path) {
+                    // Source user's config then set our prompt
+                    let content = format!(
+                        r#"# Klaas shell wrapper
+[[ -f "$HOME/.zshrc" ]] && source "$HOME/.zshrc"
+PROMPT='{}'
+"#,
+                        zsh_prompt
+                    );
+                    if file.write_all(content.as_bytes()).is_ok() {
+                        env_vars.insert(
+                            "ZDOTDIR".to_string(),
+                            temp_dir.path().to_string_lossy().to_string(),
+                        );
+                        return Some(temp_dir);
+                    }
+                }
+            }
+            None
+        }
+        "bash" => {
+            // Create temp rcfile that sources user's config then sets prompt
+            if let Ok(mut temp_file) = tempfile::NamedTempFile::new() {
+                let content = format!(
+                    r#"# Klaas shell wrapper
+[[ -f "$HOME/.bashrc" ]] && source "$HOME/.bashrc"
+PS1='{}'
+"#,
+                    bash_prompt
+                );
+                if temp_file.write_all(content.as_bytes()).is_ok() {
+                    // Keep the file around (don't delete on drop)
+                    let (_, path) = temp_file.keep().ok()?;
+                    args.push("--rcfile".to_string());
+                    args.push(path.to_string_lossy().to_string());
+                }
+            }
+            None
+        }
+        _ => {
+            // For other shells, just set PS1 and hope for the best
+            env_vars.insert("PS1".to_string(), bash_prompt.to_string());
+            None
+        }
     }
 }
