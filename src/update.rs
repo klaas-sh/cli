@@ -14,8 +14,11 @@ use tracing::{debug, info};
 /// GitHub repository for klaas releases.
 const GITHUB_REPO: &str = "klaas-sh/cli";
 
-/// How often to check for updates (24 hours).
+/// How often to check for updates after a successful check (24 hours).
 const UPDATE_CHECK_INTERVAL_SECS: u64 = 86400;
+
+/// How often to retry after a failed check (1 hour).
+const UPDATE_RETRY_INTERVAL_SECS: u64 = 3600;
 
 /// Current version from Cargo.toml.
 pub const CURRENT_VERSION: &str = env!("CARGO_PKG_VERSION");
@@ -96,7 +99,15 @@ fn should_check() -> bool {
     let cache = read_cache();
     let now = now_timestamp();
     let elapsed = now.saturating_sub(cache.last_check);
-    elapsed >= UPDATE_CHECK_INTERVAL_SECS
+
+    // Use shorter interval if last check failed (no version cached)
+    let interval = if cache.latest_version.is_some() {
+        UPDATE_CHECK_INTERVAL_SECS
+    } else {
+        UPDATE_RETRY_INTERVAL_SECS
+    };
+
+    elapsed >= interval
 }
 
 /// Compares two version strings (semver-style).
@@ -162,23 +173,20 @@ pub async fn check_for_updates() -> UpdateCheckResult {
     // Fetch latest release from GitHub
     let latest_version = fetch_latest_version().await;
 
-    // Only update cache if fetch succeeded (don't cache failures)
-    if let Some(ref version) = latest_version {
-        let update_available = is_newer_version(&current_version, version);
-
-        let cache = UpdateCache {
-            last_check: now_timestamp(),
-            latest_version: Some(version.clone()),
-            update_available,
-        };
-        write_cache(&cache);
-    }
-
     // Determine if update is available
     let update_available = latest_version
         .as_ref()
         .map(|v| is_newer_version(&current_version, v))
         .unwrap_or(false);
+
+    // Cache the result (both success and failure)
+    // Failures use a shorter retry interval (see should_check)
+    let cache = UpdateCache {
+        last_check: now_timestamp(),
+        latest_version: latest_version.clone(),
+        update_available,
+    };
+    write_cache(&cache);
 
     if update_available {
         info!(
