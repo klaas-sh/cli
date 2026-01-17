@@ -1,14 +1,14 @@
 <svg width="320" height="80" viewBox="0 0 320 80" fill="none" xmlns="http://www.w3.org/2000/svg">
-  <!-- Logo -->
-  <g transform="translate(0, 8)">
-    <rect x="2" y="3" width="60" height="54" rx="6" fill="#92400e"/>
-    <rect x="2" y="3" width="60" height="12" rx="6" fill="#f59e0b"/>
-    <rect x="2" y="9" width="60" height="6" fill="#f59e0b"/>
-    <path d="M16 27L30 40.5L16 54" stroke="#fef3c7" stroke-width="6" stroke-linecap="round" stroke-linejoin="round"/>
-    <path d="M38 54H53" stroke="#fef3c7" stroke-width="6" stroke-linecap="round"/>
+  <!-- Original logo scaled to 56x56, centered vertically -->
+  <g transform="translate(4, 12) scale(2.33)">
+    <rect x="2" y="3" width="20" height="18" rx="2" fill="#92400e"/>
+    <rect x="2" y="3" width="20" height="4" rx="2" fill="#f59e0b"/>
+    <rect x="2" y="5" width="20" height="2" fill="#f59e0b"/>
+    <path d="M6 11L10 14.5L6 18" stroke="#fef3c7" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+    <path d="M13 18H18" stroke="#fef3c7" stroke-width="2" stroke-linecap="round"/>
   </g>
   <!-- Title -->
-  <text x="80" y="42" font-family="system-ui, -apple-system, 'Segoe UI', sans-serif" font-size="36" font-weight="600" fill="#b45309">klaas</text>
+  <text x="72" y="42" font-family="system-ui, -apple-system, 'Segoe UI', sans-serif" font-size="36" font-weight="600" fill="#b45309">klaas</text>
   <!-- Tagline -->
-  <text x="80" y="62" font-family="system-ui, -apple-system, 'Segoe UI', sans-serif" font-size="14" fill="#52525b">Remote Terminal Access</text>
+  <text x="72" y="62" font-family="system-ui, -apple-system, 'Segoe UI', sans-serif" font-size="14" fill="#52525b">Remote Terminal Access</text>
 </svg>
