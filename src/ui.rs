@@ -486,6 +486,14 @@ pub fn select_agent(agents: &[&crate::agents::Agent]) -> crate::agents::AgentSel
                     break AgentSelection::Cancelled;
                 }
                 KeyCode::Char(c) => {
+                    // Ctrl+C to cancel (same as Esc)
+                    if c == 'c'
+                        && key_event
+                            .modifiers
+                            .contains(event::KeyModifiers::CONTROL)
+                    {
+                        break AgentSelection::Cancelled;
+                    }
                     // Check for shortcut key
                     let upper = c.to_ascii_uppercase();
                     if let Some(idx) = agents.iter().position(|a| a.shortcut_key() == upper) {
