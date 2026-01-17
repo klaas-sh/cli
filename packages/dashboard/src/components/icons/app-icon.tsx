@@ -6,12 +6,13 @@ interface AppIconProps {
 }
 
 /**
- * Klaas Application Icon Component
+ * klaas Application Icon Component
  *
- * The main logo/icon for the Klaas dashboard application.
- * Terminal-inspired icon matching the favicon design.
- * Colors: Tailwind violet palette - violet-900 background (#4c1d95),
- * violet-600 title bar (#7c3aed), violet-100 terminal elements (#ede9fe).
+ * Terminal-inspired icon matching the klaas.sh design.
+ * Colors: Amber theme
+ * - Background: #92400e (amber-900)
+ * - Title bar: #f59e0b (amber-500)
+ * - Terminal elements: #fef3c7 (amber-100)
  */
 export function AppIcon({
   className = '',
@@ -26,23 +27,23 @@ export function AppIcon({
       xmlns="http://www.w3.org/2000/svg"
       className={className}
     >
-      {/* Terminal window background - violet-900 */}
-      <rect x="2" y="3" width="20" height="18" rx="2" fill="#4c1d95" />
-      {/* Title bar - violet-600 */}
-      <rect x="2" y="3" width="20" height="4" rx="2" fill="#7c3aed" />
-      <rect x="2" y="5" width="20" height="2" fill="#7c3aed" />
-      {/* Terminal prompt arrow - violet-100 */}
+      {/* Terminal window background - amber-900 */}
+      <rect x="2" y="3" width="20" height="18" rx="2" fill="#92400e" />
+      {/* Title bar - amber-500 */}
+      <rect x="2" y="3" width="20" height="4" rx="2" fill="#f59e0b" />
+      <rect x="2" y="5" width="20" height="2" fill="#f59e0b" />
+      {/* Terminal prompt arrow - amber-100 */}
       <path
         d="M6 11L10 14.5L6 18"
-        stroke="#ede9fe"
+        stroke="#fef3c7"
         strokeWidth="2"
         strokeLinecap="round"
         strokeLinejoin="round"
       />
-      {/* Cursor/text line - violet-100 */}
+      {/* Cursor/text line - amber-100 */}
       <path
         d="M13 18H18"
-        stroke="#ede9fe"
+        stroke="#fef3c7"
         strokeWidth="2"
         strokeLinecap="round"
       />

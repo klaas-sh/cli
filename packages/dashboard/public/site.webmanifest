@@ -1,11 +1,11 @@
 {
-  "name": "Klaas Dashboard",
-  "short_name": "Klaas",
-  "description": "Remote access dashboard for Claude Code sessions",
+  "name": "klaas dashboard",
+  "short_name": "klaas",
+  "description": "Remote access dashboard for terminal sessions",
   "start_url": "/",
   "display": "standalone",
-  "background_color": "#4c1d95",
-  "theme_color": "#7c3aed",
+  "background_color": "#09090b",
+  "theme_color": "#09090b",
   "icons": [
     {
       "src": "/favicon.svg",
