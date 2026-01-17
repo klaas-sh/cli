@@ -522,7 +522,7 @@ fn draw_agent_menu(
 
     // Print header
     print!(
-        "\r\n  {}{}Select an agent:{}\r\n\r\n",
+        "  {}{}Select an agent:{}\r\n\r\n",
         BOLD,
         fg_color(ar, ag, ab),
         RESET
