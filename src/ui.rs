@@ -196,16 +196,23 @@ impl WaitingAnimation {
                 format!("{} minutes left", minutes)
             }
         };
+        // Timer on new line, aligned with "Waiting" (4 spaces = "  · ")
         let (mr, mg, mb) = colors::TEXT_MUTED;
-        output.push_str(&format!(
-            " {}({} {}){}",
+        let timer_line = format!(
+            "    {}({} {}){}",
             fg_color(mr, mg, mb),
             phase_symbol,
             time_text,
             RESET
-        ));
+        );
 
-        print!("{}", output);
+        // Clear current line, print main text, then newline and timer
+        // Use \x1b[K to clear to end of line (removes stale characters)
+        print!(
+            "\r{}\x1b[K\n{}\x1b[K\x1b[1A",
+            output,
+            timer_line
+        );
         let _ = io::stdout().flush();
 
         // Advance star animation
@@ -238,9 +245,10 @@ impl WaitingAnimation {
         }
     }
 
-    /// Clears the animation line.
+    /// Clears the animation lines (main line + timer line).
     pub fn clear(&self) {
-        print!("\r{}\r", " ".repeat(60));
+        // Clear current line, move down, clear timer line, move back up
+        print!("\r\x1b[K\n\x1b[K\x1b[1A");
         let _ = io::stdout().flush();
     }
 }
