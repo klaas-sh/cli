@@ -14,7 +14,15 @@ set -e
 # Configuration
 GITHUB_REPO="klaas-sh/cli"
 BINARY_NAME="klaas"
-INSTALL_DIR="${KLAAS_INSTALL_DIR:-/usr/local/bin}"
+
+# Prefer ~/.local/bin (user-writable), fall back to /usr/local/bin
+if [ -n "$KLAAS_INSTALL_DIR" ]; then
+  INSTALL_DIR="$KLAAS_INSTALL_DIR"
+elif [ -w "$HOME/.local/bin" ] || mkdir -p "$HOME/.local/bin" 2>/dev/null; then
+  INSTALL_DIR="$HOME/.local/bin"
+else
+  INSTALL_DIR="/usr/local/bin"
+fi
 
 # Colors for output
 RED='\033[0;31m'
@@ -131,18 +139,20 @@ get_checksum_from_manifest() {
   return 1
 }
 
+# Display banner with version
+show_banner() {
+  local version="$1"
+  echo ""
+  echo -e " ${AMBER}╭────────╮${NC}"
+  echo -e " ${AMBER}├────────┤${NC} ${YELLOW}klaas${NC} ${GRAY}${version}${NC}"
+  echo -e " ${AMBER}│ ❯ __   │${NC} ${GRAY}Remote Terminal Access${NC}"
+  echo -e " ${AMBER}╰────────╯${NC}"
+  echo ""
+}
+
 # Main installation
 main() {
-  echo ""
-  echo -e "${AMBER}  ╭────────╮${NC}"
-  echo -e "${AMBER}  ├────────┤${NC}"
-  echo -e "${AMBER}  │ ❯ __   │${NC}"
-  echo -e "${AMBER}  ╰────────╯${NC}"
-  echo ""
-  echo -e "  ${YELLOW}klaas${NC} ${GRAY}~ Remote access for Claude Code${NC}"
-  echo ""
-
-  # Detect platform
+  # Detect platform first (before banner, in case of errors)
   local os arch is_musl platform
   os=$(detect_os)
   arch=$(detect_arch)
@@ -159,12 +169,17 @@ main() {
     platform="${os}-${arch}"
   fi
 
-  info "Detected platform: $platform"
-
-  # Get latest version
-  info "Fetching latest version..."
+  # Get latest version (silently, before banner)
   local version
-  version=$(get_latest_version)
+  version=$(get_latest_version 2>/dev/null) || {
+    echo ""
+    error "Failed to fetch latest version from GitHub"
+  }
+
+  # Now show banner with version
+  show_banner "$version"
+
+  info "Detected platform: $platform"
   info "Latest version: $version"
 
   # Download manifest.json

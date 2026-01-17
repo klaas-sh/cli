@@ -69,8 +69,6 @@ function Get-Platform {
 }
 
 function Get-LatestVersion {
-    Write-Info "Fetching latest version..."
-
     try {
         $release = Invoke-RestMethod `
             -Uri "https://api.github.com/repos/$GitHubRepo/releases/latest" `
@@ -82,24 +80,30 @@ function Get-LatestVersion {
     }
 }
 
-function Install-Klaas {
-    # Show banner (terminal window logo in amber)
+function Show-Banner {
+    param($Version)
     Write-Host ""
-    Write-Host "  ╭────────╮" -ForegroundColor DarkYellow
-    Write-Host "  ├────────┤" -ForegroundColor DarkYellow
-    Write-Host "  │ ❯ __   │" -ForegroundColor DarkYellow
-    Write-Host "  ╰────────╯" -ForegroundColor DarkYellow
+    Write-Host " ╭────────╮" -ForegroundColor DarkYellow
+    Write-Host " ├────────┤ " -ForegroundColor DarkYellow -NoNewline
+    Write-Host "klaas" -ForegroundColor Yellow -NoNewline
+    Write-Host " $Version" -ForegroundColor Gray
+    Write-Host " │ ❯ __   │ " -ForegroundColor DarkYellow -NoNewline
+    Write-Host "Remote Terminal Access" -ForegroundColor Gray
+    Write-Host " ╰────────╯" -ForegroundColor DarkYellow
     Write-Host ""
-    Write-Host "  klaas" -ForegroundColor Yellow -NoNewline
-    Write-Host " ~ Remote access for Claude Code" -ForegroundColor Gray
-    Write-Host ""
+}
 
-    # Detect platform
+function Install-Klaas {
+    # Detect platform first (before banner, in case of errors)
     $platform = Get-Platform
-    Write-Info "Detected platform: $platform"
 
     # Get latest version
     $version = Get-LatestVersion
+
+    # Show banner with version
+    Show-Banner -Version $version
+
+    Write-Info "Detected platform: $platform"
     Write-Info "Latest version: $version"
 
     # Download manifest.json

@@ -29,17 +29,7 @@ set "AMBER=%ESC%[38;5;214m"
 set "GRAY=%ESC%[90m"
 set "NC=%ESC%[0m"
 
-:: Banner (terminal window logo in amber)
-echo.
-echo %AMBER%  ╭────────╮%NC%
-echo %AMBER%  ├────────┤%NC%
-echo %AMBER%  │ ❯ __   │%NC%
-echo %AMBER%  ╰────────╯%NC%
-echo.
-echo   %YELLOW%klaas%NC% %GRAY%~ Remote access for Claude Code%NC%
-echo.
-
-:: Check architecture
+:: Check architecture first (before any output)
 if "%PROCESSOR_ARCHITECTURE%"=="AMD64" (
     set "PLATFORM=windows-x64"
 ) else if "%PROCESSOR_ARCHITECTURE%"=="ARM64" (
@@ -50,18 +40,14 @@ if "%PROCESSOR_ARCHITECTURE%"=="AMD64" (
     exit /b 1
 )
 
-echo %BLUE%[INFO]%NC% Detected platform: %PLATFORM%
-
-:: Get latest version from GitHub API
-echo %BLUE%[INFO]%NC% Fetching latest version...
-
 :: Create temp directory
 set "TEMP_DIR=%TEMP%\klaas-install-%RANDOM%"
 mkdir "%TEMP_DIR%" 2>nul
 
-:: Download release info
-curl -fsSL "https://api.github.com/repos/%GITHUB_REPO%/releases/latest" -o "%TEMP_DIR%\release.json"
+:: Get latest version from GitHub API (silently)
+curl -fsSL "https://api.github.com/repos/%GITHUB_REPO%/releases/latest" -o "%TEMP_DIR%\release.json" 2>nul
 if errorlevel 1 (
+    echo.
     echo %RED%[ERROR]%NC% Failed to fetch release information
     goto :cleanup
 )
@@ -74,10 +60,20 @@ for /f "tokens=2 delims=:," %%a in ('findstr /C:"tag_name" "%TEMP_DIR%\release.j
 )
 
 if not defined VERSION (
+    echo.
     echo %RED%[ERROR]%NC% Failed to parse version from release info
     goto :cleanup
 )
 
+:: Now show banner with version
+echo.
+echo %AMBER% ╭────────╮%NC%
+echo %AMBER% ├────────┤%NC% %YELLOW%klaas%NC% %GRAY%!VERSION!%NC%
+echo %AMBER% │ ❯ __   │%NC% %GRAY%Remote Terminal Access%NC%
+echo %AMBER% ╰────────╯%NC%
+echo.
+
+echo %BLUE%[INFO]%NC% Detected platform: %PLATFORM%
 echo %BLUE%[INFO]%NC% Latest version: %VERSION%
 
 :: Download manifest.json
