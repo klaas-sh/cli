@@ -10,7 +10,7 @@
 
 use aes_gcm::{
     aead::{Aead, KeyInit},
-    Aes256Gcm, Key, Nonce,
+    Aes256Gcm,
 };
 use argon2::{Algorithm, Argon2, Params, Version};
 use hkdf::Hkdf;
@@ -207,10 +207,12 @@ fn generate_nonce() -> [u8; NONCE_SIZE] {
 type AesGcmResult = (Vec<u8>, [u8; NONCE_SIZE], [u8; TAG_SIZE]);
 
 /// Encrypts data using AES-256-GCM.
+#[allow(deprecated)] // from_slice deprecated in generic-array, waiting for aes-gcm update
 fn aes_gcm_encrypt(key: &SecretKey, plaintext: &[u8]) -> Result<AesGcmResult, CliError> {
-    let cipher = Aes256Gcm::new(Key::<Aes256Gcm>::from_slice(key.as_bytes()));
+    use aes_gcm::aead::generic_array::GenericArray;
+    let cipher = Aes256Gcm::new(GenericArray::from_slice(key.as_bytes()));
     let nonce_bytes = generate_nonce();
-    let nonce = Nonce::from_slice(&nonce_bytes);
+    let nonce = GenericArray::from_slice(&nonce_bytes);
 
     let ciphertext_with_tag = cipher
         .encrypt(nonce, plaintext)
@@ -226,14 +228,16 @@ fn aes_gcm_encrypt(key: &SecretKey, plaintext: &[u8]) -> Result<AesGcmResult, Cl
 }
 
 /// Decrypts data using AES-256-GCM.
+#[allow(deprecated)] // from_slice deprecated in generic-array, waiting for aes-gcm update
 fn aes_gcm_decrypt(
     key: &SecretKey,
     ciphertext: &[u8],
     nonce: &[u8; NONCE_SIZE],
     tag: &[u8; TAG_SIZE],
 ) -> Result<Vec<u8>, CliError> {
-    let cipher = Aes256Gcm::new(Key::<Aes256Gcm>::from_slice(key.as_bytes()));
-    let nonce = Nonce::from_slice(nonce);
+    use aes_gcm::aead::generic_array::GenericArray;
+    let cipher = Aes256Gcm::new(GenericArray::from_slice(key.as_bytes()));
+    let nonce = GenericArray::from_slice(nonce);
 
     // Concatenate ciphertext + tag for decryption
     let mut ct_with_tag = ciphertext.to_vec();
