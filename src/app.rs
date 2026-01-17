@@ -556,7 +556,7 @@ async fn ensure_authenticated(config: &ApiConfig, cred_store: &CredentialStore) 
         // TODO: Decode JWT and check expiry
 
         // Try refreshing to get a fresh token
-        match refresh_token(&config.api_url, &refresh_token_val).await {
+        match refresh_token(config.api_url, &refresh_token_val).await {
             Ok(tokens) => {
                 debug!("Successfully refreshed tokens");
                 cred_store.store_tokens(&tokens.access_token, &tokens.refresh_token)?;
@@ -577,7 +577,7 @@ async fn ensure_authenticated(config: &ApiConfig, cred_store: &CredentialStore) 
 
     // No valid tokens, run OAuth Device Flow
     info!("No valid credentials, starting authentication");
-    let tokens = authenticate(&config.api_url).await.map_err(|e| match e {
+    let tokens = authenticate(config.api_url).await.map_err(|e| match e {
         AuthError::Cancelled | AuthError::Skipped => CliError::AuthError(e.to_string()),
         _ => CliError::AuthError(e.to_string()),
     })?;
@@ -645,7 +645,7 @@ async fn connect_websocket(
     debug!(ws_url = %config.ws_url, "Connecting to WebSocket");
 
     match WebSocketClient::connect(
-        &config.ws_url,
+        config.ws_url,
         access_token,
         session_id,
         device_id,
