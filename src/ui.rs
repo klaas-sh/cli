@@ -455,16 +455,22 @@ pub fn select_agent(agents: &[&crate::agents::Agent]) -> crate::agents::AgentSel
         if let Ok(Event::Key(key_event)) = event::read() {
             match key_event.code {
                 KeyCode::Up => {
+                    // Wrap around: if at top, go to bottom
                     if selected_index > 0 {
                         selected_index -= 1;
-                        draw_agent_menu(&mut stdout, agents, selected_index, true);
+                    } else {
+                        selected_index = agents.len() - 1;
                     }
+                    draw_agent_menu(&mut stdout, agents, selected_index, true);
                 }
                 KeyCode::Down => {
+                    // Wrap around: if at bottom, go to top
                     if selected_index < agents.len() - 1 {
                         selected_index += 1;
-                        draw_agent_menu(&mut stdout, agents, selected_index, true);
+                    } else {
+                        selected_index = 0;
                     }
+                    draw_agent_menu(&mut stdout, agents, selected_index, true);
                 }
                 KeyCode::Enter => {
                     break AgentSelection::Selected(agents[selected_index].clone());
@@ -534,7 +540,7 @@ fn draw_agent_menu(
         let shortcut = agent.shortcut_key();
 
         // Selection indicator
-        let indicator = if is_selected { ">" } else { " " };
+        let indicator = if is_selected { "›" } else { " " };
 
         // Color based on selection
         let (name_color, shortcut_color) = if is_selected {
