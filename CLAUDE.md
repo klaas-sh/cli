@@ -202,42 +202,38 @@ See redirme.com workflows for reference.
 
 ## Dashboard Theme Colors
 
-The dashboard uses **Tailwind CSS violet palette** with semantic CSS variables.
+The dashboard uses a **dark-monochromatic theme with warm amber accent**.
 All colors are defined in `packages/dashboard/src/app/globals.css`.
 
 ### Color System
 
-Use semantic `app-*` classes instead of hardcoded Tailwind colors:
-
-| Semantic Name | Light (Tailwind) | Light Hex | Dark (Tailwind) | Dark Hex |
-|--------------|------------------|-----------|-----------------|----------|
-| `app-primary` | violet-600 | `#7c3aed` | violet-400 | `#a78bfa` |
-| `app-primary-hover` | violet-700 | `#6d28d9` | violet-500 | `#8b5cf6` |
-| `app-primary-light` | violet-100 | `#ede9fe` | violet-900 | `#4c1d95` |
-| `app-accent` | violet-800 | `#5b21b6` | violet-600 | `#7c3aed` |
-| `app-background` | violet-50 | `#faf5ff` | violet-950 | `#2e1065` |
-| `app-surface` | white | `#ffffff` | violet-900 | `#4c1d95` |
-| `app-border` | violet-200 | `#ddd6fe` | violet-700 | `#6d28d9` |
-| `app-highlight` | violet-50 | `#f5f3ff` | custom | `#3b1a6d` |
-| `app-text-primary` | slate-800 | `#1e293b` | violet-100 | `#ede9fe` |
-| `app-text-secondary` | violet-700 | `#6d28d9` | violet-300 | `#c4b5fd` |
+| Variable | Value | Description |
+|----------|-------|-------------|
+| `--color-app-bg-void` | `#09090b` | Deepest black |
+| `--color-app-bg-deep` | `#0c0c0f` | Main background |
+| `--color-app-bg-surface` | `#121216` | Card/panel background |
+| `--color-app-bg-elevated` | `#18181c` | Hover states |
+| `--color-app-accent` | `#f59e0b` | Amber primary |
+| `--color-app-accent-light` | `#fbbf24` | Amber hover |
+| `--color-app-text-primary` | `#fafafa` | Main text |
+| `--color-app-text-secondary` | `#a1a1aa` | Secondary text |
+| `--color-app-text-muted` | `#71717a` | Muted text |
 
 ### Logo Colors
 
-The favicon and AppIcon use hardcoded violet colors:
-- Background: violet-900 (`#4c1d95`)
-- Title bar: violet-600 (`#7c3aed`)
-- Terminal elements: violet-100 (`#ede9fe`)
+The favicon and AppIcon use amber/dark colors:
+- Background: `#09090b` (void)
+- Accent: `#f59e0b` (amber)
+- Text: `#fafafa` (white)
 
 ### Usage
 
 ```tsx
-// Use semantic classes, NOT hardcoded violet-*
-<button className="bg-app-primary hover:bg-app-primary-hover">  // Good
-<button className="bg-violet-600 hover:bg-violet-700">          // Bad
+// Use CSS variables
+<button className="bg-app-accent hover:bg-app-accent-light">
+<div className="bg-app-bg-surface text-app-text-primary">
 
-// Dark mode variants
-<div className="bg-app-surface dark:bg-app-surface-dark">
+// Or use component classes
+<button className="app-button-primary">
+<div className="app-card">
 ```
-
-To change the color scheme, update `globals.css` - all components will update.
