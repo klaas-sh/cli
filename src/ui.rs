@@ -346,6 +346,24 @@ pub fn display_code_expired() {
     println!();
 }
 
+/// Clears the previous auth display (instructions + expired message) for retry.
+///
+/// Call this after displaying the "code expired" message to prepare for
+/// showing new auth instructions. Clears 7 lines total:
+/// - 4 lines from display_auth_instructions()
+/// - 3 lines from display_code_expired()
+pub fn clear_auth_display_for_retry() {
+    // Move cursor up 7 lines
+    print!("\x1b[7A");
+    // Clear each line and move down
+    for _ in 0..7 {
+        println!("\x1b[2K");
+    }
+    // Move cursor back up 7 lines to start position
+    print!("\x1b[7A");
+    let _ = io::stdout().flush();
+}
+
 /// Displays pairing instructions for the ECDH key exchange flow.
 pub fn display_pairing_instructions(verification_uri: &str, pairing_code: &str) {
     let (ar, ag, ab) = colors::AMBER;

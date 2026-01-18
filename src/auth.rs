@@ -505,6 +505,8 @@ pub async fn authenticate(api_url: &str) -> AuthResult<TokenResponse> {
                 // Device code expired - display message and get a new code
                 info!("Device code expired, requesting new code");
                 ui::display_code_expired();
+                // Clear previous display to make room for new instructions
+                ui::clear_auth_display_for_retry();
                 continue;
             }
             Err(e) => return Err(e), // Cancelled, Skipped, or other errors
