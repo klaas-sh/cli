@@ -167,6 +167,13 @@ function Install-Klaas {
         $destPath = Join-Path $InstallDir $BinaryName
         Move-Item -Path $sourcePath -Destination $destPath -Force
 
+        # Create install marker for analytics (tracks install event on first run)
+        $dataDir = "$env:LOCALAPPDATA\klaas"
+        if (-not (Test-Path $dataDir)) {
+            New-Item -ItemType Directory -Path $dataDir -Force | Out-Null
+        }
+        $version | Out-File -FilePath "$dataDir\.installed" -Encoding UTF8 -NoNewline
+
         Write-Success "klaas $version installed successfully!"
         Write-Host ""
         Write-Host "Run 'klaas' to get started." -ForegroundColor Gray

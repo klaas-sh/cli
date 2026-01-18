@@ -175,6 +175,7 @@ async fn send_event(event: Event) -> Result<(), String> {
 }
 
 /// Gets the path to the install marker file.
+/// This file is created by the install script and deleted after tracking.
 fn get_install_marker_path() -> PathBuf {
     dirs::data_dir()
         .unwrap_or_else(|| PathBuf::from("."))
@@ -182,24 +183,20 @@ fn get_install_marker_path() -> PathBuf {
         .join(".installed")
 }
 
-/// Tracks install event if this is the first run.
+/// Tracks install event if the install marker exists.
 ///
-/// Uses a marker file to detect first run. If the marker doesn't exist,
-/// this is considered a new install and the event is tracked.
+/// The install script creates a marker file to signal a fresh install.
+/// If the marker exists, we send the install event and delete the marker.
 /// Respects the `analytics` config setting.
-pub fn track_install_if_first_run() {
+pub fn track_install_if_marker_exists() {
     let marker_path = get_install_marker_path();
 
-    if marker_path.exists() {
+    if !marker_path.exists() {
         return;
     }
 
-    // Create marker directory and file (even if analytics disabled,
-    // to prevent repeated checks)
-    if let Some(parent) = marker_path.parent() {
-        let _ = std::fs::create_dir_all(parent);
-    }
-    let _ = std::fs::write(&marker_path, VERSION);
+    // Delete marker first (even if analytics disabled, to clean up)
+    let _ = std::fs::remove_file(&marker_path);
 
     // Track install event (respects analytics config)
     track(Event::Install);

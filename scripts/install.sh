@@ -254,6 +254,11 @@ main() {
   $use_sudo mv "${tmp_dir}/${BINARY_NAME}" "${INSTALL_DIR}/${BINARY_NAME}"
   $use_sudo chmod +x "${INSTALL_DIR}/${BINARY_NAME}"
 
+  # Create install marker for analytics (tracks install event on first run)
+  local data_dir="${XDG_DATA_HOME:-$HOME/.local/share}/klaas"
+  mkdir -p "$data_dir"
+  echo "$version" > "$data_dir/.installed"
+
   success "klaas ${version} installed successfully!"
   echo ""
   echo "Run 'klaas' to get started."

@@ -148,8 +148,8 @@ async fn main() -> anyhow::Result<()> {
         std::process::exit(exit_code);
     }
 
-    // Track install if this is the first run
-    analytics::track_install_if_first_run();
+    // Track install if marker exists (created by install script)
+    analytics::track_install_if_marker_exists();
 
     // Auto-update if a new version is available
     // This checks the cache first (updated every 24h) and only downloads if needed
