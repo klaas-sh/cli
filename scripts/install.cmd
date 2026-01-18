@@ -142,6 +142,11 @@ if errorlevel 1 (
     goto :cleanup
 )
 
+:: Create install marker for analytics (tracks install event on first run)
+set "DATA_DIR=%LOCALAPPDATA%\klaas"
+if not exist "%DATA_DIR%" mkdir "%DATA_DIR%"
+echo %VERSION%> "%DATA_DIR%\.installed"
+
 echo %GREEN%[SUCCESS]%NC% klaas %VERSION% installed successfully!
 echo.
 echo %GRAY%Run 'klaas' to get started.%NC%
