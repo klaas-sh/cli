@@ -176,6 +176,10 @@ command = "/path/to/my-agent"
 name = "My Custom Agent"
 hooks_type = "claude"  # "claude", "gemini", "codex", or "none"
 shortcut = "X"
+
+# Disable anonymous analytics (tracks install/upgrade/uninstall
+# events with version and platform only, no personal data)
+analytics = false
 ```
 
 ## Building from Source

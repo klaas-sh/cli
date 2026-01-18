@@ -3,12 +3,16 @@
 //! Tracks install, upgrade, and uninstall events. No personal information
 //! is collected - only the event type, klaas version, and platform (os/arch).
 //! All tracking is fire-and-forget to avoid blocking the CLI.
+//!
+//! Analytics can be disabled via config.toml: `analytics = false`
 
 use std::path::PathBuf;
 use std::time::Duration;
 
 use serde::Serialize;
 use tracing::debug;
+
+use crate::config::load_config;
 
 /// Umami tracking endpoint.
 const UMAMI_ENDPOINT: &str = "https://track.exquex.com/api/send";
@@ -89,11 +93,22 @@ struct UmamiRequest {
     payload: UmamiPayload,
 }
 
+/// Checks if analytics is enabled in the config.
+fn is_enabled() -> bool {
+    load_config().analytics
+}
+
 /// Tracks an event to Umami analytics.
 ///
 /// This is a fire-and-forget operation that spawns a background task.
 /// It will not block or fail the main operation if tracking fails.
+/// Respects the `analytics` config setting.
 pub fn track(event: Event) {
+    if !is_enabled() {
+        debug!("Analytics disabled, skipping event: {}", event.name());
+        return;
+    }
+
     // Spawn a background task so we don't block
     tokio::spawn(async move {
         if let Err(e) = send_event(event).await {
@@ -105,8 +120,13 @@ pub fn track(event: Event) {
 /// Tracks an event and waits for completion.
 ///
 /// Use this when you need to ensure the event is sent before exiting,
-/// such as during uninstall.
+/// such as during uninstall. Respects the `analytics` config setting.
 pub async fn track_and_wait(event: Event) {
+    if !is_enabled() {
+        debug!("Analytics disabled, skipping event: {}", event.name());
+        return;
+    }
+
     if let Err(e) = send_event(event).await {
         debug!("Analytics tracking failed: {}", e);
     }
@@ -166,6 +186,7 @@ fn get_install_marker_path() -> PathBuf {
 ///
 /// Uses a marker file to detect first run. If the marker doesn't exist,
 /// this is considered a new install and the event is tracked.
+/// Respects the `analytics` config setting.
 pub fn track_install_if_first_run() {
     let marker_path = get_install_marker_path();
 
@@ -173,13 +194,14 @@ pub fn track_install_if_first_run() {
         return;
     }
 
-    // Create marker directory and file
+    // Create marker directory and file (even if analytics disabled,
+    // to prevent repeated checks)
     if let Some(parent) = marker_path.parent() {
         let _ = std::fs::create_dir_all(parent);
     }
     let _ = std::fs::write(&marker_path, VERSION);
 
-    // Track install event
+    // Track install event (respects analytics config)
     track(Event::Install);
 }
 

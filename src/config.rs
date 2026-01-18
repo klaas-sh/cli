@@ -72,7 +72,7 @@ pub const PROJECT_CONFIG_DIR: &str = ".klaas";
 pub const CONFIG_FILE_NAME: &str = "config.toml";
 
 /// TOML configuration file structure.
-#[derive(Debug, Default, Deserialize)]
+#[derive(Debug, Deserialize)]
 pub struct KlaasConfig {
     /// Default agent to use when multiple are available.
     pub default_agent: Option<String>,
@@ -94,6 +94,30 @@ pub struct KlaasConfig {
     /// Notification settings.
     #[serde(default)]
     pub notifications: NotificationConfig,
+
+    /// Whether anonymous analytics are enabled.
+    /// Tracks install/upgrade/uninstall events with version and platform info.
+    /// No personal information is collected.
+    #[serde(default = "default_analytics")]
+    pub analytics: bool,
+}
+
+/// Default value for analytics (enabled).
+fn default_analytics() -> bool {
+    true
+}
+
+impl Default for KlaasConfig {
+    fn default() -> Self {
+        Self {
+            default_agent: None,
+            only: Vec::new(),
+            also: Vec::new(),
+            agents: HashMap::new(),
+            notifications: NotificationConfig::default(),
+            analytics: true,
+        }
+    }
 }
 
 /// Custom agent configuration from TOML.
