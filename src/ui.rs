@@ -638,6 +638,29 @@ fn clear_agent_menu(stdout: &mut io::Stdout, agent_count: usize) {
     let _ = stdout.flush();
 }
 
+/// Displays a notification that no AI coding agents were found.
+///
+/// This is shown when the user has no supported AI agents installed,
+/// but shell is available as an alternative.
+pub fn display_no_agents_notice() {
+    let (ar, ag, ab) = colors::AMBER;
+    let (mr, mg, mb) = colors::TEXT_MUTED;
+
+    println!(
+        "  {}{}!{} No AI coding agents detected.{}",
+        BOLD,
+        fg_color(ar, ag, ab),
+        RESET,
+        RESET
+    );
+    println!(
+        "    {}Install an agent or continue with shell.{}",
+        fg_color(mr, mg, mb),
+        RESET
+    );
+    println!();
+}
+
 /// Displays a notice that hooks are available but not configured.
 ///
 /// This is shown when an agent supports hooks (like Claude Code or Gemini CLI)

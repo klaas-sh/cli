@@ -174,9 +174,9 @@ async fn main() -> anyhow::Result<()> {
         }
         agents::AgentSelection::NoneInstalled => {
             ui::show_cursor();
-            eprintln!("Error: No supported AI coding agents found.");
+            eprintln!("Error: No shell or AI agents available.");
             eprintln!();
-            eprintln!("Install one of the following:");
+            eprintln!("Set the SHELL environment variable or install an agent:");
             eprintln!("  - Claude Code: https://claude.ai/download");
             eprintln!("  - Gemini CLI: https://ai.google.dev/gemini-cli");
             eprintln!("  - Codex CLI: https://openai.com/codex");
@@ -252,14 +252,18 @@ fn select_agent(cli: &Cli) -> agents::AgentSelection {
     // Detect which are installed
     let installed_refs = registry.detect_installed_from(&candidates);
 
-    // Convert to owned agents and add shell option if multiple agents exist
-    let shell_agent = agents::shell_agent();
+    // Convert to owned agents
     let mut installed: Vec<agents::Agent> = installed_refs.iter().map(|a| (*a).clone()).collect();
+    let has_ai_agents = !installed.is_empty();
 
-    if !installed.is_empty() {
-        if let Some(shell) = shell_agent {
-            installed.push(shell);
-        }
+    // Always add shell option if available
+    if let Some(shell) = agents::shell_agent() {
+        installed.push(shell);
+    }
+
+    // Show notification if no AI agents found (but shell is available)
+    if !has_ai_agents && !installed.is_empty() {
+        ui::display_no_agents_notice();
     }
 
     match installed.len() {
