@@ -25,6 +25,7 @@ use clap::{Parser, Subcommand};
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
 
 mod agents;
+mod analytics;
 mod app;
 mod auth;
 mod config;
@@ -129,7 +130,7 @@ async fn main() -> anyhow::Result<()> {
                     1
                 }
             },
-            Commands::Uninstall { purge } => match perform_uninstall(purge) {
+            Commands::Uninstall { purge } => match perform_uninstall(purge).await {
                 Ok(()) => 0,
                 Err(e) => {
                     eprintln!("Uninstall failed: {}", e);
@@ -146,6 +147,9 @@ async fn main() -> anyhow::Result<()> {
         };
         std::process::exit(exit_code);
     }
+
+    // Track install if this is the first run
+    analytics::track_install_if_first_run();
 
     // Auto-update if a new version is available
     // This checks the cache first (updated every 24h) and only downloads if needed
@@ -280,7 +284,7 @@ fn select_agent(cli: &Cli) -> agents::AgentSelection {
 }
 
 /// Uninstalls klaas from the system.
-fn perform_uninstall(purge: bool) -> anyhow::Result<()> {
+async fn perform_uninstall(purge: bool) -> anyhow::Result<()> {
     use std::io::{self, Write};
     use ui::colors;
 
@@ -431,6 +435,9 @@ fn perform_uninstall(purge: bool) -> anyhow::Result<()> {
             binary_path.display()
         );
     }
+
+    // Track uninstall event (wait for completion before exiting)
+    analytics::track_and_wait(analytics::Event::Uninstall).await;
 
     println!();
     println!(

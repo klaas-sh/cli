@@ -11,6 +11,8 @@ use std::time::{Duration, SystemTime, UNIX_EPOCH};
 use serde::{Deserialize, Serialize};
 use tracing::{debug, info};
 
+use crate::analytics;
+
 /// GitHub repository for klaas releases.
 const GITHUB_REPO: &str = "klaas-sh/cli";
 
@@ -412,6 +414,9 @@ async fn perform_update_quiet() -> Result<(), String> {
     let cache = UpdateCache::default();
     write_cache(&cache);
 
+    // Track upgrade event
+    analytics::track(analytics::Event::Upgrade);
+
     Ok(())
 }
 
@@ -600,6 +605,9 @@ pub async fn perform_update() -> Result<(), String> {
     // Clear update cache
     let cache = UpdateCache::default();
     write_cache(&cache);
+
+    // Track upgrade event (wait for completion before exiting)
+    analytics::track_and_wait(analytics::Event::Upgrade).await;
 
     eprintln!(
         "\x1b[32mSuccessfully updated to version {}!\x1b[0m",
