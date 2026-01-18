@@ -302,7 +302,6 @@ pub fn display_auth_instructions(
     let (al, alg, alb) = colors::AMBER_LIGHT;
     let (tr, tg, tb) = colors::TEXT_SECONDARY;
 
-    println!();
     println!(
         "  {}To connect this device, visit:{}",
         fg_color(tr, tg, tb),
