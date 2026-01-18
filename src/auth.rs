@@ -465,6 +465,10 @@ pub fn display_auth_instructions(response: &DeviceFlowResponse) {
 /// 2. Displays instructions to the user
 /// 3. Polls for token completion
 ///
+/// If the device code expires, a new code is automatically requested
+/// and the flow restarts. The user can press ESC to skip authentication
+/// and continue offline, or CTRL+C to exit.
+///
 /// # Arguments
 ///
 /// * `api_url` - Base URL of the klaas API
@@ -480,20 +484,32 @@ pub fn display_auth_instructions(response: &DeviceFlowResponse) {
 /// println!("Authenticated! Access token: {}", tokens.access_token);
 /// ```
 pub async fn authenticate(api_url: &str) -> AuthResult<TokenResponse> {
-    // Start the device flow
-    let device_response = start_device_flow(api_url).await?;
+    loop {
+        // Start the device flow
+        let device_response = start_device_flow(api_url).await?;
 
-    // Display instructions to the user
-    display_auth_instructions(&device_response);
+        // Display instructions to the user
+        display_auth_instructions(&device_response);
 
-    // Poll for token
-    poll_for_token(
-        api_url,
-        &device_response.device_code,
-        device_response.interval,
-        device_response.expires_in,
-    )
-    .await
+        // Poll for token
+        match poll_for_token(
+            api_url,
+            &device_response.device_code,
+            device_response.interval,
+            device_response.expires_in,
+        )
+        .await
+        {
+            Ok(tokens) => return Ok(tokens),
+            Err(AuthError::ExpiredToken) => {
+                // Device code expired - display message and get a new code
+                info!("Device code expired, requesting new code");
+                ui::display_code_expired();
+                continue;
+            }
+            Err(e) => return Err(e), // Cancelled, Skipped, or other errors
+        }
+    }
 }
 
 // =============================================================================

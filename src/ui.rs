@@ -328,6 +328,25 @@ pub fn display_auth_success() {
     );
 }
 
+/// Displays a message when the device code expires and a new one is requested.
+pub fn display_code_expired() {
+    let (ar, ag, ab) = colors::AMBER;
+    let (mr, mg, mb) = colors::TEXT_MUTED;
+    println!(
+        "\r  {}{}↻{} Code expired. Requesting new code...{}",
+        BOLD,
+        fg_color(ar, ag, ab),
+        RESET,
+        RESET
+    );
+    println!(
+        "    {}Press ESC to continue without syncing.{}",
+        fg_color(mr, mg, mb),
+        RESET
+    );
+    println!();
+}
+
 /// Displays pairing instructions for the ECDH key exchange flow.
 pub fn display_pairing_instructions(verification_uri: &str, pairing_code: &str) {
     let (ar, ag, ab) = colors::AMBER;
