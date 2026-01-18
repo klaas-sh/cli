@@ -227,71 +227,222 @@ async fn fetch_latest_version() -> Option<String> {
     Some(release.tag_name)
 }
 
-/// Spawns a background task to check for updates.
+/// Checks for updates and auto-updates if a new version is available.
 ///
-/// This is fire-and-forget - the result is cached and can be
-/// retrieved later with `get_cached_update_info()`.
-pub fn spawn_update_check() {
-    tokio::spawn(async {
-        let result = check_for_updates().await;
-        if result.update_available {
-            debug!(
-                "Background update check: {} -> {}",
-                result.current_version,
-                result.latest_version.as_deref().unwrap_or("unknown")
+/// This is called on startup. If an update is available:
+/// 1. Downloads and installs the new version
+/// 2. Re-execs the new binary with the same arguments
+///
+/// Returns true if klaas was updated and re-exec'd (caller should exit).
+/// Returns false if no update was needed or update failed.
+pub async fn auto_update_if_available() -> bool {
+    // Check for updates (uses cache)
+    let result = check_for_updates().await;
+
+    if !result.update_available {
+        return false;
+    }
+
+    let latest = match result.latest_version {
+        Some(v) => v,
+        None => return false,
+    };
+
+    // Show update message
+    eprintln!(
+        "\x1b[38;2;245;158;11m↻\x1b[0m Updating klaas {} → {}...",
+        result.current_version,
+        latest.trim_start_matches('v')
+    );
+
+    // Perform the update
+    match perform_update_quiet().await {
+        Ok(()) => {
+            eprintln!(
+                "\x1b[38;2;34;197;94m✓\x1b[0m Updated to {}",
+                latest.trim_start_matches('v')
             );
+            eprintln!();
+
+            // Re-exec the new binary with the same arguments
+            re_exec_self();
+
+            // If re_exec returns, something went wrong
+            true
         }
-    });
-}
-
-/// Gets cached update information without making a network request.
-///
-/// Returns None if no cached info is available.
-pub fn get_cached_update_info() -> Option<UpdateCheckResult> {
-    let cache = read_cache();
-    if cache.last_check == 0 {
-        return None;
-    }
-
-    Some(UpdateCheckResult {
-        current_version: CURRENT_VERSION.to_string(),
-        latest_version: cache.latest_version,
-        update_available: cache.update_available,
-    })
-}
-
-/// Displays an update notification if one is available.
-///
-/// Should be called after Claude Code exits to avoid
-/// interrupting the user experience.
-pub fn display_update_notification() {
-    if let Some(info) = get_cached_update_info() {
-        if info.update_available {
-            if let Some(latest) = info.latest_version {
-                eprintln!();
-                eprintln!("\x1b[33m╭─────────────────────────────────────────────╮\x1b[0m");
-                eprintln!(
-                    "\x1b[33m│\x1b[0m  \x1b[1mA new version of klaas is available!\x1b[0m      \x1b[33m│\x1b[0m"
-                );
-                eprintln!(
-                    "\x1b[33m│\x1b[0m                                             \x1b[33m│\x1b[0m"
-                );
-                eprintln!(
-                    "\x1b[33m│\x1b[0m  Current: {:<10} Latest: {:<10}   \x1b[33m│\x1b[0m",
-                    info.current_version,
-                    latest.trim_start_matches('v')
-                );
-                eprintln!(
-                    "\x1b[33m│\x1b[0m                                             \x1b[33m│\x1b[0m"
-                );
-                eprintln!(
-                    "\x1b[33m│\x1b[0m  Run: \x1b[36mklaas update\x1b[0m                        \x1b[33m│\x1b[0m"
-                );
-                eprintln!("\x1b[33m╰─────────────────────────────────────────────╯\x1b[0m");
-                eprintln!();
-            }
+        Err(e) => {
+            debug!("Auto-update failed: {}", e);
+            // Silently continue with current version
+            false
         }
     }
+}
+
+/// Performs update without verbose output (for auto-update).
+async fn perform_update_quiet() -> Result<(), String> {
+    let url = format!(
+        "https://api.github.com/repos/{}/releases/latest",
+        GITHUB_REPO
+    );
+
+    let client = reqwest::Client::builder()
+        .user_agent(format!("klaas/{}", CURRENT_VERSION))
+        .timeout(Duration::from_secs(30))
+        .build()
+        .map_err(|e| format!("Failed to create HTTP client: {}", e))?;
+
+    let response = client
+        .get(&url)
+        .send()
+        .await
+        .map_err(|e| format!("Failed to fetch release info: {}", e))?;
+
+    if !response.status().is_success() {
+        return Err(format!("GitHub API error: {}", response.status()));
+    }
+
+    let release: GitHubRelease = response
+        .json()
+        .await
+        .map_err(|e| format!("Failed to parse release info: {}", e))?;
+
+    let latest_version = release.tag_name.trim_start_matches('v');
+
+    if !is_newer_version(CURRENT_VERSION, latest_version) {
+        return Ok(());
+    }
+
+    // Detect platform
+    let platform = detect_platform()?;
+    let asset_name = format!("klaas-{}.tar.gz", platform);
+    let download_url = format!(
+        "https://github.com/{}/releases/download/{}/{}",
+        GITHUB_REPO, release.tag_name, asset_name
+    );
+
+    // Download the archive
+    let response = client
+        .get(&download_url)
+        .send()
+        .await
+        .map_err(|e| format!("Failed to download: {}", e))?;
+
+    if !response.status().is_success() {
+        return Err(format!(
+            "Download failed: {} ({})",
+            response.status(),
+            download_url
+        ));
+    }
+
+    let archive_data = response
+        .bytes()
+        .await
+        .map_err(|e| format!("Failed to read download: {}", e))?;
+
+    // Get current executable path
+    let current_exe = std::env::current_exe()
+        .map_err(|e| format!("Failed to get current executable path: {}", e))?;
+
+    // Create temp directory for extraction
+    let temp_dir =
+        tempfile::tempdir().map_err(|e| format!("Failed to create temp directory: {}", e))?;
+
+    let archive_path = temp_dir.path().join(&asset_name);
+    fs::write(&archive_path, &archive_data)
+        .map_err(|e| format!("Failed to write archive: {}", e))?;
+
+    // Extract the archive
+    let output = std::process::Command::new("tar")
+        .args(["-xzf", &asset_name])
+        .current_dir(temp_dir.path())
+        .output()
+        .map_err(|e| format!("Failed to extract archive: {}", e))?;
+
+    if !output.status.success() {
+        return Err(format!(
+            "Extraction failed: {}",
+            String::from_utf8_lossy(&output.stderr)
+        ));
+    }
+
+    // Find the extracted binary
+    let new_binary = temp_dir.path().join("klaas");
+    if !new_binary.exists() {
+        return Err("Extracted binary not found".to_string());
+    }
+
+    // Replace the current binary
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+
+        // Make the new binary executable
+        fs::set_permissions(&new_binary, fs::Permissions::from_mode(0o755))
+            .map_err(|e| format!("Failed to set permissions: {}", e))?;
+
+        // Backup old binary
+        let backup_path = current_exe.with_extension("old");
+        let _ = fs::remove_file(&backup_path);
+
+        // Rename current to backup
+        fs::rename(&current_exe, &backup_path)
+            .map_err(|e| format!("Failed to backup current binary: {}", e))?;
+
+        // Move new binary to current location
+        if let Err(e) = fs::rename(&new_binary, &current_exe) {
+            let _ = fs::rename(&backup_path, &current_exe);
+            return Err(format!("Failed to install new binary: {}", e));
+        }
+
+        // Remove backup on success
+        let _ = fs::remove_file(&backup_path);
+    }
+
+    #[cfg(windows)]
+    {
+        // Windows: copy new binary alongside old one
+        let new_path = current_exe.with_file_name("klaas-new.exe");
+        fs::copy(&new_binary, &new_path)
+            .map_err(|e| format!("Failed to copy new binary: {}", e))?;
+        // Note: Windows users will need to replace manually
+    }
+
+    // Clear update cache
+    let cache = UpdateCache::default();
+    write_cache(&cache);
+
+    Ok(())
+}
+
+/// Re-executes the current binary with the same arguments.
+///
+/// This is used after auto-update to run the new version.
+#[cfg(unix)]
+fn re_exec_self() {
+    use std::os::unix::process::CommandExt;
+
+    let exe = match std::env::current_exe() {
+        Ok(e) => e,
+        Err(_) => return,
+    };
+
+    let args: Vec<String> = std::env::args().collect();
+
+    // exec replaces the current process with the new one
+    let mut cmd = std::process::Command::new(&exe);
+    if args.len() > 1 {
+        cmd.args(&args[1..]);
+    }
+
+    // This won't return if successful
+    let _ = cmd.exec();
+}
+
+#[cfg(windows)]
+fn re_exec_self() {
+    // On Windows, we can't easily replace ourselves
+    // Just continue with the old binary for this session
 }
 
 /// Performs a self-update by downloading and replacing the binary.

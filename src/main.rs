@@ -147,8 +147,12 @@ async fn main() -> anyhow::Result<()> {
         std::process::exit(exit_code);
     }
 
-    // Spawn background update check (non-blocking)
-    update::spawn_update_check();
+    // Auto-update if a new version is available
+    // This checks the cache first (updated every 24h) and only downloads if needed
+    if update::auto_update_if_available().await {
+        // Update succeeded and re-exec'd - we shouldn't reach here on Unix
+        // On Windows, just continue with the session
+    }
 
     // Display startup banner and hide cursor during startup
     ui::display_startup_banner();
@@ -179,11 +183,7 @@ async fn main() -> anyhow::Result<()> {
 
     // Run the application with selected agent
     let exit_code = match app::run(selected_agent, cli.agent_args, cli.resume).await {
-        Ok(code) => {
-            // Show update notification after agent exits
-            update::display_update_notification();
-            code
-        }
+        Ok(code) => code,
         Err(e) => {
             eprintln!("Error: {}", e);
             1
