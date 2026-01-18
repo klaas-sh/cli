@@ -78,6 +78,18 @@ scoop bucket add klaas https://github.com/klaas-sh/scoop-bucket
 scoop install klaas
 ```
 
+### Nix (NixOS/Linux/macOS)
+
+```bash
+# Run directly without installing
+nix run github:klaas-sh/cli
+
+# Install to profile
+nix profile install github:klaas-sh/cli
+
+# Or add to your flake.nix inputs
+```
+
 ## Usage
 
 ```bash
