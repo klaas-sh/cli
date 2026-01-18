@@ -133,9 +133,9 @@ fn default_token_type() -> String {
     "Bearer".to_string()
 }
 
-/// Response from POST /auth/pair/request endpoint.
+/// Response from POST /auth/device endpoint.
 ///
-/// Contains the pairing code and URL to display to the user.
+/// Contains the device code and URL to display to the user.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct PairingResponse {
     /// Whether the request was successful.
@@ -157,7 +157,7 @@ pub struct PairingData {
     pub expires_in: u64,
 }
 
-/// Response from GET /auth/pair/status/:code endpoint.
+/// Response from GET /auth/device/:code/status endpoint.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct PairingStatusResponse {
     /// Whether the request was successful.
@@ -540,10 +540,7 @@ pub async fn start_pairing(
     api_url: &str,
     device_name: &str,
 ) -> AuthResult<(PairingData, p256::ecdh::EphemeralSecret)> {
-    let url = format!(
-        "{}/dashboard/auth/pair/request",
-        api_url.trim_end_matches('/')
-    );
+    let url = format!("{}/dashboard/auth/device", api_url.trim_end_matches('/'));
     debug!("Starting pairing at {}", url);
 
     // Generate ECDH keypair
@@ -593,7 +590,7 @@ pub async fn poll_for_pairing(
     expires_in: u64,
 ) -> AuthResult<SecretKey> {
     let url = format!(
-        "{}/dashboard/auth/pair/status/{}",
+        "{}/dashboard/auth/device/{}/status",
         api_url.trim_end_matches('/'),
         pairing_code
     );
