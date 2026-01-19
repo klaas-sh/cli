@@ -80,14 +80,22 @@ scoop install klaas
 
 ### Nix (NixOS/Linux/macOS)
 
+Requires [Nix](https://nixos.org/download/) with
+[flakes enabled](https://nixos.wiki/wiki/Flakes#Enable_flakes_permanently).
+To enable flakes, add to `~/.config/nix/nix.conf`:
+
+```
+experimental-features = nix-command flakes
+```
+
+Then install klaas:
+
 ```bash
 # Run directly without installing
 nix run github:klaas-sh/cli
 
 # Install to profile
 nix profile install github:klaas-sh/cli
-
-# Or add to your flake.nix inputs
 ```
 
 ## Usage
