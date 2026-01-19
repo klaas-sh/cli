@@ -100,6 +100,8 @@ nix profile install github:klaas-sh/cli
 
 ## Usage
 
+### Starting Sessions (Host Mode)
+
 ```bash
 # Auto-detect installed agent (interactive if multiple)
 klaas
@@ -108,12 +110,40 @@ klaas
 klaas --agent claude
 klaas -a gemini
 
+# Name your session for easy reconnection
+klaas --name refactor-tests
+klaas -n api-work
+
 # Resume the previous session
 klaas --resume
 
 # Pass arguments to the agent (after --)
 klaas -- --model sonnet --allowedTools "Bash(git*)"
+```
 
+On first run, you'll be prompted to authenticate via your browser. Once
+authenticated, your session is automatically streamed to the klaas dashboard.
+
+### Connecting to Sessions (Guest Mode)
+
+```bash
+# List your sessions (interactive selection)
+klaas sessions
+
+# Connect to a session by name
+klaas connect refactor-tests
+klaas connect api-work
+
+# Connect to a session by ID
+klaas connect 01HQXK7V8G3N5M2R4P6T1W9Y0Z
+```
+
+When connected as a guest, you have full terminal interaction - you can see
+output and send input just like the host.
+
+### Other Commands
+
+```bash
 # List installed agents
 klaas agents
 
@@ -123,9 +153,6 @@ klaas upgrade
 # Uninstall klaas
 klaas uninstall
 ```
-
-On first run, you'll be prompted to authenticate via your browser. Once
-authenticated, your session is automatically streamed to the klaas dashboard.
 
 ## How It Works
 
@@ -159,6 +186,7 @@ authenticated, your session is automatically streamed to the klaas dashboard.
 | Short | Long | Description |
 |-------|------|-------------|
 | `-a` | `--agent <AGENT>` | Start with specific agent |
+| `-n` | `--name <NAME>` | Set a name for this session (must be unique) |
 | `-r` | `--resume` | Resume previous session |
 | `-v` | `--version` | Show version |
 | `-h` | `--help` | Show help |
@@ -168,8 +196,20 @@ authenticated, your session is automatically streamed to the klaas dashboard.
 | Command | Description |
 |---------|-------------|
 | `klaas agents` | List installed agents |
-| `klaas upgrade` | Upgrade to the latest version |
+| `klaas connect <id\|name>` | Connect to a session as guest |
+| `klaas sessions` | List your sessions (interactive selection) |
 | `klaas uninstall` | Uninstall klaas |
+| `klaas upgrade` | Upgrade to the latest version |
+
+### Terminology
+
+| Term | Description |
+|------|-------------|
+| **Host** | The CLI that started the session (owns the PTY) |
+| **Guest** | Any client viewing/interacting with a session |
+
+The CLI can act as both host (when starting sessions) and guest (when
+connecting to existing sessions).
 
 ## Configuration
 
