@@ -174,13 +174,43 @@ async fn send_event(event: Event) -> Result<(), String> {
     }
 }
 
+/// Gets the klaas data directory path, matching the install scripts.
+///
+/// The install scripts use these paths:
+/// - Linux/macOS: `$XDG_DATA_HOME` or `~/.local/share`
+/// - Windows: `%LOCALAPPDATA%`
+///
+/// This differs from `dirs::data_dir()` which returns platform-specific paths
+/// like `~/Library/Application Support` on macOS.
+fn get_data_dir() -> PathBuf {
+    #[cfg(windows)]
+    {
+        // Windows: use LOCALAPPDATA (matches install.ps1 and install.cmd)
+        std::env::var("LOCALAPPDATA")
+            .map(PathBuf::from)
+            .unwrap_or_else(|_| dirs::data_local_dir().unwrap_or_else(|| PathBuf::from(".")))
+            .join("klaas")
+    }
+
+    #[cfg(not(windows))]
+    {
+        // Linux/macOS: use XDG_DATA_HOME or ~/.local/share (matches install.sh)
+        std::env::var("XDG_DATA_HOME")
+            .map(PathBuf::from)
+            .unwrap_or_else(|_| {
+                dirs::home_dir()
+                    .unwrap_or_else(|| PathBuf::from("."))
+                    .join(".local")
+                    .join("share")
+            })
+            .join("klaas")
+    }
+}
+
 /// Gets the path to the install marker file.
 /// This file is created by the install script and deleted after tracking.
 fn get_install_marker_path() -> PathBuf {
-    dirs::data_dir()
-        .unwrap_or_else(|| PathBuf::from("."))
-        .join("klaas")
-        .join(".installed")
+    get_data_dir().join(".installed")
 }
 
 /// Tracks install event if the install marker exists.
