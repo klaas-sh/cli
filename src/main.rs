@@ -114,6 +114,11 @@ async fn main() -> anyhow::Result<()> {
         .with(tracing_subscriber::fmt::layer().with_writer(std::io::stderr))
         .init();
 
+    // Track install event BEFORE parsing CLI args, because clap may exit
+    // immediately for --version flag. We wait for completion to ensure the
+    // event is sent even if the process exits right after.
+    analytics::track_install_if_marker_exists_and_wait().await;
+
     let cli = Cli::parse();
 
     // Handle subcommands
@@ -147,9 +152,6 @@ async fn main() -> anyhow::Result<()> {
         };
         std::process::exit(exit_code);
     }
-
-    // Track install if marker exists (created by install script)
-    analytics::track_install_if_marker_exists();
 
     // Auto-update if a new version is available
     // This checks the cache first (updated every 24h) and only downloads if needed
