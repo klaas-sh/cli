@@ -40,11 +40,14 @@ mod ui;
 mod update;
 mod websocket;
 
+/// Current version from Cargo.toml.
+const VERSION: &str = env!("CARGO_PKG_VERSION");
+
 /// CLI arguments.
 #[derive(Parser)]
 #[command(name = "klaas")]
 #[command(about = "Remote access wrapper for AI coding agents")]
-#[command(version, disable_version_flag = true)]
+#[command(version = VERSION, disable_version_flag = true)]
 #[command(long_about = "Wraps AI agent CLI sessions and enables remote access \
     via a web interface. Sessions auto-attach on startup.\n\n\
     Supports Claude Code, Gemini CLI, Codex, Aider, and more.\n\
@@ -52,8 +55,8 @@ mod websocket;
     All output is captured for remote streaming.")]
 struct Cli {
     /// Print version.
-    #[arg(short = 'v', long = "version", action = clap::ArgAction::Version)]
-    version: (),
+    #[arg(short = 'v', long = "version")]
+    version: bool,
 
     /// Subcommand to run.
     #[command(subcommand)]
@@ -100,12 +103,11 @@ enum Commands {
 }
 
 #[tokio::main]
-async fn main() -> anyhow::Result<()> {
+async fn main() {
     // Load environment variables from .env file (if present)
     dotenvy::dotenv().ok();
 
-    // Initialize logging
-    // Only log to stderr so we don't interfere with PTY output
+    // Initialize logging (only to stderr to avoid interfering with PTY output)
     tracing_subscriber::registry()
         .with(
             tracing_subscriber::EnvFilter::try_from_default_env()
@@ -114,16 +116,37 @@ async fn main() -> anyhow::Result<()> {
         .with(tracing_subscriber::fmt::layer().with_writer(std::io::stderr))
         .init();
 
-    // Track install event BEFORE parsing CLI args, because clap may exit
-    // immediately for --version flag. We wait for completion to ensure the
-    // event is sent even if the process exits right after.
-    analytics::track_install_if_marker_exists_and_wait().await;
+    // Spawn install tracking as first thing (non-blocking).
+    // The task runs in the background while we do other work.
+    let install_handle = analytics::spawn_install_tracking();
 
+    // Run the main CLI logic
+    let exit_code = run_cli().await;
+
+    // Wait for install tracking to complete before exiting.
+    // This ensures the analytics request finishes even for quick commands
+    // like --version. The marker is only deleted on successful 2xx response,
+    // so failed attempts will retry on the next run.
+    if let Some(handle) = install_handle {
+        let _ = handle.await;
+    }
+
+    std::process::exit(exit_code);
+}
+
+/// Runs the main CLI logic and returns an exit code.
+async fn run_cli() -> i32 {
     let cli = Cli::parse();
+
+    // Handle --version flag
+    if cli.version {
+        println!("klaas {}", VERSION);
+        return 0;
+    }
 
     // Handle subcommands
     if let Some(command) = cli.command {
-        let exit_code = match command {
+        return match command {
             Commands::Agents => {
                 list_agents();
                 0
@@ -150,7 +173,6 @@ async fn main() -> anyhow::Result<()> {
                 }
             },
         };
-        std::process::exit(exit_code);
     }
 
     // Auto-update if a new version is available
@@ -172,7 +194,7 @@ async fn main() -> anyhow::Result<()> {
         }
         agents::AgentSelection::Cancelled => {
             ui::show_cursor();
-            std::process::exit(0);
+            return 0;
         }
         agents::AgentSelection::NoneInstalled => {
             ui::show_cursor();
@@ -183,20 +205,18 @@ async fn main() -> anyhow::Result<()> {
             eprintln!("  - Gemini CLI: https://ai.google.dev/gemini-cli");
             eprintln!("  - Codex CLI: https://openai.com/codex");
             eprintln!("  - Aider: pip install aider-chat");
-            std::process::exit(1);
+            return 1;
         }
     };
 
     // Run the application with selected agent
-    let exit_code = match app::run(selected_agent, cli.agent_args, cli.resume).await {
+    match app::run(selected_agent, cli.agent_args, cli.resume).await {
         Ok(code) => code,
         Err(e) => {
             eprintln!("Error: {}", e);
             1
         }
-    };
-
-    std::process::exit(exit_code);
+    }
 }
 
 /// Selects an agent based on CLI flags and installed agents.

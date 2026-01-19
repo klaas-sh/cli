@@ -213,45 +213,60 @@ fn get_install_marker_path() -> PathBuf {
     get_data_dir().join(".installed")
 }
 
-/// Tracks install event if the install marker exists (fire-and-forget).
+/// Spawns install tracking if the install marker exists.
 ///
 /// The install script creates a marker file to signal a fresh install.
-/// If the marker exists, we send the install event and delete the marker.
-/// Respects the `analytics` config setting.
+/// If the marker exists and analytics is enabled, spawns a background task
+/// to send the install event. The marker is only deleted on successful (2xx)
+/// response, so failed attempts will retry on the next run.
 ///
-/// Note: Use `track_install_if_marker_exists_and_wait()` if the process may
-/// exit immediately after (e.g., for `--version` flag).
-pub fn track_install_if_marker_exists() {
+/// Returns a JoinHandle that can be awaited before process exit to ensure
+/// the tracking completes. Returns None if no marker exists or analytics
+/// is disabled.
+///
+/// # Example
+///
+/// ```ignore
+/// // At startup, spawn the tracking task
+/// let install_handle = analytics::spawn_install_tracking();
+///
+/// // Do other work (parse args, display version, etc.)
+/// // ...
+///
+/// // Before exiting, wait for tracking to complete
+/// if let Some(handle) = install_handle {
+///     let _ = handle.await;
+/// }
+/// ```
+pub fn spawn_install_tracking() -> Option<tokio::task::JoinHandle<()>> {
     let marker_path = get_install_marker_path();
 
     if !marker_path.exists() {
-        return;
+        return None;
     }
 
-    // Delete marker first (even if analytics disabled, to clean up)
-    let _ = std::fs::remove_file(&marker_path);
-
-    // Track install event (respects analytics config)
-    track(Event::Install);
-}
-
-/// Tracks install event if the install marker exists, waiting for completion.
-///
-/// Same as `track_install_if_marker_exists()` but waits for the HTTP request
-/// to complete. Use this when the process may exit immediately after, such as
-/// when handling `--version` or other flags that exit early.
-pub async fn track_install_if_marker_exists_and_wait() {
-    let marker_path = get_install_marker_path();
-
-    if !marker_path.exists() {
-        return;
+    if !is_enabled() {
+        debug!("Analytics disabled, skipping install event");
+        // Delete marker even if disabled, to avoid repeated checks
+        let _ = std::fs::remove_file(&marker_path);
+        return None;
     }
 
-    // Delete marker first (even if analytics disabled, to clean up)
-    let _ = std::fs::remove_file(&marker_path);
-
-    // Track install event and wait for completion
-    track_and_wait(Event::Install).await;
+    // Spawn task that sends event and deletes marker only on success
+    Some(tokio::spawn(async move {
+        match send_event(Event::Install).await {
+            Ok(()) => {
+                // Only delete marker on successful tracking
+                if let Err(e) = std::fs::remove_file(&marker_path) {
+                    debug!("Failed to remove install marker: {}", e);
+                }
+            }
+            Err(e) => {
+                // Keep marker for retry on next run
+                debug!("Install tracking failed, will retry: {}", e);
+            }
+        }
+    }))
 }
 
 #[cfg(test)]
