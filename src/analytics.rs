@@ -155,7 +155,7 @@ async fn send_event(event: Event) -> Result<(), String> {
 
     let client = reqwest::Client::builder()
         .user_agent(format!("klaas/{}", VERSION))
-        .timeout(Duration::from_secs(5))
+        .timeout(Duration::from_secs(2))
         .build()
         .map_err(|e| format!("Failed to create HTTP client: {}", e))?;
 
