@@ -3,6 +3,7 @@
 //! This module exposes the CLI internals for testing purposes.
 
 pub mod agents;
+pub mod api_client;
 pub mod app;
 pub mod auth;
 pub mod config;
