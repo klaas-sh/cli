@@ -24,6 +24,10 @@ use crate::types::{ConnectionState, DeviceId, SessionId};
 use crate::ui;
 use crate::websocket::{IncomingMessage, WebSocketClient};
 
+/// Buffer time (seconds) before token expiry to trigger refresh.
+/// We refresh 60 seconds before expiry to avoid race conditions.
+const TOKEN_REFRESH_BUFFER_SECS: i64 = 60;
+
 /// Interval for checking WebSocket reconnection (milliseconds).
 const RECONNECT_CHECK_INTERVAL_MS: u64 = 100;
 
@@ -556,14 +560,16 @@ fn get_or_create_session_id(cred_store: &CredentialStore, resume: bool) -> Resul
 async fn ensure_authenticated(config: &ApiConfig, cred_store: &CredentialStore) -> Result<String> {
     // Check for stored tokens
     if let Some((access_token, refresh_token_val)) = cred_store.get_tokens()? {
-        debug!("Found stored tokens, attempting to use them");
+        debug!("Found stored tokens, checking validity");
 
-        // Try to use the access token (API will reject if expired)
-        // For now, we assume it is valid; real implementation would
-        // verify the JWT expiry before use
-        // TODO: Decode JWT and check expiry
+        // Check if the access token is still valid (not expired)
+        if is_token_valid(&access_token) {
+            debug!("Access token is still valid, using it directly");
+            return Ok(access_token);
+        }
 
-        // Try refreshing to get a fresh token
+        // Token is expired or about to expire, try refreshing
+        debug!("Access token expired or expiring soon, attempting refresh");
         match refresh_token(config.api_url, &refresh_token_val).await {
             Ok(tokens) => {
                 debug!("Successfully refreshed tokens");
@@ -576,7 +582,8 @@ async fn ensure_authenticated(config: &ApiConfig, cred_store: &CredentialStore) 
                 cred_store.clear_tokens()?;
             }
             Err(e) => {
-                // Network error or other issue - try using existing token
+                // Network error or other issue - try using existing token anyway
+                // The API call will fail if it's truly expired
                 warn!(error = %e, "Failed to refresh token, using existing");
                 return Ok(access_token);
             }
@@ -595,6 +602,78 @@ async fn ensure_authenticated(config: &ApiConfig, cred_store: &CredentialStore) 
     info!("Authentication successful");
 
     Ok(tokens.access_token)
+}
+
+/// Checks if a JWT access token is still valid (not expired).
+///
+/// Decodes the JWT payload (without verifying signature) and checks the `exp` claim.
+/// Returns true if the token is valid and won't expire within the buffer period.
+///
+/// # Arguments
+/// * `token` - The JWT access token to check.
+///
+/// # Returns
+/// * `true` if the token is valid and has more than `TOKEN_REFRESH_BUFFER_SECS` until expiry.
+/// * `false` if the token is expired, about to expire, or cannot be decoded.
+fn is_token_valid(token: &str) -> bool {
+    use base64::{engine::general_purpose::URL_SAFE_NO_PAD, Engine};
+
+    // JWT format: header.payload.signature
+    let parts: Vec<&str> = token.split('.').collect();
+    if parts.len() != 3 {
+        debug!("Invalid JWT format (expected 3 parts, got {})", parts.len());
+        return false;
+    }
+
+    // Decode the payload (second part)
+    let payload = match URL_SAFE_NO_PAD.decode(parts[1]) {
+        Ok(bytes) => bytes,
+        Err(e) => {
+            debug!("Failed to decode JWT payload: {}", e);
+            return false;
+        }
+    };
+
+    // Parse as JSON
+    let payload_str = match std::str::from_utf8(&payload) {
+        Ok(s) => s,
+        Err(e) => {
+            debug!("JWT payload is not valid UTF-8: {}", e);
+            return false;
+        }
+    };
+
+    // Extract the `exp` claim using simple JSON parsing
+    // Format: {..., "exp": 1234567890, ...}
+    let exp: Option<i64> = serde_json::from_str::<serde_json::Value>(payload_str)
+        .ok()
+        .and_then(|v| v.get("exp").and_then(|e| e.as_i64()));
+
+    let exp = match exp {
+        Some(e) => e,
+        None => {
+            debug!("JWT payload does not contain 'exp' claim");
+            return false;
+        }
+    };
+
+    // Check if token is expired (with buffer)
+    let now = chrono::Utc::now().timestamp();
+    let valid = exp > now + TOKEN_REFRESH_BUFFER_SECS;
+
+    if valid {
+        debug!(
+            "Token valid for {} more seconds",
+            exp - now
+        );
+    } else {
+        debug!(
+            "Token expired or expiring soon (exp: {}, now: {})",
+            exp, now
+        );
+    }
+
+    valid
 }
 
 /// Result of authentication attempt.
