@@ -284,6 +284,20 @@ fn draw_sessions_menu(
 fn draw_session_row(_stdout: &mut io::Stdout, session: &Session, is_selected: bool) {
     let is_attached = session.status == "attached";
 
+    // Border color: amber when selected, dim otherwise
+    let border_color = if is_selected {
+        colors::AMBER
+    } else {
+        colors::TEXT_DIM
+    };
+
+    // Background for selected rows
+    let bg = if is_selected {
+        bg_color(BG_SELECTED)
+    } else {
+        String::new()
+    };
+
     // Status indicator
     let status_indicator = if is_attached {
         format!("{}{}●{}", BOLD, fg_color(colors::GREEN), RESET)
@@ -306,22 +320,37 @@ fn draw_session_row(_stdout: &mut io::Stdout, session: &Session, is_selected: bo
     // === Line 1: indicator + name ... datetime ===
     // Layout: ` ● ` (3) + name (20) + fill + datetime (16) + ` ` (1) = 72
     // Fill = 72 - 3 - 20 - 16 - 1 = 32
-    print!(" {}│{}", fg_color(colors::TEXT_DIM), RESET);
+    print!(" {}│{}{}", fg_color(border_color), RESET, bg);
     print!(" {} ", status_indicator); // 3 chars
 
     // Name with color (20 chars, left-aligned)
     let name_display = truncate_str(name_plain, 20);
     if session.name.is_some() {
         if is_selected {
-            print!("{}{:<20}{}", fg_color(colors::AMBER), name_display, RESET);
+            print!(
+                "{}{:<20}{}{}",
+                fg_color(colors::AMBER),
+                name_display,
+                RESET,
+                bg
+            );
         } else {
             print!(
-                "{}{:<20}{}",
+                "{}{:<20}{}{}",
                 fg_color(colors::TEXT_PRIMARY),
                 name_display,
-                RESET
+                RESET,
+                bg
             );
         }
+    } else if is_selected {
+        print!(
+            "{}{:<20}{}{}",
+            fg_color(colors::TEXT_MUTED),
+            "(unnamed)",
+            RESET,
+            bg
+        );
     } else {
         print!("{}{:<20}{}", fg_color(colors::TEXT_DIM), "(unnamed)", RESET);
     }
@@ -333,7 +362,7 @@ fn draw_session_row(_stdout: &mut io::Stdout, session: &Session, is_selected: bo
         "",
         datetime,
         RESET,
-        fg_color(colors::TEXT_DIM)
+        fg_color(border_color)
     );
 
     // === Line 2: session_id ... device_name ===
@@ -343,15 +372,16 @@ fn draw_session_row(_stdout: &mut io::Stdout, session: &Session, is_selected: bo
     let device_len = device_display.chars().count();
     let fill_2 = 42 - device_len;
 
-    print!(" {}│{}", fg_color(colors::TEXT_DIM), RESET);
+    print!(" {}│{}{}", fg_color(border_color), RESET, bg);
     print!("   "); // 3 chars padding
 
     // Session ID (26 chars - ULID length)
     print!(
-        "{}{:<26}{}",
+        "{}{:<26}{}{}",
         fg_color(colors::TEXT_DIM),
         &session.session_id,
-        RESET
+        RESET,
+        bg
     );
 
     // Fill + device_name + space
@@ -361,7 +391,7 @@ fn draw_session_row(_stdout: &mut io::Stdout, session: &Session, is_selected: bo
         fg_color(colors::TEXT_MUTED),
         device_display,
         RESET,
-        fg_color(colors::TEXT_DIM),
+        fg_color(border_color),
         width = fill_2
     );
 
@@ -372,40 +402,34 @@ fn draw_session_row(_stdout: &mut io::Stdout, session: &Session, is_selected: bo
     let cwd_len = cwd_display.chars().count();
     let fill_3 = 60 - cwd_len;
 
-    print!(" {}│{}", fg_color(colors::TEXT_DIM), RESET);
+    print!(" {}│{}{}", fg_color(border_color), RESET, bg);
     print!("   "); // 3 chars padding
 
     // CWD (left-aligned)
     print!(
-        "{}{:<width$}{}",
+        "{}{:<width$}{}{}",
         fg_color(colors::TEXT_SECONDARY),
         cwd_display,
         RESET,
+        bg,
         width = cwd_len
     );
 
     // Fill + status + space
-    if is_attached {
-        print!(
-            "{:>width$}{}{} {}│{}\r\n",
-            "",
-            fg_color(colors::GREEN),
-            status_text,
-            RESET,
-            fg_color(colors::TEXT_DIM),
-            width = fill_3
-        );
+    let status_color = if is_attached {
+        colors::GREEN
     } else {
-        print!(
-            "{:>width$}{}{} {}│{}\r\n",
-            "",
-            fg_color(colors::TEXT_DIM),
-            status_text,
-            RESET,
-            fg_color(colors::TEXT_DIM),
-            width = fill_3
-        );
-    }
+        colors::TEXT_DIM
+    };
+    print!(
+        "{:>width$}{}{} {}│{}\r\n",
+        "",
+        fg_color(status_color),
+        status_text,
+        RESET,
+        fg_color(border_color),
+        width = fill_3
+    );
 }
 
 /// Clears the session selection menu from the terminal.
@@ -531,11 +555,19 @@ fn fg_color(color: (u8, u8, u8)) -> String {
     format!("\x1b[38;2;{};{};{}m", color.0, color.1, color.2)
 }
 
+/// Generates ANSI escape code for 24-bit true color background.
+fn bg_color(color: (u8, u8, u8)) -> String {
+    format!("\x1b[48;2;{};{};{}m", color.0, color.1, color.2)
+}
+
 /// ANSI reset code.
 const RESET: &str = "\x1b[0m";
 
 /// Bold ANSI code.
 const BOLD: &str = "\x1b[1m";
+
+/// Subtle dark background for selected items (very dark amber tint).
+const BG_SELECTED: (u8, u8, u8) = (35, 28, 18);
 
 #[cfg(test)]
 mod tests {
