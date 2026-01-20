@@ -12,7 +12,7 @@ use tokio::sync::{mpsc, Mutex};
 use tracing::{debug, error, info, warn};
 
 use crate::agents::Agent;
-use crate::auth::{authenticate, refresh_token, AuthError};
+use crate::auth::{authenticate_with_mek, refresh_token, AuthError};
 use crate::config::{get_api_config, ApiConfig};
 use crate::credentials::CredentialStore;
 use crate::crypto::SecretKey;
@@ -65,18 +65,34 @@ pub async fn run(
     let device_id = get_or_create_device_id(&cred_store)?;
     debug!(device_id = %device_id, "Using device ID");
 
-    // Get or generate MEK for transparent E2EE (auto-generated on first use)
-    let mek = get_or_create_mek(&cred_store)?;
-    debug!("E2EE enabled with MEK from keychain");
+    // Get device name (needed for authentication and session context)
+    let device_name = hostname::get()
+        .map(|s| s.to_string_lossy().to_string())
+        .unwrap_or_else(|_| "Unknown".to_string());
 
-    // Try to authenticate (handles cancellation gracefully)
-    let access_token = match try_authenticate(&config, &cred_store).await {
-        AuthAttemptResult::Success(token) => Some(token),
-        AuthAttemptResult::Cancelled => {
+    // Try to authenticate with unified device flow (handles E2EE key exchange)
+    let (access_token, mek) =
+        match try_authenticate_with_mek(&config, &cred_store, &device_name).await {
+        AuthAttemptResultWithMek::Success(token, mek) => {
+            debug!("E2EE enabled with MEK from unified device flow");
+            (Some(token), mek)
+        }
+        AuthAttemptResultWithMek::Cancelled => {
             // User pressed CTRL+C - exit gracefully
             return Ok(0);
         }
-        AuthAttemptResult::Offline => None,
+        AuthAttemptResultWithMek::Offline(mek_opt) => {
+            // Offline mode: use existing MEK or generate new one
+            let mek = mek_opt.unwrap_or_else(|| {
+                let new_mek = SecretKey::random();
+                if let Err(e) = cred_store.store_mek(new_mek.as_bytes()) {
+                    warn!(error = %e, "Failed to store auto-generated MEK");
+                }
+                info!("Generated new MEK for local E2EE (offline mode)");
+                new_mek
+            });
+            (None, mek)
+        }
     };
 
     // Get or create session ID (persisted for reconnection)
@@ -87,14 +103,10 @@ pub async fn run(
         info!(session_id = %session_id, "Starting new session");
     }
 
-    // Get current working directory and device name
+    // Get current working directory
     let cwd = std::env::current_dir()
         .map(|p| p.to_string_lossy().to_string())
         .unwrap_or_else(|_| ".".to_string());
-
-    let device_name = hostname::get()
-        .map(|s| s.to_string_lossy().to_string())
-        .unwrap_or_else(|_| "Unknown".to_string());
 
     debug!(
         device_name = %device_name,
@@ -326,6 +338,15 @@ pub async fn run(
     // Note: pty_for_resize currently unused as web resize is disabled
     let _pty_for_resize = pty.clone();
 
+    // Status line update counter (draw every ~1 second)
+    let mut status_tick: u32 = 0;
+    let mut last_status_state = ConnectionState::Detached;
+
+    // Reconnection backoff state
+    let mut last_reconnect_attempt = std::time::Instant::now();
+    let mut reconnect_backoff_secs: u64 = 1;
+    const MAX_RECONNECT_BACKOFF_SECS: u64 = 60;
+
     // Main event loop - full duplex I/O
     let exit_code = 'main: loop {
         tokio::select! {
@@ -440,22 +461,62 @@ pub async fn run(
                     }
                 }
 
-                // Handle reconnection if needed
+                // Handle reconnection if needed (with exponential backoff)
                 let state = *connection_state_for_loop.lock().await;
                 if state == ConnectionState::Reconnecting {
-                    handle_reconnection(
-                        &ws_client_for_loop,
-                        &connection_state_for_loop,
-                        &config,
-                        &cred_store,
-                        session_id.as_str(),
-                        device_id.as_str(),
-                        &device_name,
-                        &cwd,
-                        &mek,
-                        session_name.as_deref(),
-                    )
-                    .await;
+                    let elapsed = last_reconnect_attempt.elapsed();
+                    if elapsed.as_secs() >= reconnect_backoff_secs {
+                        last_reconnect_attempt = std::time::Instant::now();
+
+                        let success = handle_reconnection_silent(
+                            &ws_client_for_loop,
+                            &connection_state_for_loop,
+                            &config,
+                            &cred_store,
+                            session_id.as_str(),
+                            device_id.as_str(),
+                            &device_name,
+                            &cwd,
+                            &mek,
+                            session_name.as_deref(),
+                        )
+                        .await;
+
+                        if success {
+                            // Reset backoff on success
+                            reconnect_backoff_secs = 1;
+                        } else {
+                            // Exponential backoff, capped
+                            reconnect_backoff_secs = (reconnect_backoff_secs * 2)
+                                .min(MAX_RECONNECT_BACKOFF_SECS);
+                            debug!(
+                                "Reconnection failed, next attempt in {}s",
+                                reconnect_backoff_secs
+                            );
+                        }
+                    }
+                }
+
+                // Draw status line periodically (~1 second) or on state change
+                status_tick += 1;
+                let state_changed = state != last_status_state;
+                if state_changed || status_tick >= 100 {
+                    status_tick = 0;
+                    last_status_state = state;
+
+                    // Use dim/faint colors (ANSI 2 = dim, 90 = bright black/grey)
+                    let status = match state {
+                        ConnectionState::Attached => {
+                            "\x1b[2;32m● klaas\x1b[0m"  // dim green
+                        }
+                        ConnectionState::Connecting | ConnectionState::Reconnecting => {
+                            "\x1b[2;33m● klaas reconnecting\x1b[0m"  // dim yellow
+                        }
+                        ConnectionState::Detached => {
+                            "\x1b[2;90m● klaas offline\x1b[0m"  // dim grey
+                        }
+                    };
+                    let _ = terminal.draw_status_line(status);
                 }
             }
         }
@@ -505,27 +566,6 @@ fn get_or_create_device_id(cred_store: &CredentialStore) -> Result<DeviceId> {
     }
 }
 
-/// Gets or creates the Master Encryption Key (MEK) for E2EE.
-///
-/// The MEK is auto-generated on first use and stored securely in the keychain.
-/// This enables transparent E2EE with no user interaction required.
-fn get_or_create_mek(cred_store: &CredentialStore) -> Result<SecretKey> {
-    match cred_store.get_mek()? {
-        Some(mek_bytes) => {
-            debug!("Retrieved existing MEK for E2EE");
-            let mut arr = [0u8; 32];
-            arr.copy_from_slice(&mek_bytes);
-            Ok(SecretKey::from_bytes(arr))
-        }
-        None => {
-            let mek = SecretKey::random();
-            cred_store.store_mek(mek.as_bytes())?;
-            info!("Generated new MEK for E2EE");
-            Ok(mek)
-        }
-    }
-}
-
 /// Gets or creates a session ID.
 ///
 /// If `resume` is true, attempts to reuse the stored session ID.
@@ -550,69 +590,94 @@ fn get_or_create_session_id(cred_store: &CredentialStore, resume: bool) -> Resul
     Ok(new_id)
 }
 
-/// Ensures the user is authenticated.
+/// Ensures the user is authenticated with E2EE key exchange.
 ///
-/// Checks for stored credentials and refreshes if expired.
-/// Runs OAuth Device Flow if no valid credentials exist.
+/// Checks for stored credentials and MEK. Refreshes tokens if expired.
+/// Runs unified OAuth Device Flow with ECDH if no valid credentials or MEK exist.
+///
+/// # Arguments
+/// * `config` - API configuration.
+/// * `cred_store` - Credential store for persisting tokens.
+/// * `device_name` - Human-readable device name (used if device flow is needed).
 ///
 /// # Returns
-/// A valid access token.
-async fn ensure_authenticated(config: &ApiConfig, cred_store: &CredentialStore) -> Result<String> {
+/// A tuple of (access_token, MEK).
+async fn ensure_authenticated_with_mek(
+    config: &ApiConfig,
+    cred_store: &CredentialStore,
+    device_name: &str,
+) -> Result<(String, SecretKey)> {
+    // Check if we have MEK in keychain
+    let mek_from_keychain = cred_store.get_mek()?.map(|mek_bytes| {
+        let mut arr = [0u8; 32];
+        arr.copy_from_slice(&mek_bytes);
+        SecretKey::from_bytes(arr)
+    });
+
     // Check for stored tokens
     if let Some((access_token, refresh_token_val)) = cred_store.get_tokens()? {
         debug!("Found stored tokens");
 
-        // Check if the access token is still valid (not expired)
-        match is_token_valid(&access_token) {
-            Some(true) => {
-                debug!("Access token is still valid, using it directly");
-                return Ok(access_token);
+        // If we have both tokens and MEK, try to use them
+        if let Some(mek) = mek_from_keychain.clone() {
+            match is_token_valid(&access_token) {
+                Some(true) => {
+                    debug!("Access token is still valid, using it directly");
+                    return Ok((access_token, mek));
+                }
+                Some(false) => {
+                    // Token is definitely expired, try to refresh
+                    debug!("Access token is expired, attempting refresh");
+                }
+                None => {
+                    // Couldn't validate token (parsing error), use it anyway
+                    // The API/WebSocket will reject if truly invalid
+                    debug!("Could not validate token format, using it anyway");
+                    return Ok((access_token, mek));
+                }
             }
-            Some(false) => {
-                // Token is definitely expired, try to refresh
-                debug!("Access token is expired, attempting refresh");
-            }
-            None => {
-                // Couldn't validate token (parsing error), use it anyway
-                // The API/WebSocket will reject if truly invalid
-                debug!("Could not validate token format, using it anyway");
-                return Ok(access_token);
-            }
-        }
 
-        // Try to refresh the expired token
-        match refresh_token(config.api_url, &refresh_token_val).await {
-            Ok(tokens) => {
-                debug!("Successfully refreshed tokens");
-                cred_store.store_tokens(&tokens.access_token, &tokens.refresh_token)?;
-                return Ok(tokens.access_token);
+            // Try to refresh the expired token
+            match refresh_token(config.api_url, &refresh_token_val).await {
+                Ok(tokens) => {
+                    debug!("Successfully refreshed tokens");
+                    cred_store.store_tokens(&tokens.access_token, &tokens.refresh_token)?;
+                    return Ok((tokens.access_token, mek));
+                }
+                Err(AuthError::InvalidGrant) => {
+                    // Refresh token expired, need to re-authenticate
+                    info!("Refresh token expired, starting new authentication");
+                    cred_store.clear_tokens()?;
+                }
+                Err(e) => {
+                    // Network error or other issue - use existing token anyway
+                    // The API will reject if truly expired, and WebSocket will fail gracefully
+                    warn!(error = %e, "Failed to refresh token, using existing");
+                    return Ok((access_token, mek));
+                }
             }
-            Err(AuthError::InvalidGrant) => {
-                // Refresh token expired, need to re-authenticate
-                info!("Refresh token expired, starting new authentication");
-                cred_store.clear_tokens()?;
-            }
-            Err(e) => {
-                // Network error or other issue - use existing token anyway
-                // The API will reject if truly expired, and WebSocket will fail gracefully
-                warn!(error = %e, "Failed to refresh token, using existing");
-                return Ok(access_token);
-            }
+        } else {
+            // Have tokens but no MEK - need to re-authenticate with unified flow
+            info!("No MEK found, starting authentication with E2EE key exchange");
+            cred_store.clear_tokens()?;
         }
     }
 
-    // No valid tokens, run OAuth Device Flow
-    info!("No valid credentials, starting authentication");
-    let tokens = authenticate(config.api_url).await.map_err(|e| match e {
-        AuthError::Cancelled | AuthError::Skipped => CliError::AuthError(e.to_string()),
-        _ => CliError::AuthError(e.to_string()),
-    })?;
+    // No valid tokens or no MEK, run unified OAuth Device Flow with ECDH
+    info!("Starting authentication with E2EE key exchange");
+    let (tokens, mek) = authenticate_with_mek(config.api_url, device_name)
+        .await
+        .map_err(|e| match e {
+            AuthError::Cancelled | AuthError::Skipped => CliError::AuthError(e.to_string()),
+            _ => CliError::AuthError(e.to_string()),
+        })?;
 
-    // Store the new tokens
+    // Store the new tokens and MEK
     cred_store.store_tokens(&tokens.access_token, &tokens.refresh_token)?;
-    info!("Authentication successful");
+    cred_store.store_mek(mek.as_bytes())?;
+    info!("Authentication successful with E2EE established");
 
-    Ok(tokens.access_token)
+    Ok((tokens.access_token, mek))
 }
 
 /// Checks if a JWT access token is still valid (not expired).
@@ -700,42 +765,58 @@ fn is_token_valid(token: &str) -> Option<bool> {
     Some(valid)
 }
 
-/// Result of authentication attempt.
-pub enum AuthAttemptResult {
-    /// Successfully authenticated with access token.
-    Success(String),
+/// Result of authentication attempt with E2EE key exchange.
+pub enum AuthAttemptResultWithMek {
+    /// Successfully authenticated with access token and MEK from unified device flow.
+    Success(String, SecretKey),
     /// User cancelled (CTRL+C) - should exit.
     Cancelled,
     /// User skipped (ESC) or offline - continue without sync.
-    Offline,
+    /// Contains existing MEK from keychain if available.
+    Offline(Option<SecretKey>),
 }
 
-/// Tries to authenticate, handling cancellation and skip gracefully.
+/// Tries to authenticate with unified device flow, handling cancellation gracefully.
 ///
-/// This is a non-blocking wrapper around `ensure_authenticated` that allows
+/// This is a non-blocking wrapper around `ensure_authenticated_with_mek` that allows
 /// the CLI to start in offline mode when the API server is unavailable.
 /// The user can still use Claude Code normally, just without remote sync.
-async fn try_authenticate(config: &ApiConfig, cred_store: &CredentialStore) -> AuthAttemptResult {
-    match ensure_authenticated(config, cred_store).await {
-        Ok(token) => AuthAttemptResult::Success(token),
+async fn try_authenticate_with_mek(
+    config: &ApiConfig,
+    cred_store: &CredentialStore,
+    device_name: &str,
+) -> AuthAttemptResultWithMek {
+    match ensure_authenticated_with_mek(config, cred_store, device_name).await {
+        Ok((token, mek)) => AuthAttemptResultWithMek::Success(token, mek),
         Err(e) => {
             let error_str = e.to_string();
+
+            // Get existing MEK from keychain for offline use
+            let mek_from_keychain = cred_store
+                .get_mek()
+                .ok()
+                .flatten()
+                .map(|mek_bytes| {
+                    let mut arr = [0u8; 32];
+                    arr.copy_from_slice(&mek_bytes);
+                    SecretKey::from_bytes(arr)
+                });
 
             // Check if this was a user-initiated skip (ESC)
             if error_str.contains("skipped") {
                 debug!("Auth skipped by user, continuing without sync");
-                return AuthAttemptResult::Offline;
+                return AuthAttemptResultWithMek::Offline(mek_from_keychain);
             }
 
             // Check if this was a user cancellation (CTRL+C)
             if error_str.contains("cancelled") {
-                return AuthAttemptResult::Cancelled;
+                return AuthAttemptResultWithMek::Cancelled;
             }
 
             // Other errors - show offline warning
             ui::display_offline_warning();
             debug!(error = %e, "Starting in offline mode");
-            AuthAttemptResult::Offline
+            AuthAttemptResultWithMek::Offline(mek_from_keychain)
         }
     }
 }
@@ -784,9 +865,12 @@ async fn connect_websocket(
     }
 }
 
-/// Handles WebSocket reconnection with backoff.
+/// Handles WebSocket reconnection silently (no giving up).
+///
+/// Returns true if reconnection succeeded, false otherwise.
+/// On failure, keeps state as Reconnecting so we keep trying.
 #[allow(clippy::too_many_arguments)]
-async fn handle_reconnection(
+async fn handle_reconnection_silent(
     ws_client: &Arc<Mutex<Option<WebSocketClient>>>,
     connection_state: &Arc<Mutex<ConnectionState>>,
     config: &ApiConfig,
@@ -797,7 +881,7 @@ async fn handle_reconnection(
     cwd: &str,
     mek: &SecretKey,
     session_name: Option<&str>,
-) {
+) -> bool {
     debug!("Attempting WebSocket reconnection");
 
     // First, try to reconnect with the existing client
@@ -808,27 +892,21 @@ async fn handle_reconnection(
                 Ok(true) => {
                     info!("Reconnected to remote session");
                     *connection_state.lock().await = ConnectionState::Attached;
-                    return;
+                    return true;
                 }
-                Ok(false) => {
-                    // Max attempts reached, give up
-                    warn!("Max reconnection attempts reached");
-                }
-                Err(e) => {
-                    debug!(error = %e, "Reconnection attempt failed");
-                    // Continue to try fresh connection
+                Ok(false) | Err(_) => {
+                    // Failed, will try fresh connection below
                 }
             }
         }
     }
 
     // Try a fresh connection with potentially refreshed token
-    let access_token = match ensure_authenticated(config, cred_store).await {
-        Ok(token) => token,
-        Err(e) => {
-            warn!(error = %e, "Failed to get access token for reconnection");
-            *connection_state.lock().await = ConnectionState::Detached;
-            return;
+    let access_token = match ensure_authenticated_with_mek(config, cred_store, device_name).await {
+        Ok((token, _)) => token,
+        Err(_) => {
+            // Stay in Reconnecting state, will retry later
+            return false;
         }
     };
 
@@ -848,10 +926,11 @@ async fn handle_reconnection(
             *ws_client.lock().await = Some(new_client);
             *connection_state.lock().await = ConnectionState::Attached;
             info!("Established new connection to remote session");
+            true
         }
         None => {
-            *connection_state.lock().await = ConnectionState::Detached;
-            warn!("Failed to establish new connection, continuing locally");
+            // Stay in Reconnecting state, will retry later
+            false
         }
     }
 }

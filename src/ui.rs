@@ -336,6 +336,24 @@ pub fn display_auth_success() {
     );
 }
 
+/// Displays a success message when authentication with E2EE completes.
+pub fn display_auth_success_with_e2ee() {
+    let (gr, gg, gb) = colors::GREEN;
+    let (mr, mg, mb) = colors::TEXT_MUTED;
+    println!(
+        "\r  {}{}✓{} Authentication successful!{}",
+        BOLD,
+        fg_color(gr, gg, gb),
+        RESET,
+        RESET
+    );
+    println!(
+        "    {}End-to-end encryption established.{}",
+        fg_color(mr, mg, mb),
+        RESET
+    );
+}
+
 /// Displays a message when the device code expires and a new one is requested.
 pub fn display_code_expired() {
     let (ar, ag, ab) = colors::AMBER;

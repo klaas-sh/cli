@@ -128,6 +128,45 @@ pub struct TokenResponse {
     pub refresh_token: String,
 }
 
+/// Response from POST /auth/token with E2EE fields.
+///
+/// Contains tokens plus encrypted MEK for E2EE.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct TokenResponseWithMEK {
+    /// JWT access token for API requests.
+    pub access_token: String,
+
+    /// Token type (always "Bearer").
+    #[serde(default = "default_token_type")]
+    pub token_type: String,
+
+    /// Seconds until the access token expires.
+    pub expires_in: u64,
+
+    /// Refresh token for obtaining new access tokens.
+    pub refresh_token: String,
+
+    /// Dashboard's ECDH public key (base64), present when E2EE is enabled.
+    #[serde(default)]
+    pub dash_public_key: Option<String>,
+
+    /// Encrypted MEK, present when E2EE is enabled.
+    #[serde(default)]
+    pub encrypted_mek: Option<EncryptedMEK>,
+}
+
+impl TokenResponseWithMEK {
+    /// Convert to a basic TokenResponse (without E2EE fields).
+    pub fn into_token_response(self) -> TokenResponse {
+        TokenResponse {
+            access_token: self.access_token,
+            token_type: self.token_type,
+            expires_in: self.expires_in,
+            refresh_token: self.refresh_token,
+        }
+    }
+}
+
 /// Default token type if not specified in response.
 fn default_token_type() -> String {
     "Bearer".to_string()
@@ -186,6 +225,13 @@ struct OAuthErrorResponse {
     error_description: Option<String>,
 }
 
+/// Request body for the device flow endpoint.
+#[derive(Debug, Serialize)]
+struct DeviceFlowRequest {
+    device_name: String,
+    ecdh_public_key: String,
+}
+
 /// Request body for the token endpoint.
 #[derive(Debug, Serialize)]
 struct TokenRequest {
@@ -229,6 +275,61 @@ pub async fn start_device_flow(api_url: &str) -> AuthResult<DeviceFlowResponse> 
             device_response.expires_in
         );
         Ok(device_response)
+    } else {
+        let error_text = response.text().await.unwrap_or_default();
+        Err(AuthError::ServerError(error_text))
+    }
+}
+
+/// Starts the Unified Device Flow with ECDH key exchange for E2EE.
+///
+/// This is the preferred method for authentication as it enables E2EE.
+/// The returned ECDH private key should be kept and used to decrypt
+/// the MEK when polling returns successfully.
+///
+/// # Arguments
+///
+/// * `api_url` - Base URL of the klaas API (e.g., "https://api.klaas.sh")
+/// * `device_name` - Name of this device (e.g., hostname)
+///
+/// # Returns
+///
+/// * Tuple of (DeviceFlowResponse, ECDH private key)
+///
+/// # Example
+///
+/// ```ignore
+/// let (response, ecdh_secret) = start_device_flow_with_ecdh(
+///     "https://api.klaas.sh",
+///     "MacBook Pro"
+/// ).await?;
+/// ```
+pub async fn start_device_flow_with_ecdh(
+    api_url: &str,
+    device_name: &str,
+) -> AuthResult<(DeviceFlowResponse, p256::ecdh::EphemeralSecret)> {
+    let url = format!("{}/auth/device", api_url.trim_end_matches('/'));
+    debug!("Starting unified device flow at {} for {}", url, device_name);
+
+    // Generate ECDH keypair for E2EE key exchange
+    let keypair = generate_ecdh_keypair();
+    let public_key_b64 = encode_base64(&keypair.public_key);
+
+    let request = DeviceFlowRequest {
+        device_name: device_name.to_string(),
+        ecdh_public_key: public_key_b64,
+    };
+
+    let client = reqwest::Client::new();
+    let response = client.post(&url).json(&request).send().await?;
+
+    if response.status().is_success() {
+        let device_response: DeviceFlowResponse = response.json().await?;
+        debug!(
+            "Unified device flow started, code expires in {} seconds",
+            device_response.expires_in
+        );
+        Ok((device_response, keypair.private_key))
     } else {
         let error_text = response.text().await.unwrap_or_default();
         Err(AuthError::ServerError(error_text))
@@ -397,6 +498,178 @@ pub async fn poll_for_token(
     }
 }
 
+/// Polls the token endpoint with ECDH key exchange for E2EE.
+///
+/// Similar to `poll_for_token` but handles the encrypted MEK in the response.
+/// Decrypts the MEK using the provided ECDH private key.
+///
+/// # Arguments
+///
+/// * `api_url` - Base URL of the klaas API
+/// * `device_code` - The device code from `start_device_flow_with_ecdh`
+/// * `ecdh_secret` - The ECDH private key from `start_device_flow_with_ecdh`
+/// * `interval` - Initial polling interval in seconds
+/// * `expires_in` - Seconds until the device code expires
+///
+/// # Returns
+///
+/// * Tuple of (TokenResponse, SecretKey) where SecretKey is the decrypted MEK
+pub async fn poll_for_token_with_mek(
+    api_url: &str,
+    device_code: &str,
+    ecdh_secret: p256::ecdh::EphemeralSecret,
+    interval: u64,
+    expires_in: u64,
+) -> AuthResult<(TokenResponse, SecretKey)> {
+    let url = format!("{}/auth/token", api_url.trim_end_matches('/'));
+    let client = reqwest::Client::new();
+
+    let start_time = Instant::now();
+    let expiry_duration = Duration::from_secs(expires_in);
+    let mut current_interval_secs = interval;
+    let animation_interval = ui::animation_interval();
+    let mut animation = WaitingAnimation::new(expires_in);
+    let mut ticks_until_poll = 0u64;
+
+    debug!(
+        "Polling for token with MEK at {}, interval: {}s, expires in: {}s",
+        url, interval, expires_in
+    );
+
+    // Enable raw mode to capture all key input and block normal typing
+    let _ = terminal::enable_raw_mode();
+
+    // Hide cursor during animation
+    ui::hide_cursor();
+
+    // Helper to cleanup and return
+    let cleanup = |animation: &WaitingAnimation| {
+        animation.clear();
+        ui::show_cursor();
+        let _ = terminal::disable_raw_mode();
+    };
+
+    loop {
+        // Check for keyboard input (non-blocking)
+        if event::poll(Duration::ZERO).unwrap_or(false) {
+            if let Ok(Event::Key(key_event)) = event::read() {
+                match key_event.code {
+                    // CTRL+C - cancel and exit
+                    KeyCode::Char('c') if key_event.modifiers.contains(KeyModifiers::CONTROL) => {
+                        cleanup(&animation);
+                        return Err(AuthError::Cancelled);
+                    }
+                    // ESC - skip auth (hidden feature for development)
+                    KeyCode::Esc => {
+                        cleanup(&animation);
+                        return Err(AuthError::Skipped);
+                    }
+                    _ => {}
+                }
+            }
+        }
+
+        // Check if the device code has expired
+        if start_time.elapsed() >= expiry_duration {
+            cleanup(&animation);
+            return Err(AuthError::ExpiredToken);
+        }
+
+        // Render animation frame
+        animation.render_frame();
+
+        // Wait for animation interval
+        tokio::time::sleep(animation_interval).await;
+
+        // Count ticks until next poll (animation runs faster than polling)
+        let ticks_per_poll = (current_interval_secs * 1000) / animation_interval.as_millis() as u64;
+        ticks_until_poll += 1;
+
+        if ticks_until_poll < ticks_per_poll {
+            continue;
+        }
+        ticks_until_poll = 0;
+
+        // Make the token request
+        let request = TokenRequest {
+            device_code: device_code.to_string(),
+            grant_type: "urn:ietf:params:oauth:grant-type:device_code".to_string(),
+        };
+
+        let response = client.post(&url).json(&request).send().await?;
+
+        if response.status().is_success() {
+            cleanup(&animation);
+            let token_response: TokenResponseWithMEK = response.json().await?;
+            info!("Successfully obtained tokens");
+
+            // Decrypt MEK if available
+            if let (Some(dash_public_key), Some(encrypted_mek)) =
+                (&token_response.dash_public_key, &token_response.encrypted_mek)
+            {
+                debug!("Decrypting MEK from response");
+                let dash_public_bytes = decode_base64(dash_public_key)
+                    .map_err(|e| AuthError::CryptoError(format!("Invalid public key: {}", e)))?;
+
+                let mek = decrypt_mek_from_pairing(ecdh_secret, &dash_public_bytes, encrypted_mek)
+                    .map_err(|e| AuthError::CryptoError(format!("MEK decryption failed: {}", e)))?;
+
+                ui::display_auth_success_with_e2ee();
+                return Ok((token_response.into_token_response(), mek));
+            } else {
+                // No E2EE data - this shouldn't happen with the unified flow
+                // but we handle it gracefully
+                warn!("No E2EE data in token response, MEK not available");
+                ui::display_auth_success();
+                return Err(AuthError::CryptoError(
+                    "No encryption key received from server".to_string(),
+                ));
+            }
+        }
+
+        // Parse error response
+        let error_response: OAuthErrorResponse = response
+            .json()
+            .await
+            .map_err(|e| AuthError::ParseError(e.to_string()))?;
+
+        match error_response.error.as_str() {
+            "authorization_pending" => {
+                debug!("Authorization pending, continuing to poll...");
+                continue;
+            }
+            "slow_down" => {
+                current_interval_secs += 5;
+                warn!(
+                    "Server requested slow down, new interval: {}s",
+                    current_interval_secs
+                );
+                continue;
+            }
+            "expired_token" => {
+                cleanup(&animation);
+                return Err(AuthError::ExpiredToken);
+            }
+            "access_denied" => {
+                cleanup(&animation);
+                return Err(AuthError::AccessDenied(
+                    error_response
+                        .error_description
+                        .unwrap_or_else(|| "User denied access".to_string()),
+                ));
+            }
+            _ => {
+                cleanup(&animation);
+                return Err(AuthError::ServerError(format!(
+                    "{}: {}",
+                    error_response.error,
+                    error_response.error_description.unwrap_or_default()
+                )));
+            }
+        }
+    }
+}
+
 /// Refreshes an expired access token using a refresh token.
 ///
 /// # Arguments
@@ -514,8 +787,74 @@ pub async fn authenticate(api_url: &str) -> AuthResult<TokenResponse> {
     }
 }
 
+/// Performs the complete unified device flow authentication with E2EE.
+///
+/// This is the preferred authentication method as it enables E2EE.
+/// Combines all steps:
+/// 1. Starts the device flow with ECDH key
+/// 2. Displays instructions to the user
+/// 3. Polls for token and MEK
+/// 4. Decrypts and returns the MEK
+///
+/// If the device code expires, a new code is automatically requested
+/// and the flow restarts. The user can press ESC to skip authentication
+/// and continue offline, or CTRL+C to exit.
+///
+/// # Arguments
+///
+/// * `api_url` - Base URL of the klaas API
+/// * `device_name` - Name of this device (e.g., hostname)
+///
+/// # Returns
+///
+/// * Tuple of (TokenResponse, SecretKey) where SecretKey is the MEK
+///
+/// # Example
+///
+/// ```ignore
+/// let (tokens, mek) = authenticate_with_mek(
+///     "https://api.klaas.sh",
+///     "MacBook Pro"
+/// ).await?;
+/// ```
+pub async fn authenticate_with_mek(
+    api_url: &str,
+    device_name: &str,
+) -> AuthResult<(TokenResponse, SecretKey)> {
+    loop {
+        // Start the device flow with ECDH key
+        let (device_response, ecdh_secret) =
+            start_device_flow_with_ecdh(api_url, device_name).await?;
+
+        // Display instructions to the user
+        display_auth_instructions(&device_response);
+
+        // Poll for token and MEK
+        match poll_for_token_with_mek(
+            api_url,
+            &device_response.device_code,
+            ecdh_secret,
+            device_response.interval,
+            device_response.expires_in,
+        )
+        .await
+        {
+            Ok((tokens, mek)) => return Ok((tokens, mek)),
+            Err(AuthError::ExpiredToken) => {
+                // Device code expired - display message and get a new code
+                info!("Device code expired, requesting new code");
+                ui::display_code_expired();
+                // Clear previous display to make room for new instructions
+                ui::clear_auth_display_for_retry();
+                continue;
+            }
+            Err(e) => return Err(e), // Cancelled, Skipped, or other errors
+        }
+    }
+}
+
 // =============================================================================
-// CLI Pairing Flow (ECDH-based key exchange)
+// CLI Pairing Flow (ECDH-based key exchange) - Legacy
 // =============================================================================
 
 /// Request body for pairing request.

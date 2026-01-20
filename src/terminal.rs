@@ -2,8 +2,10 @@
 
 use crate::error::Result;
 use crossterm::{
+    cursor::{MoveTo, RestorePosition, SavePosition},
     event::{self, DisableBracketedPaste, EnableBracketedPaste, Event},
-    terminal::{self, disable_raw_mode, enable_raw_mode},
+    style::Print,
+    terminal::{self, disable_raw_mode, enable_raw_mode, Clear, ClearType},
     ExecutableCommand,
 };
 use std::io::{self, Write};
@@ -84,6 +86,40 @@ impl TerminalManager {
     /// Returns whether the terminal is currently in raw mode.
     pub fn is_raw(&self) -> bool {
         self.was_raw
+    }
+
+    /// Draws a status line at the bottom of the terminal.
+    ///
+    /// Saves cursor position, moves to bottom row, writes status, restores cursor.
+    /// This is experimental - the agent may overwrite it.
+    pub fn draw_status_line(&self, status: &str) -> Result<()> {
+        let (cols, rows) = self.size()?;
+        let mut stdout = io::stdout();
+
+        // Save cursor position
+        stdout.execute(SavePosition)?;
+
+        // Move to bottom row (0-indexed, so rows-1)
+        stdout.execute(MoveTo(0, rows - 1))?;
+
+        // Clear the line
+        stdout.execute(Clear(ClearType::CurrentLine))?;
+
+        // Truncate status if too long
+        let display_status = if status.len() > cols as usize {
+            &status[..cols as usize]
+        } else {
+            status
+        };
+
+        // Write status
+        stdout.execute(Print(display_status))?;
+
+        // Restore cursor position
+        stdout.execute(RestorePosition)?;
+
+        stdout.flush()?;
+        Ok(())
     }
 }
 
