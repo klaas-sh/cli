@@ -262,7 +262,16 @@ const LOGO: &[&str] = &["╭────────╮", "├──────
 /// Displays the klaas startup banner.
 ///
 /// Shows a minimal, elegant header with the klaas branding.
+/// This function is idempotent - it will only display the banner once per process.
 pub fn display_startup_banner() {
+    use std::sync::atomic::{AtomicBool, Ordering};
+    static BANNER_SHOWN: AtomicBool = AtomicBool::new(false);
+
+    // Only show banner once per process
+    if BANNER_SHOWN.swap(true, Ordering::Relaxed) {
+        return;
+    }
+
     let (ar, ag, ab) = colors::AMBER;
     let (tr, tg, tb) = colors::TEXT_SECONDARY;
 
