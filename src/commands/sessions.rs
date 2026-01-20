@@ -1,8 +1,8 @@
 //! Sessions command - list and select sessions interactively.
 //!
 //! Displays all sessions for the authenticated user in an interactive list
-//! with arrow key navigation. Returns the selected session ID or None if
-//! the user cancels.
+//! with arrow key navigation. Returns the selected session ID, a request
+//! to start a new session, or None if the user cancels.
 
 use std::io::{self, Write};
 
@@ -17,6 +17,17 @@ use crate::credentials;
 use crate::error::{CliError, Result};
 use crate::ui::colors;
 
+/// Result of the sessions command.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum SessionsResult {
+    /// User selected a session to connect to.
+    Selected(String),
+    /// User wants to start a new session.
+    StartNew,
+    /// User cancelled (Escape or Ctrl+C).
+    Cancelled,
+}
+
 /// Runs the sessions command.
 ///
 /// Lists all sessions for the authenticated user with interactive selection.
@@ -24,10 +35,11 @@ use crate::ui::colors;
 ///
 /// # Returns
 ///
-/// - `Ok(Some(session_id))` when user selects a session
-/// - `Ok(None)` when user cancels (Escape or Ctrl+C)
+/// - `Ok(SessionsResult::Selected(session_id))` when user selects a session
+/// - `Ok(SessionsResult::StartNew)` when user wants to start a new session
+/// - `Ok(SessionsResult::Cancelled)` when user cancels (Escape or Ctrl+C)
 /// - `Err(...)` on authentication or API errors
-pub async fn run() -> Result<Option<String>> {
+pub async fn run() -> Result<SessionsResult> {
     // Ensure user is authenticated
     let access_token = ensure_authenticated().await?;
 
@@ -35,25 +47,42 @@ pub async fn run() -> Result<Option<String>> {
     let sessions = fetch_sessions(&access_token).await?;
 
     if sessions.is_empty() {
-        println!();
-        println!(
-            "  {}No sessions found.{}",
-            fg_color(colors::TEXT_MUTED),
-            RESET
-        );
-        println!();
-        println!(
-            "  {}Start a session with: {}klaas{}",
-            fg_color(colors::TEXT_SECONDARY),
-            fg_color(colors::AMBER),
-            RESET
-        );
-        println!();
-        return Ok(None);
+        return prompt_start_new_session();
     }
 
     // Show interactive session list
     select_session(&sessions)
+}
+
+/// Prompts the user to start a new session when no sessions exist.
+fn prompt_start_new_session() -> Result<SessionsResult> {
+    println!();
+    println!(
+        "  {}No sessions found.{}",
+        fg_color(colors::TEXT_MUTED),
+        RESET
+    );
+    println!();
+    print!(
+        "  {}Start a new session? [Y/n]:{} ",
+        fg_color(colors::TEXT_SECONDARY),
+        RESET
+    );
+    io::stdout().flush().ok();
+
+    // Read single character
+    let mut input = String::new();
+    io::stdin().read_line(&mut input).ok();
+    let input = input.trim().to_lowercase();
+
+    println!();
+
+    // Default is Yes (empty input or 'y')
+    if input.is_empty() || input == "y" || input == "yes" {
+        Ok(SessionsResult::StartNew)
+    } else {
+        Ok(SessionsResult::Cancelled)
+    }
 }
 
 /// Ensures the user is authenticated, triggering device flow if needed.
@@ -96,15 +125,15 @@ async fn fetch_sessions(access_token: &str) -> Result<Vec<Session>> {
 }
 
 /// Shows interactive session selection and returns the selected session ID.
-fn select_session(sessions: &[Session]) -> Result<Option<String>> {
+fn select_session(sessions: &[Session]) -> Result<SessionsResult> {
     if sessions.is_empty() {
-        return Ok(None);
+        return Ok(SessionsResult::Cancelled);
     }
 
     // Enter raw mode for keyboard input
     if terminal::enable_raw_mode().is_err() {
         // Fall back to first session if we can't enter raw mode
-        return Ok(Some(sessions[0].session_id.clone()));
+        return Ok(SessionsResult::Selected(sessions[0].session_id.clone()));
     }
 
     let mut selected_index: usize = 0;
@@ -136,15 +165,15 @@ fn select_session(sessions: &[Session]) -> Result<Option<String>> {
                     draw_sessions_menu(&mut stdout, sessions, selected_index, true);
                 }
                 KeyCode::Enter => {
-                    break Some(sessions[selected_index].session_id.clone());
+                    break SessionsResult::Selected(sessions[selected_index].session_id.clone());
                 }
                 KeyCode::Esc => {
-                    break None;
+                    break SessionsResult::Cancelled;
                 }
                 KeyCode::Char(c) => {
                     // Ctrl+C to cancel
                     if c == 'c' && key_event.modifiers.contains(KeyModifiers::CONTROL) {
-                        break None;
+                        break SessionsResult::Cancelled;
                     }
                 }
                 _ => {}

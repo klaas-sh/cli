@@ -34,9 +34,9 @@ pub async fn run(target: Option<String>) -> Result<()> {
         None => {
             // No target - show interactive session list
             match sessions::run().await? {
-                Some(id) => id,
-                None => {
-                    // User cancelled
+                sessions::SessionsResult::Selected(id) => id,
+                sessions::SessionsResult::StartNew | sessions::SessionsResult::Cancelled => {
+                    // User cancelled or wants to start new (not applicable here)
                     return Ok(());
                 }
             }

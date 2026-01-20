@@ -163,13 +163,13 @@ async fn run_cli() -> i32 {
     }
 
     // Handle subcommands
-    if let Some(command) = cli.command {
+    if let Some(ref command) = cli.command {
         return match command {
             Commands::Agents => {
                 list_agents();
                 0
             }
-            Commands::Connect { session } => match commands::connect::run(session).await {
+            Commands::Connect { session } => match commands::connect::run(session.clone()).await {
                 Ok(()) => 0,
                 Err(e) => {
                     eprintln!("Error: {}", e);
@@ -184,7 +184,7 @@ async fn run_cli() -> i32 {
                 }
             },
             Commands::Sessions => match commands::sessions::run().await {
-                Ok(Some(session_id)) => {
+                Ok(commands::sessions::SessionsResult::Selected(session_id)) => {
                     // User selected a session - connect to it
                     match commands::connect::run(Some(session_id)).await {
                         Ok(()) => 0,
@@ -194,13 +194,17 @@ async fn run_cli() -> i32 {
                         }
                     }
                 }
-                Ok(None) => 0, // User cancelled
+                Ok(commands::sessions::SessionsResult::StartNew) => {
+                    // User wants to start a new session - run normal flow
+                    run_main_flow(&cli).await
+                }
+                Ok(commands::sessions::SessionsResult::Cancelled) => 0,
                 Err(e) => {
                     eprintln!("Error: {}", e);
                     1
                 }
             },
-            Commands::Uninstall { purge } => match perform_uninstall(purge).await {
+            Commands::Uninstall { purge } => match perform_uninstall(*purge).await {
                 Ok(()) => 0,
                 Err(e) => {
                     eprintln!("Uninstall failed: {}", e);
@@ -217,6 +221,12 @@ async fn run_cli() -> i32 {
         };
     }
 
+    // Run the main session flow
+    run_main_flow(&cli).await
+}
+
+/// Runs the main session flow: auto-update, agent selection, and app execution.
+async fn run_main_flow(cli: &Cli) -> i32 {
     // Auto-update if a new version is available
     // This checks the cache first (updated every 24h) and only downloads if needed
     if update::auto_update_if_available().await {
@@ -229,7 +239,7 @@ async fn run_cli() -> i32 {
     ui::hide_cursor();
 
     // Select agent to run
-    let selected_agent = match select_agent(&cli) {
+    let selected_agent = match select_agent(cli) {
         agents::AgentSelection::Selected(agent) => {
             ui::show_cursor();
             agent
@@ -264,7 +274,14 @@ async fn run_cli() -> i32 {
     }
 
     // Run the application with selected agent
-    match app::run(selected_agent, cli.agent_args, cli.resume, cli.name).await {
+    match app::run(
+        selected_agent,
+        cli.agent_args.clone(),
+        cli.resume,
+        cli.name.clone(),
+    )
+    .await
+    {
         Ok(code) => code,
         Err(e) => {
             eprintln!("Error: {}", e);
