@@ -613,3 +613,37 @@ fn fg_color(color: (u8, u8, u8)) -> String {
 fn reset() -> &'static str {
     "\x1b[0m"
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_is_valid_session_name_valid() {
+        // Valid names
+        assert!(is_valid_session_name("a"));
+        assert!(is_valid_session_name("refactor-tests"));
+        assert!(is_valid_session_name("api_v2"));
+        assert!(is_valid_session_name("MyProject123"));
+        assert!(is_valid_session_name("test-name_123"));
+        assert!(is_valid_session_name("12345678901234567890")); // 20 chars
+    }
+
+    #[test]
+    fn test_is_valid_session_name_invalid() {
+        // Empty
+        assert!(!is_valid_session_name(""));
+
+        // Too long (21 chars)
+        assert!(!is_valid_session_name("123456789012345678901"));
+
+        // Contains space
+        assert!(!is_valid_session_name("my session"));
+
+        // Contains invalid characters
+        assert!(!is_valid_session_name("test@project"));
+        assert!(!is_valid_session_name("test.name"));
+        assert!(!is_valid_session_name("test/name"));
+        assert!(!is_valid_session_name("test:name"));
+    }
+}
