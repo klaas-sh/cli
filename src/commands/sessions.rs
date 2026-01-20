@@ -275,12 +275,12 @@ fn draw_sessions_menu(
     let _ = stdout.flush();
 }
 
-/// Draws a single session row (2 lines).
+/// Draws a single session row (3 lines).
 ///
-/// Column widths for 74-char content (no trailing padding):
-/// Line 1: indicator(3) + name(20) + space(1) + cwd(33) + space(1)
-///         + datetime(16, right-aligned) = 74
-/// Line 2: padding(3) + session_id(26) + space(1) + device(20) + status(24) = 74
+/// Column widths for 74-char content:
+/// Line 1: indicator(3) + name(20) + fill(35) + datetime(16) = 74
+/// Line 2: padding(3) + cwd(71) = 74
+/// Line 3: padding(3) + session_id(26) + space(2) + device(20) + status(23) = 74
 fn draw_session_row(_stdout: &mut io::Stdout, session: &Session, is_selected: bool) {
     let is_attached = session.status == "attached";
 
@@ -300,7 +300,7 @@ fn draw_session_row(_stdout: &mut io::Stdout, session: &Session, is_selected: bo
     // Get the plain name for display
     let name_plain = session.name.as_deref().unwrap_or("(unnamed)");
 
-    // Print first line (74 chars content)
+    // === Line 1: indicator + name + datetime ===
     print!("  {}│{}", fg_color(colors::TEXT_DIM), RESET);
     print!(" {} ", status_indicator); // 3 chars
 
@@ -325,37 +325,40 @@ fn draw_session_row(_stdout: &mut io::Stdout, session: &Session, is_selected: bo
         print!("{}{:<20}{}", fg_color(colors::TEXT_DIM), "(unnamed)", RESET);
     }
 
-    print!(" "); // 1 char
-
-    // CWD (33 chars)
-    print!(
-        "{}{:<33}{}",
-        fg_color(colors::TEXT_SECONDARY),
-        truncate_str(&cwd, 33),
-        RESET
-    );
-
-    print!(" "); // 1 char
-
-    // Datetime (16 chars, right-aligned)
-    print!("{}{:>16}{}", fg_color(colors::TEXT_MUTED), datetime, RESET);
+    // Datetime right-aligned in remaining 51 chars (74 - 3 - 20 = 51)
+    print!("{}{:>51}{}", fg_color(colors::TEXT_MUTED), datetime, RESET);
 
     print!("{}│{}", fg_color(colors::TEXT_DIM), RESET);
     print!("\r\n");
 
-    // Print second line (74 chars content)
+    // === Line 2: cwd ===
     print!("  {}│{}", fg_color(colors::TEXT_DIM), RESET);
-    print!("   "); // 3 chars (align with name)
+    print!("   "); // 3 chars padding
+
+    // CWD (71 chars - full width)
+    print!(
+        "{}{:<71}{}",
+        fg_color(colors::TEXT_SECONDARY),
+        truncate_str(&cwd, 71),
+        RESET
+    );
+
+    print!("{}│{}", fg_color(colors::TEXT_DIM), RESET);
+    print!("\r\n");
+
+    // === Line 3: session_id + device + status ===
+    print!("  {}│{}", fg_color(colors::TEXT_DIM), RESET);
+    print!("   "); // 3 chars padding
 
     // Session ID (26 chars - ULID length)
     print!(
         "{}{:<26}{}",
         fg_color(colors::TEXT_DIM),
-        truncate_str(&session.session_id, 26),
+        &session.session_id,
         RESET
     );
 
-    print!(" "); // 1 char
+    print!("  "); // 2 chars spacing
 
     // Device name (20 chars)
     print!(
@@ -365,11 +368,11 @@ fn draw_session_row(_stdout: &mut io::Stdout, session: &Session, is_selected: bo
         RESET
     );
 
-    // Status (24 chars, right-aligned)
+    // Status (23 chars, right-aligned)
     if is_attached {
-        print!("{}{:>24}{}", fg_color(colors::GREEN), "attached", RESET);
+        print!("{}{:>23}{}", fg_color(colors::GREEN), "attached", RESET);
     } else {
-        print!("{}{:>24}{}", fg_color(colors::TEXT_DIM), "detached", RESET);
+        print!("{}{:>23}{}", fg_color(colors::TEXT_DIM), "detached", RESET);
     }
 
     print!("{}│{}", fg_color(colors::TEXT_DIM), RESET);
