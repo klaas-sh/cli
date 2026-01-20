@@ -566,18 +566,34 @@ fn format_relative_time(timestamp: &str) -> String {
     }
 }
 
-/// Formats an ISO 8601 timestamp as "YYYY-MM-DD HH:MM" (16 chars).
+/// Formats a timestamp as "YYYY-MM-DD HH:MM" (16 chars).
+///
+/// Handles multiple timestamp formats:
+/// - SQLite datetime: "YYYY-MM-DD HH:MM:SS"
+/// - ISO 8601: "YYYY-MM-DDTHH:MM:SSZ"
 fn format_datetime(timestamp: &str) -> String {
-    use chrono::{DateTime, Local, Utc};
+    use chrono::{DateTime, Local, NaiveDateTime, Utc};
 
-    let parsed: DateTime<Utc> = match timestamp.parse() {
-        Ok(dt) => dt,
-        Err(_) => return truncate_str(timestamp, 16),
-    };
+    // Try ISO 8601 format first (with timezone)
+    if let Ok(dt) = timestamp.parse::<DateTime<Utc>>() {
+        let local: DateTime<Local> = dt.into();
+        return local.format("%Y-%m-%d %H:%M").to_string();
+    }
 
-    // Convert to local time for display
-    let local: DateTime<Local> = parsed.into();
-    local.format("%Y-%m-%d %H:%M").to_string()
+    // Try SQLite datetime format (no timezone, assumes UTC)
+    if let Ok(naive) = NaiveDateTime::parse_from_str(timestamp, "%Y-%m-%d %H:%M:%S") {
+        let utc = naive.and_utc();
+        let local: DateTime<Local> = utc.into();
+        return local.format("%Y-%m-%d %H:%M").to_string();
+    }
+
+    // Fallback: if timestamp is already in "YYYY-MM-DD HH:MM" format, use it
+    if timestamp.len() >= 16 && timestamp.chars().nth(10) == Some(' ') {
+        return timestamp[..16].to_string();
+    }
+
+    // Last resort: truncate to 16 chars
+    truncate_str(timestamp, 16)
 }
 
 /// Generates ANSI escape code for 24-bit true color foreground.

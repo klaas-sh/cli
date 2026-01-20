@@ -441,17 +441,23 @@ pub async fn run_with_token(session_id: &str, access_token: &str) -> Result<()> 
     let config = get_api_config();
     info!(ws_url = %config.ws_url, session_id = %session_id, "Starting guest mode");
 
-    // Get MEK for E2EE from keychain
+    // Get or create MEK for E2EE (auto-generated on first use)
     let cred_store = CredentialStore::new();
-    let mek_bytes = cred_store.get_mek()?.ok_or_else(|| {
-        CliError::CryptoError(
-            "No encryption key found. You need to pair with the host first.".into(),
-        )
-    })?;
-
-    let mut mek_arr = [0u8; 32];
-    mek_arr.copy_from_slice(&mek_bytes);
-    let mek = SecretKey::from_bytes(mek_arr);
+    let mek = match cred_store.get_mek()? {
+        Some(mek_bytes) => {
+            debug!("Retrieved existing MEK for E2EE");
+            let mut arr = [0u8; 32];
+            arr.copy_from_slice(&mek_bytes);
+            SecretKey::from_bytes(arr)
+        }
+        None => {
+            // Auto-generate MEK if not found (enables E2EE for this device)
+            let mek = SecretKey::random();
+            cred_store.store_mek(mek.as_bytes())?;
+            info!("Generated new MEK for E2EE");
+            mek
+        }
+    };
 
     // Connect to WebSocket as guest
     let client = GuestClient::connect(config.ws_url, access_token, session_id, &mek).await?;
