@@ -220,8 +220,8 @@ fn draw_sessions_menu(
         RESET
     );
 
-    // Box width (72 chars inside)
-    let box_width = 72;
+    // Box width: 70 chars inside, 74 total with borders and indent
+    let box_width = 70;
 
     // Top border
     print!(
@@ -271,6 +271,11 @@ fn draw_sessions_menu(
 }
 
 /// Draws a single session row (2 lines).
+///
+/// Column widths for 70-char content:
+/// Line 1: indicator(3) + name(14) + space(1) + cwd(26) + space(1)
+///         + time(12) + padding(13) = 70
+/// Line 2: padding(3) + session_id(26) + space(1) + status(28) + padding(12) = 70
 fn draw_session_row(_stdout: &mut io::Stdout, session: &Session, is_selected: bool) {
     let is_attached = session.status == "attached";
 
@@ -284,78 +289,80 @@ fn draw_session_row(_stdout: &mut io::Stdout, session: &Session, is_selected: bo
     // Format cwd (shorten home directory)
     let cwd = shorten_path(&session.cwd);
 
-    // Format relative time
-    let time_ago = format_relative_time(&session.started_at);
+    // Format relative time (truncate to 12 chars max)
+    let time_ago = truncate_str(&format_relative_time(&session.started_at), 12);
 
     // Get the plain name for display
     let name_plain = session.name.as_deref().unwrap_or("(unnamed)");
 
-    // Print first line
+    // Print first line (70 chars content)
     print!("  {}│{}", fg_color(colors::TEXT_DIM), RESET);
-    print!(" {} ", status_indicator);
+    print!(" {} ", status_indicator); // 3 chars
 
-    // Name with color
+    // Name with color (14 chars)
     if session.name.is_some() {
         if is_selected {
             print!(
-                "{}{:<20}{}",
+                "{}{:<14}{}",
                 fg_color(colors::AMBER),
-                truncate_str(name_plain, 20),
+                truncate_str(name_plain, 14),
                 RESET
             );
         } else {
             print!(
-                "{}{:<20}{}",
+                "{}{:<14}{}",
                 fg_color(colors::TEXT_PRIMARY),
-                truncate_str(name_plain, 20),
+                truncate_str(name_plain, 14),
                 RESET
             );
         }
     } else {
-        print!("{}{:<20}{}", fg_color(colors::TEXT_DIM), "(unnamed)", RESET);
+        print!("{}{:<14}{}", fg_color(colors::TEXT_DIM), "(unnamed)", RESET);
     }
 
-    print!(" ");
+    print!(" "); // 1 char
 
-    // CWD
+    // CWD (26 chars)
     print!(
-        "{}{:<28}{}",
+        "{}{:<26}{}",
         fg_color(colors::TEXT_SECONDARY),
-        truncate_str(&cwd, 28),
+        truncate_str(&cwd, 26),
         RESET
     );
 
-    print!(" ");
+    print!(" "); // 1 char
 
-    // Time
-    print!("{}{:>14}{}", fg_color(colors::TEXT_MUTED), time_ago, RESET);
+    // Time (12 chars, right-aligned)
+    print!("{}{:>12}{}", fg_color(colors::TEXT_MUTED), time_ago, RESET);
 
-    print!(" ");
+    // Trailing padding (13 chars)
+    print!("             ");
     print!("{}│{}", fg_color(colors::TEXT_DIM), RESET);
     print!("\r\n");
 
-    // Print second line
+    // Print second line (70 chars content)
     print!("  {}│{}", fg_color(colors::TEXT_DIM), RESET);
-    print!("   ");
+    print!("   "); // 3 chars (align with name)
 
-    // Session ID
+    // Session ID (26 chars - ULID length)
     print!(
-        "{}{:<44}{}",
+        "{}{:<26}{}",
         fg_color(colors::TEXT_DIM),
-        &session.session_id,
+        truncate_str(&session.session_id, 26),
         RESET
     );
 
-    print!(" ");
+    print!(" "); // 1 char
 
-    // Status
+    // Status (28 chars, right-aligned)
     if is_attached {
-        print!("{}{:>22}{}", fg_color(colors::GREEN), "attached", RESET);
+        print!("{}{:>28}{}", fg_color(colors::GREEN), "attached", RESET);
     } else {
-        print!("{}{:>22}{}", fg_color(colors::TEXT_DIM), "detached", RESET);
+        print!("{}{:>28}{}", fg_color(colors::TEXT_DIM), "detached", RESET);
     }
 
-    print!(" ");
+    // Trailing padding (12 chars)
+    print!("            ");
     print!("{}│{}", fg_color(colors::TEXT_DIM), RESET);
     print!("\r\n");
 }

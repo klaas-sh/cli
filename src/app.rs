@@ -627,7 +627,10 @@ async fn ensure_authenticated(config: &ApiConfig, cred_store: &CredentialStore) 
 /// * `Some(false)` if the token is definitely expired.
 /// * `None` if the token format couldn't be parsed (caller should use token anyway).
 fn is_token_valid(token: &str) -> Option<bool> {
-    use base64::{engine::general_purpose::{URL_SAFE, URL_SAFE_NO_PAD}, Engine};
+    use base64::{
+        engine::general_purpose::{URL_SAFE, URL_SAFE_NO_PAD},
+        Engine,
+    };
 
     // JWT format: header.payload.signature
     let parts: Vec<&str> = token.split('.').collect();
@@ -644,7 +647,7 @@ fn is_token_valid(token: &str) -> Option<bool> {
         .or_else(|_| {
             // Try adding padding manually
             let mut padded = parts[1].to_string();
-            while padded.len() % 4 != 0 {
+            while !padded.len().is_multiple_of(4) {
                 padded.push('=');
             }
             URL_SAFE.decode(&padded)

@@ -176,7 +176,7 @@ async fn run_cli() -> i32 {
                     1
                 }
             },
-            Commands::Hook { event } => match hook::handle_hook(&event).await {
+            Commands::Hook { event } => match hook::handle_hook(event).await {
                 Ok(()) => 0,
                 Err(e) => {
                     eprintln!("{}", e);
