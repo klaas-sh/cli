@@ -43,7 +43,31 @@ pub async fn run(target: Option<String>) -> Result<()> {
         }
     };
 
-    // At this point we have a session ID to connect to
+    // Connect to the session
+    connect_to_session(&session_id).await
+}
+
+/// Connects directly to a session without lookup or authentication.
+///
+/// Use this when the session_id is already validated (e.g., from interactive
+/// session list) and authentication is already complete.
+///
+/// # Arguments
+///
+/// * `session_id` - Valid session ID (ULID)
+///
+/// # Returns
+///
+/// * `Ok(())` on successful connection
+/// * `Err(...)` on connection errors
+pub async fn run_direct(session_id: &str) -> Result<()> {
+    connect_to_session(session_id).await
+}
+
+/// Internal function to connect to a session as guest.
+///
+/// Displays connecting message and handles connection result.
+async fn connect_to_session(session_id: &str) -> Result<()> {
     debug!("Connecting to session: {}", session_id);
 
     // Display connecting message
@@ -58,7 +82,7 @@ pub async fn run(target: Option<String>) -> Result<()> {
     );
 
     // Connect as guest using the guest module
-    match guest::run(&session_id).await {
+    match guest::run(session_id).await {
         Ok(()) => {
             println!();
             println!(
