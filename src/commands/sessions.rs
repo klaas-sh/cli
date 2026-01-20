@@ -272,10 +272,10 @@ fn draw_sessions_menu(
 
 /// Draws a single session row (2 lines).
 ///
-/// Column widths for 74-char content:
-/// Line 1: indicator(3) + name(20) + space(1) + cwd(24) + space(1)
-///         + time(12) + padding(13) = 74
-/// Line 2: padding(3) + session_id(26) + space(1) + status(32) + padding(12) = 74
+/// Column widths for 74-char content (no trailing padding):
+/// Line 1: indicator(3) + name(20) + space(1) + cwd(33) + space(1)
+///         + datetime(16, right-aligned) = 74
+/// Line 2: padding(3) + session_id(26) + status(45, right-aligned) = 74
 fn draw_session_row(_stdout: &mut io::Stdout, session: &Session, is_selected: bool) {
     let is_attached = session.status == "attached";
 
@@ -289,8 +289,8 @@ fn draw_session_row(_stdout: &mut io::Stdout, session: &Session, is_selected: bo
     // Format cwd (shorten home directory)
     let cwd = shorten_path(&session.cwd);
 
-    // Format relative time (truncate to 12 chars max)
-    let time_ago = truncate_str(&format_relative_time(&session.started_at), 12);
+    // Format datetime as "YYYY-MM-DD HH:MM" (16 chars)
+    let datetime = format_datetime(&session.started_at);
 
     // Get the plain name for display
     let name_plain = session.name.as_deref().unwrap_or("(unnamed)");
@@ -322,21 +322,19 @@ fn draw_session_row(_stdout: &mut io::Stdout, session: &Session, is_selected: bo
 
     print!(" "); // 1 char
 
-    // CWD (24 chars)
+    // CWD (33 chars)
     print!(
-        "{}{:<24}{}",
+        "{}{:<33}{}",
         fg_color(colors::TEXT_SECONDARY),
-        truncate_str(&cwd, 24),
+        truncate_str(&cwd, 33),
         RESET
     );
 
     print!(" "); // 1 char
 
-    // Time (12 chars, right-aligned)
-    print!("{}{:>12}{}", fg_color(colors::TEXT_MUTED), time_ago, RESET);
+    // Datetime (16 chars, right-aligned)
+    print!("{}{:>16}{}", fg_color(colors::TEXT_MUTED), datetime, RESET);
 
-    // Trailing padding (13 chars)
-    print!("             ");
     print!("{}│{}", fg_color(colors::TEXT_DIM), RESET);
     print!("\r\n");
 
@@ -352,17 +350,13 @@ fn draw_session_row(_stdout: &mut io::Stdout, session: &Session, is_selected: bo
         RESET
     );
 
-    print!(" "); // 1 char
-
-    // Status (32 chars, right-aligned)
+    // Status (45 chars, right-aligned to match datetime column)
     if is_attached {
-        print!("{}{:>32}{}", fg_color(colors::GREEN), "attached", RESET);
+        print!("{}{:>45}{}", fg_color(colors::GREEN), "attached", RESET);
     } else {
-        print!("{}{:>32}{}", fg_color(colors::TEXT_DIM), "detached", RESET);
+        print!("{}{:>45}{}", fg_color(colors::TEXT_DIM), "detached", RESET);
     }
 
-    // Trailing padding (12 chars)
-    print!("            ");
     print!("{}│{}", fg_color(colors::TEXT_DIM), RESET);
     print!("\r\n");
 }
@@ -475,6 +469,20 @@ fn format_relative_time(timestamp: &str) -> String {
     } else {
         format!("{} months ago", months)
     }
+}
+
+/// Formats an ISO 8601 timestamp as "YYYY-MM-DD HH:MM" (16 chars).
+fn format_datetime(timestamp: &str) -> String {
+    use chrono::{DateTime, Local, Utc};
+
+    let parsed: DateTime<Utc> = match timestamp.parse() {
+        Ok(dt) => dt,
+        Err(_) => return truncate_str(timestamp, 16),
+    };
+
+    // Convert to local time for display
+    let local: DateTime<Local> = parsed.into();
+    local.format("%Y-%m-%d %H:%M").to_string()
 }
 
 /// Generates ANSI escape code for 24-bit true color foreground.
