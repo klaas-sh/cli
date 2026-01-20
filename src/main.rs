@@ -73,6 +73,11 @@ struct Cli {
     #[arg(short = 'r', long)]
     resume: bool,
 
+    /// Name for this session (max 20 chars, alphanumeric/hyphen/underscore).
+    /// Makes it easier to reconnect: `klaas connect my-session`
+    #[arg(short = 'n', long = "name", value_name = "NAME")]
+    name: Option<String>,
+
     /// Arguments to pass through to the agent.
     /// All unrecognized arguments are forwarded.
     #[arg(trailing_var_arg = true, allow_hyphen_values = true)]
@@ -246,14 +251,36 @@ async fn run_cli() -> i32 {
         }
     };
 
+    // Validate session name if provided
+    if let Some(ref name) = cli.name {
+        if !is_valid_session_name(name) {
+            eprintln!(
+                "Error: Invalid session name '{}'. \
+                 Must be 1-20 chars, alphanumeric/hyphen/underscore only.",
+                name
+            );
+            return 1;
+        }
+    }
+
     // Run the application with selected agent
-    match app::run(selected_agent, cli.agent_args, cli.resume).await {
+    match app::run(selected_agent, cli.agent_args, cli.resume, cli.name).await {
         Ok(code) => code,
         Err(e) => {
             eprintln!("Error: {}", e);
             1
         }
     }
+}
+
+/// Validates a session name.
+/// Must be 1-20 characters, alphanumeric/hyphen/underscore only.
+fn is_valid_session_name(name: &str) -> bool {
+    if name.is_empty() || name.len() > 20 {
+        return false;
+    }
+    name.chars()
+        .all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_')
 }
 
 /// Selects an agent based on CLI flags and installed agents.

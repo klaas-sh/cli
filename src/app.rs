@@ -40,10 +40,16 @@ const WS_RECV_TIMEOUT_MS: u64 = 10;
 /// * `agent` - The selected agent to run.
 /// * `agent_args` - Arguments to pass through to the agent.
 /// * `resume` - If true, resume the previous session instead of starting new.
+/// * `session_name` - Optional human-readable name for the session.
 ///
 /// # Returns
 /// Exit code from the agent.
-pub async fn run(agent: Agent, agent_args: Vec<String>, resume: bool) -> Result<i32> {
+pub async fn run(
+    agent: Agent,
+    agent_args: Vec<String>,
+    resume: bool,
+    session_name: Option<String>,
+) -> Result<i32> {
     // Load configuration from environment
     let config = get_api_config();
     info!(api_url = %config.api_url, ws_url = %config.ws_url, "Loaded configuration");
@@ -158,6 +164,7 @@ pub async fn run(agent: Agent, agent_args: Vec<String>, resume: bool) -> Result<
                 &device_name,
                 &cwd,
                 &mek,
+                session_name.as_deref(),
             )
             .await
         }
@@ -442,6 +449,7 @@ pub async fn run(agent: Agent, agent_args: Vec<String>, resume: bool) -> Result<
                         &device_name,
                         &cwd,
                         &mek,
+                        session_name.as_deref(),
                     )
                     .await;
                 }
@@ -633,6 +641,7 @@ async fn try_authenticate(config: &ApiConfig, cred_store: &CredentialStore) -> A
 ///
 /// Returns None if connection fails (CLI continues to work locally).
 /// Sets up the MEK for transparent E2EE on the connection.
+#[allow(clippy::too_many_arguments)]
 async fn connect_websocket(
     config: &ApiConfig,
     access_token: &str,
@@ -641,6 +650,7 @@ async fn connect_websocket(
     device_name: &str,
     cwd: &str,
     mek: &SecretKey,
+    session_name: Option<&str>,
 ) -> Option<WebSocketClient> {
     debug!(ws_url = %config.ws_url, "Connecting to WebSocket");
 
@@ -651,6 +661,7 @@ async fn connect_websocket(
         device_id,
         device_name,
         cwd,
+        session_name,
     )
     .await
     {
@@ -682,6 +693,7 @@ async fn handle_reconnection(
     device_name: &str,
     cwd: &str,
     mek: &SecretKey,
+    session_name: Option<&str>,
 ) {
     debug!("Attempting WebSocket reconnection");
 
@@ -725,6 +737,7 @@ async fn handle_reconnection(
         device_name,
         cwd,
         mek,
+        session_name,
     )
     .await
     {

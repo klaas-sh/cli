@@ -60,6 +60,9 @@ pub enum OutgoingMessage {
         device_id: String,
         device_name: String,
         cwd: String,
+        /// Optional human-readable session name (max 20 chars).
+        #[serde(skip_serializing_if = "Option::is_none")]
+        name: Option<String>,
     },
     /// Terminal output data (base64 encoded plaintext).
     /// Kept for backward compatibility but no longer used - all output is now
@@ -155,6 +158,8 @@ pub struct WebSocketClient {
     device_name: String,
     /// Current working directory.
     cwd: String,
+    /// Optional session name (human-readable).
+    session_name: Option<String>,
     /// Message queue for reconnection.
     message_queue: Arc<Mutex<VecDeque<QueuedMessage>>>,
     /// Whether currently connected.
@@ -178,6 +183,7 @@ impl WebSocketClient {
     /// * `device_id` - ULID device identifier
     /// * `device_name` - Human-readable device name (hostname)
     /// * `cwd` - Current working directory
+    /// * `session_name` - Optional human-readable session name
     ///
     /// # Returns
     ///
@@ -189,6 +195,7 @@ impl WebSocketClient {
         device_id: &str,
         device_name: &str,
         cwd: &str,
+        session_name: Option<&str>,
     ) -> Result<Self> {
         // Parse and validate URL
         let mut parsed_url = Url::parse(url)
@@ -213,6 +220,7 @@ impl WebSocketClient {
             device_id: device_id.to_string(),
             device_name: device_name.to_string(),
             cwd: cwd.to_string(),
+            session_name: session_name.map(|s| s.to_string()),
             message_queue: Arc::new(Mutex::new(VecDeque::new())),
             is_connected: Arc::new(Mutex::new(false)),
             reconnect_attempt: Arc::new(Mutex::new(0)),
@@ -279,6 +287,7 @@ impl WebSocketClient {
             device_id: self.device_id.clone(),
             device_name: self.device_name.clone(),
             cwd: self.cwd.clone(),
+            name: self.session_name.clone(),
         };
 
         self.send_message(&msg).await
@@ -675,11 +684,29 @@ mod tests {
             device_id: "01HQXK7V8G3N5M2R4P6T1W9Y0A".to_string(),
             device_name: "MacBook Pro".to_string(),
             cwd: "/Users/test/projects".to_string(),
+            name: None,
         };
 
         let json = serde_json::to_string(&msg).unwrap();
         assert!(json.contains(r#""type":"session_attach""#));
         assert!(json.contains(r#""session_id":"01HQXK7V8G3N5M2R4P6T1W9Y0Z""#));
+        // name should be omitted when None
+        assert!(!json.contains(r#""name""#));
+    }
+
+    #[test]
+    fn test_outgoing_session_attach_with_name() {
+        let msg = OutgoingMessage::SessionAttach {
+            session_id: "01HQXK7V8G3N5M2R4P6T1W9Y0Z".to_string(),
+            device_id: "01HQXK7V8G3N5M2R4P6T1W9Y0A".to_string(),
+            device_name: "MacBook Pro".to_string(),
+            cwd: "/Users/test/projects".to_string(),
+            name: Some("my-session".to_string()),
+        };
+
+        let json = serde_json::to_string(&msg).unwrap();
+        assert!(json.contains(r#""type":"session_attach""#));
+        assert!(json.contains(r#""name":"my-session""#));
     }
 
     #[test]
