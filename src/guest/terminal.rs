@@ -412,9 +412,6 @@ fn key_event_to_bytes(event: KeyEvent) -> Vec<u8> {
 ///
 /// Ok(()) on successful disconnection, or an error if something goes wrong.
 pub async fn run(session_id: &str) -> Result<()> {
-    let config = get_api_config();
-    info!(ws_url = %config.ws_url, session_id = %session_id, "Starting guest mode");
-
     // Get credentials from keychain
     let cred_store = CredentialStore::new();
 
@@ -423,7 +420,29 @@ pub async fn run(session_id: &str) -> Result<()> {
         CliError::AuthError("Not authenticated. Run 'klaas' first to log in.".into())
     })?;
 
-    // Get MEK for E2EE
+    // Delegate to run_with_token
+    run_with_token(session_id, &access_token).await
+}
+
+/// Runs the guest terminal mode with a provided access token.
+///
+/// Use this when the access token is already available (e.g., from prior
+/// authentication in the sessions command) to avoid keychain lookup issues.
+///
+/// # Arguments
+///
+/// * `session_id` - The session ID to connect to as a guest
+/// * `access_token` - Valid access token for authentication
+///
+/// # Returns
+///
+/// Ok(()) on successful disconnection, or an error if something goes wrong.
+pub async fn run_with_token(session_id: &str, access_token: &str) -> Result<()> {
+    let config = get_api_config();
+    info!(ws_url = %config.ws_url, session_id = %session_id, "Starting guest mode");
+
+    // Get MEK for E2EE from keychain
+    let cred_store = CredentialStore::new();
     let mek_bytes = cred_store.get_mek()?.ok_or_else(|| {
         CliError::CryptoError(
             "No encryption key found. You need to pair with the host first.".into(),
@@ -435,7 +454,7 @@ pub async fn run(session_id: &str) -> Result<()> {
     let mek = SecretKey::from_bytes(mek_arr);
 
     // Connect to WebSocket as guest
-    let client = GuestClient::connect(config.ws_url, &access_token, session_id, &mek).await?;
+    let client = GuestClient::connect(config.ws_url, access_token, session_id, &mek).await?;
     info!("Connected to session as guest");
 
     // Set up terminal in raw mode

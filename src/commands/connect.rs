@@ -26,15 +26,17 @@ use super::sessions;
 /// * `Ok(())` on successful connection (or cancellation)
 /// * `Err(...)` on authentication, network, or lookup errors
 pub async fn run(target: Option<String>) -> Result<()> {
-    let session_id = match target {
+    let (session_id, access_token) = match target {
         Some(identifier) => {
-            // User provided a target - look it up
-            lookup_session(&identifier).await?
+            // User provided a target - look it up (this will authenticate)
+            let token = ensure_authenticated().await?;
+            let id = lookup_session_with_token(&identifier, &token).await?;
+            (id, token)
         }
         None => {
             // No target - show interactive session list
             match sessions::run().await? {
-                sessions::SessionsResult::Selected(id) => id,
+                sessions::SessionsResult::Selected(id, token) => (id, token),
                 sessions::SessionsResult::StartNew | sessions::SessionsResult::Cancelled => {
                     // User cancelled or wants to start new (not applicable here)
                     return Ok(());
@@ -43,8 +45,8 @@ pub async fn run(target: Option<String>) -> Result<()> {
         }
     };
 
-    // Connect to the session
-    connect_to_session(&session_id).await
+    // Connect to the session with the token
+    connect_to_session(&session_id, &access_token).await
 }
 
 /// Connects directly to a session without lookup or authentication.
@@ -55,19 +57,20 @@ pub async fn run(target: Option<String>) -> Result<()> {
 /// # Arguments
 ///
 /// * `session_id` - Valid session ID (ULID)
+/// * `access_token` - Valid access token from prior authentication
 ///
 /// # Returns
 ///
 /// * `Ok(())` on successful connection
 /// * `Err(...)` on connection errors
-pub async fn run_direct(session_id: &str) -> Result<()> {
-    connect_to_session(session_id).await
+pub async fn run_direct(session_id: &str, access_token: &str) -> Result<()> {
+    connect_to_session(session_id, access_token).await
 }
 
 /// Internal function to connect to a session as guest.
 ///
 /// Displays connecting message and handles connection result.
-async fn connect_to_session(session_id: &str) -> Result<()> {
+async fn connect_to_session(session_id: &str, access_token: &str) -> Result<()> {
     debug!("Connecting to session: {}", session_id);
 
     // Display connecting message
@@ -82,7 +85,7 @@ async fn connect_to_session(session_id: &str) -> Result<()> {
     );
 
     // Connect as guest using the guest module
-    match guest::run(session_id).await {
+    match guest::run_with_token(session_id, access_token).await {
         Ok(()) => {
             println!();
             println!(
@@ -109,16 +112,13 @@ async fn connect_to_session(session_id: &str) -> Result<()> {
     }
 }
 
-/// Looks up a session by ID or name.
+/// Looks up a session by ID or name using an existing access token.
 ///
 /// If the identifier matches ULID format (26 uppercase alphanumeric chars),
 /// looks up by ID directly. Otherwise, looks up by name.
-async fn lookup_session(identifier: &str) -> Result<String> {
-    // Ensure authenticated
-    let access_token = ensure_authenticated().await?;
-
+async fn lookup_session_with_token(identifier: &str, access_token: &str) -> Result<String> {
     // Create API client
-    let client = ApiClient::new(API_URL, &access_token);
+    let client = ApiClient::new(API_URL, access_token);
 
     // Check if it's a valid ULID (both ULID and name use the same endpoint)
     if is_valid_ulid(identifier) {

@@ -184,9 +184,9 @@ async fn run_cli() -> i32 {
                 }
             },
             Commands::Sessions => match commands::sessions::run().await {
-                Ok(commands::sessions::SessionsResult::Selected(session_id)) => {
+                Ok(commands::sessions::SessionsResult::Selected(session_id, access_token)) => {
                     // User selected a session - connect directly (already authed)
-                    match commands::connect::run_direct(&session_id).await {
+                    match commands::connect::run_direct(&session_id, &access_token).await {
                         Ok(()) => 0,
                         Err(e) => {
                             eprintln!("Error: {}", e);

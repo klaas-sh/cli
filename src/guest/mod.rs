@@ -6,4 +6,4 @@
 
 pub mod terminal;
 
-pub use terminal::run;
+pub use terminal::run_with_token;

@@ -18,10 +18,10 @@ use crate::error::{CliError, Result};
 use crate::ui::colors;
 
 /// Result of the sessions command.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone)]
 pub enum SessionsResult {
-    /// User selected a session to connect to.
-    Selected(String),
+    /// User selected a session to connect to (session_id, access_token).
+    Selected(String, String),
     /// User wants to start a new session.
     StartNew,
     /// User cancelled (Escape or Ctrl+C).
@@ -35,7 +35,7 @@ pub enum SessionsResult {
 ///
 /// # Returns
 ///
-/// - `Ok(SessionsResult::Selected(session_id))` when user selects a session
+/// - `Ok(SessionsResult::Selected(session_id, access_token))` when user selects
 /// - `Ok(SessionsResult::StartNew)` when user wants to start a new session
 /// - `Ok(SessionsResult::Cancelled)` when user cancels (Escape or Ctrl+C)
 /// - `Err(...)` on authentication or API errors
@@ -51,7 +51,7 @@ pub async fn run() -> Result<SessionsResult> {
     }
 
     // Show interactive session list
-    select_session(&sessions)
+    select_session(&sessions, access_token)
 }
 
 /// Prompts the user to start a new session when no sessions exist.
@@ -125,7 +125,12 @@ async fn fetch_sessions(access_token: &str) -> Result<Vec<Session>> {
 }
 
 /// Shows interactive session selection and returns the selected session ID.
-fn select_session(sessions: &[Session]) -> Result<SessionsResult> {
+///
+/// # Arguments
+///
+/// * `sessions` - List of sessions to display
+/// * `access_token` - The access token to return with the selected session
+fn select_session(sessions: &[Session], access_token: String) -> Result<SessionsResult> {
     use crossterm::{cursor, ExecutableCommand};
 
     if sessions.is_empty() {
@@ -135,7 +140,10 @@ fn select_session(sessions: &[Session]) -> Result<SessionsResult> {
     // Enter raw mode for keyboard input
     if terminal::enable_raw_mode().is_err() {
         // Fall back to first session if we can't enter raw mode
-        return Ok(SessionsResult::Selected(sessions[0].session_id.clone()));
+        return Ok(SessionsResult::Selected(
+            sessions[0].session_id.clone(),
+            access_token,
+        ));
     }
 
     let mut selected_index: usize = 0;
@@ -173,7 +181,10 @@ fn select_session(sessions: &[Session]) -> Result<SessionsResult> {
                     draw_sessions_menu(&mut stdout, sessions, selected_index, true);
                 }
                 KeyCode::Enter => {
-                    break SessionsResult::Selected(sessions[selected_index].session_id.clone());
+                    break SessionsResult::Selected(
+                        sessions[selected_index].session_id.clone(),
+                        access_token.clone(),
+                    );
                 }
                 KeyCode::Esc => {
                     break SessionsResult::Cancelled;
