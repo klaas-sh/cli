@@ -228,10 +228,15 @@ fn draw_sessions_menu(
     // Box width: 72 chars inside, 76 total with borders and indent
     let box_width = 72;
 
-    // Top border
+    // Top border - amber if first session is selected
+    let top_border_color = if selected_index == 0 {
+        colors::AMBER
+    } else {
+        colors::TEXT_DIM
+    };
     print!(
         "  {}{}{}",
-        fg_color(colors::TEXT_DIM),
+        fg_color(top_border_color),
         top_border(box_width),
         RESET
     );
@@ -245,10 +250,16 @@ fn draw_sessions_menu(
         draw_session_row(stdout, session, is_selected);
 
         // Divider between sessions (not after last one)
+        // Amber if session above or below the divider is selected
         if idx < sessions.len() - 1 {
+            let divider_color = if idx == selected_index || idx + 1 == selected_index {
+                colors::AMBER
+            } else {
+                colors::TEXT_DIM
+            };
             print!(
                 "  {}{}{}",
-                fg_color(colors::TEXT_DIM),
+                fg_color(divider_color),
                 middle_border(box_width),
                 RESET
             );
@@ -256,10 +267,15 @@ fn draw_sessions_menu(
         }
     }
 
-    // Bottom border
+    // Bottom border - amber if last session is selected
+    let bottom_border_color = if selected_index == sessions.len() - 1 {
+        colors::AMBER
+    } else {
+        colors::TEXT_DIM
+    };
     print!(
         "  {}{}{}",
-        fg_color(colors::TEXT_DIM),
+        fg_color(bottom_border_color),
         bottom_border(box_width),
         RESET
     );
