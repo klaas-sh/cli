@@ -109,7 +109,7 @@ impl ApiClient {
 
     /// Fetches all sessions for the authenticated user.
     ///
-    /// Calls `GET /v1/sessions` and returns the list of sessions
+    /// Calls `GET /sessions` and returns the list of sessions
     /// associated with the current user's account.
     ///
     /// # Returns
@@ -121,7 +121,7 @@ impl ApiClient {
     /// Returns `CliError::NetworkError` if the request fails or
     /// the response cannot be parsed.
     pub async fn get_sessions(&self) -> Result<Vec<Session>> {
-        let url = format!("{}/v1/sessions", self.base_url);
+        let url = format!("{}/sessions", self.base_url);
 
         debug!(url = %url, "Fetching sessions");
 
@@ -156,7 +156,7 @@ impl ApiClient {
 
     /// Fetches a single session by its identifier.
     ///
-    /// Calls `GET /v1/sessions/:identifier` where the identifier can be
+    /// Calls `GET /sessions/:identifier` where the identifier can be
     /// either a session ID (ULID) or a session name.
     ///
     /// # Arguments
@@ -174,7 +174,7 @@ impl ApiClient {
     /// Returns `CliError::NetworkError` if the request fails (except 404)
     /// or the response cannot be parsed.
     pub async fn get_session(&self, identifier: &str) -> Result<Option<Session>> {
-        let url = format!("{}/v1/sessions/{}", self.base_url, identifier);
+        let url = format!("{}/sessions/{}", self.base_url, identifier);
 
         debug!(url = %url, identifier = %identifier, "Fetching session");
 
