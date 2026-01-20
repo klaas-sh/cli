@@ -560,16 +560,27 @@ fn get_or_create_session_id(cred_store: &CredentialStore, resume: bool) -> Resul
 async fn ensure_authenticated(config: &ApiConfig, cred_store: &CredentialStore) -> Result<String> {
     // Check for stored tokens
     if let Some((access_token, refresh_token_val)) = cred_store.get_tokens()? {
-        debug!("Found stored tokens, checking validity");
+        debug!("Found stored tokens");
 
         // Check if the access token is still valid (not expired)
-        if is_token_valid(&access_token) {
-            debug!("Access token is still valid, using it directly");
-            return Ok(access_token);
+        match is_token_valid(&access_token) {
+            Some(true) => {
+                debug!("Access token is still valid, using it directly");
+                return Ok(access_token);
+            }
+            Some(false) => {
+                // Token is definitely expired, try to refresh
+                debug!("Access token is expired, attempting refresh");
+            }
+            None => {
+                // Couldn't validate token (parsing error), use it anyway
+                // The API/WebSocket will reject if truly invalid
+                debug!("Could not validate token format, using it anyway");
+                return Ok(access_token);
+            }
         }
 
-        // Token is expired or about to expire, try refreshing
-        debug!("Access token expired or expiring soon, attempting refresh");
+        // Try to refresh the expired token
         match refresh_token(config.api_url, &refresh_token_val).await {
             Ok(tokens) => {
                 debug!("Successfully refreshed tokens");
@@ -582,8 +593,8 @@ async fn ensure_authenticated(config: &ApiConfig, cred_store: &CredentialStore) 
                 cred_store.clear_tokens()?;
             }
             Err(e) => {
-                // Network error or other issue - try using existing token anyway
-                // The API call will fail if it's truly expired
+                // Network error or other issue - use existing token anyway
+                // The API will reject if truly expired, and WebSocket will fail gracefully
                 warn!(error = %e, "Failed to refresh token, using existing");
                 return Ok(access_token);
             }
@@ -607,30 +618,43 @@ async fn ensure_authenticated(config: &ApiConfig, cred_store: &CredentialStore) 
 /// Checks if a JWT access token is still valid (not expired).
 ///
 /// Decodes the JWT payload (without verifying signature) and checks the `exp` claim.
-/// Returns true if the token is valid and won't expire within the buffer period.
 ///
 /// # Arguments
 /// * `token` - The JWT access token to check.
 ///
 /// # Returns
-/// * `true` if the token is valid and has more than `TOKEN_REFRESH_BUFFER_SECS` until expiry.
-/// * `false` if the token is expired, about to expire, or cannot be decoded.
-fn is_token_valid(token: &str) -> bool {
-    use base64::{engine::general_purpose::URL_SAFE_NO_PAD, Engine};
+/// * `Some(true)` if the token is valid and has more than `TOKEN_REFRESH_BUFFER_SECS` until expiry.
+/// * `Some(false)` if the token is definitely expired.
+/// * `None` if the token format couldn't be parsed (caller should use token anyway).
+fn is_token_valid(token: &str) -> Option<bool> {
+    use base64::{engine::general_purpose::{URL_SAFE, URL_SAFE_NO_PAD}, Engine};
 
     // JWT format: header.payload.signature
     let parts: Vec<&str> = token.split('.').collect();
     if parts.len() != 3 {
         debug!("Invalid JWT format (expected 3 parts, got {})", parts.len());
-        return false;
+        return None;
     }
 
     // Decode the payload (second part)
-    let payload = match URL_SAFE_NO_PAD.decode(parts[1]) {
+    // Try without padding first, then with padding (JWTs can vary)
+    let payload = URL_SAFE_NO_PAD
+        .decode(parts[1])
+        .or_else(|_| URL_SAFE.decode(parts[1]))
+        .or_else(|_| {
+            // Try adding padding manually
+            let mut padded = parts[1].to_string();
+            while padded.len() % 4 != 0 {
+                padded.push('=');
+            }
+            URL_SAFE.decode(&padded)
+        });
+
+    let payload = match payload {
         Ok(bytes) => bytes,
         Err(e) => {
             debug!("Failed to decode JWT payload: {}", e);
-            return false;
+            return None;
         }
     };
 
@@ -639,21 +663,24 @@ fn is_token_valid(token: &str) -> bool {
         Ok(s) => s,
         Err(e) => {
             debug!("JWT payload is not valid UTF-8: {}", e);
-            return false;
+            return None;
         }
     };
 
     // Extract the `exp` claim using simple JSON parsing
-    // Format: {..., "exp": 1234567890, ...}
-    let exp: Option<i64> = serde_json::from_str::<serde_json::Value>(payload_str)
-        .ok()
-        .and_then(|v| v.get("exp").and_then(|e| e.as_i64()));
+    let json_value = match serde_json::from_str::<serde_json::Value>(payload_str) {
+        Ok(v) => v,
+        Err(e) => {
+            debug!("Failed to parse JWT payload as JSON: {}", e);
+            return None;
+        }
+    };
 
-    let exp = match exp {
+    let exp = match json_value.get("exp").and_then(|e| e.as_i64()) {
         Some(e) => e,
         None => {
             debug!("JWT payload does not contain 'exp' claim");
-            return false;
+            return None;
         }
     };
 
@@ -662,18 +689,12 @@ fn is_token_valid(token: &str) -> bool {
     let valid = exp > now + TOKEN_REFRESH_BUFFER_SECS;
 
     if valid {
-        debug!(
-            "Token valid for {} more seconds",
-            exp - now
-        );
+        debug!("Token valid for {} more seconds", exp - now);
     } else {
-        debug!(
-            "Token expired or expiring soon (exp: {}, now: {})",
-            exp, now
-        );
+        debug!("Token expired (exp: {}, now: {})", exp, now);
     }
 
-    valid
+    Some(valid)
 }
 
 /// Result of authentication attempt.
