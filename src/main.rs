@@ -26,12 +26,15 @@ use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
 
 mod agents;
 mod analytics;
+mod api_client;
 mod app;
 mod auth;
+mod commands;
 mod config;
 mod credentials;
 mod crypto;
 mod error;
+mod guest;
 mod hook;
 mod pty;
 mod terminal;
@@ -82,15 +85,11 @@ enum Commands {
     /// List installed agents.
     Agents,
 
-    /// Upgrade klaas to the latest version.
-    #[command(alias = "update")]
-    Upgrade,
-
-    /// Uninstall klaas from this system.
-    Uninstall {
-        /// Remove all user data (credentials and config) without prompting.
-        #[arg(long)]
-        purge: bool,
+    /// Connect to a session as a guest.
+    Connect {
+        /// Session ID (ULID) or session name. If omitted, shows interactive list.
+        #[arg(value_name = "SESSION")]
+        session: Option<String>,
     },
 
     /// Handle hook events from agents (internal use).
@@ -100,6 +99,20 @@ enum Commands {
         #[arg(value_name = "EVENT")]
         event: String,
     },
+
+    /// List available sessions with interactive selection.
+    Sessions,
+
+    /// Uninstall klaas from this system.
+    Uninstall {
+        /// Remove all user data (credentials and config) without prompting.
+        #[arg(long)]
+        purge: bool,
+    },
+
+    /// Upgrade klaas to the latest version.
+    #[command(alias = "update")]
+    Upgrade,
 }
 
 #[tokio::main]
@@ -151,10 +164,34 @@ async fn run_cli() -> i32 {
                 list_agents();
                 0
             }
-            Commands::Upgrade => match update::perform_update().await {
+            Commands::Connect { session } => match commands::connect::run(session).await {
                 Ok(()) => 0,
                 Err(e) => {
-                    eprintln!("Upgrade failed: {}", e);
+                    eprintln!("Error: {}", e);
+                    1
+                }
+            },
+            Commands::Hook { event } => match hook::handle_hook(&event).await {
+                Ok(()) => 0,
+                Err(e) => {
+                    eprintln!("{}", e);
+                    1
+                }
+            },
+            Commands::Sessions => match commands::sessions::run().await {
+                Ok(Some(session_id)) => {
+                    // User selected a session - connect to it
+                    match commands::connect::run(Some(session_id)).await {
+                        Ok(()) => 0,
+                        Err(e) => {
+                            eprintln!("Error: {}", e);
+                            1
+                        }
+                    }
+                }
+                Ok(None) => 0, // User cancelled
+                Err(e) => {
+                    eprintln!("Error: {}", e);
                     1
                 }
             },
@@ -165,10 +202,10 @@ async fn run_cli() -> i32 {
                     1
                 }
             },
-            Commands::Hook { event } => match hook::handle_hook(&event).await {
+            Commands::Upgrade => match update::perform_update().await {
                 Ok(()) => 0,
                 Err(e) => {
-                    eprintln!("{}", e);
+                    eprintln!("Upgrade failed: {}", e);
                     1
                 }
             },
