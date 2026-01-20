@@ -220,8 +220,8 @@ fn draw_sessions_menu(
         RESET
     );
 
-    // Box width: 70 chars inside, 74 total with borders and indent
-    let box_width = 70;
+    // Box width: 74 chars inside, 78 total with borders and indent
+    let box_width = 74;
 
     // Top border
     print!(
@@ -272,10 +272,10 @@ fn draw_sessions_menu(
 
 /// Draws a single session row (2 lines).
 ///
-/// Column widths for 70-char content:
-/// Line 1: indicator(3) + name(14) + space(1) + cwd(26) + space(1)
-///         + time(12) + padding(13) = 70
-/// Line 2: padding(3) + session_id(26) + space(1) + status(28) + padding(12) = 70
+/// Column widths for 74-char content:
+/// Line 1: indicator(3) + name(20) + space(1) + cwd(24) + space(1)
+///         + time(12) + padding(13) = 74
+/// Line 2: padding(3) + session_id(26) + space(1) + status(32) + padding(12) = 74
 fn draw_session_row(_stdout: &mut io::Stdout, session: &Session, is_selected: bool) {
     let is_attached = session.status == "attached";
 
@@ -295,38 +295,38 @@ fn draw_session_row(_stdout: &mut io::Stdout, session: &Session, is_selected: bo
     // Get the plain name for display
     let name_plain = session.name.as_deref().unwrap_or("(unnamed)");
 
-    // Print first line (70 chars content)
+    // Print first line (74 chars content)
     print!("  {}│{}", fg_color(colors::TEXT_DIM), RESET);
     print!(" {} ", status_indicator); // 3 chars
 
-    // Name with color (14 chars)
+    // Name with color (20 chars)
     if session.name.is_some() {
         if is_selected {
             print!(
-                "{}{:<14}{}",
+                "{}{:<20}{}",
                 fg_color(colors::AMBER),
-                truncate_str(name_plain, 14),
+                truncate_str(name_plain, 20),
                 RESET
             );
         } else {
             print!(
-                "{}{:<14}{}",
+                "{}{:<20}{}",
                 fg_color(colors::TEXT_PRIMARY),
-                truncate_str(name_plain, 14),
+                truncate_str(name_plain, 20),
                 RESET
             );
         }
     } else {
-        print!("{}{:<14}{}", fg_color(colors::TEXT_DIM), "(unnamed)", RESET);
+        print!("{}{:<20}{}", fg_color(colors::TEXT_DIM), "(unnamed)", RESET);
     }
 
     print!(" "); // 1 char
 
-    // CWD (26 chars)
+    // CWD (24 chars)
     print!(
-        "{}{:<26}{}",
+        "{}{:<24}{}",
         fg_color(colors::TEXT_SECONDARY),
-        truncate_str(&cwd, 26),
+        truncate_str(&cwd, 24),
         RESET
     );
 
@@ -340,7 +340,7 @@ fn draw_session_row(_stdout: &mut io::Stdout, session: &Session, is_selected: bo
     print!("{}│{}", fg_color(colors::TEXT_DIM), RESET);
     print!("\r\n");
 
-    // Print second line (70 chars content)
+    // Print second line (74 chars content)
     print!("  {}│{}", fg_color(colors::TEXT_DIM), RESET);
     print!("   "); // 3 chars (align with name)
 
@@ -354,11 +354,11 @@ fn draw_session_row(_stdout: &mut io::Stdout, session: &Session, is_selected: bo
 
     print!(" "); // 1 char
 
-    // Status (28 chars, right-aligned)
+    // Status (32 chars, right-aligned)
     if is_attached {
-        print!("{}{:>28}{}", fg_color(colors::GREEN), "attached", RESET);
+        print!("{}{:>32}{}", fg_color(colors::GREEN), "attached", RESET);
     } else {
-        print!("{}{:>28}{}", fg_color(colors::TEXT_DIM), "detached", RESET);
+        print!("{}{:>32}{}", fg_color(colors::TEXT_DIM), "detached", RESET);
     }
 
     // Trailing padding (12 chars)
@@ -398,15 +398,15 @@ fn bottom_border(width: usize) -> String {
     format!("└{}┘", "─".repeat(width))
 }
 
-/// Truncates a string to max length, adding "..." if truncated.
+/// Truncates a string to max length, adding "…" if truncated.
 fn truncate_str(s: &str, max_len: usize) -> String {
     if s.chars().count() <= max_len {
         s.to_string()
-    } else if max_len <= 3 {
+    } else if max_len <= 1 {
         s.chars().take(max_len).collect()
     } else {
-        let truncated: String = s.chars().take(max_len - 3).collect();
-        format!("{}...", truncated)
+        let truncated: String = s.chars().take(max_len - 1).collect();
+        format!("{}…", truncated)
     }
 }
 
@@ -496,8 +496,10 @@ mod tests {
     fn test_truncate_str() {
         assert_eq!(truncate_str("hello", 10), "hello");
         assert_eq!(truncate_str("hello", 5), "hello");
-        assert_eq!(truncate_str("hello world", 8), "hello...");
-        assert_eq!(truncate_str("hello", 3), "hel");
+        assert_eq!(truncate_str("hello world", 8), "hello w…");
+        assert_eq!(truncate_str("hello", 3), "he…");
+        assert_eq!(truncate_str("abcdef", 4), "abc…");
+        assert_eq!(truncate_str("a", 1), "a"); // single char, no truncation needed
     }
 
     #[test]

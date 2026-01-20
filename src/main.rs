@@ -73,7 +73,7 @@ struct Cli {
     #[arg(short = 'r', long)]
     resume: bool,
 
-    /// Name for this session (max 20 chars, alphanumeric/hyphen/underscore).
+    /// Name for this session (max 20 chars, alphanumeric/hyphen/underscore/dot).
     /// Makes it easier to reconnect: `klaas connect my-session`
     #[arg(short = 'n', long = "name", value_name = "NAME")]
     name: Option<String>,
@@ -266,7 +266,7 @@ async fn run_main_flow(cli: &Cli) -> i32 {
         if !is_valid_session_name(name) {
             eprintln!(
                 "Error: Invalid session name '{}'. \
-                 Must be 1-20 chars, alphanumeric/hyphen/underscore only.",
+                 Must be 1-20 chars, alphanumeric/hyphen/underscore/dot only.",
                 name
             );
             return 1;
@@ -291,13 +291,13 @@ async fn run_main_flow(cli: &Cli) -> i32 {
 }
 
 /// Validates a session name.
-/// Must be 1-20 characters, alphanumeric/hyphen/underscore only.
+/// Must be 1-20 characters, alphanumeric/hyphen/underscore/dot only.
 fn is_valid_session_name(name: &str) -> bool {
     if name.is_empty() || name.len() > 20 {
         return false;
     }
     name.chars()
-        .all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_')
+        .all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_' || c == '.')
 }
 
 /// Selects an agent based on CLI flags and installed agents.
@@ -644,6 +644,8 @@ mod tests {
         assert!(is_valid_session_name("MyProject123"));
         assert!(is_valid_session_name("test-name_123"));
         assert!(is_valid_session_name("12345678901234567890")); // 20 chars
+        assert!(is_valid_session_name("tests.package1")); // dot allowed
+        assert!(is_valid_session_name("v1.2.3")); // multiple dots
     }
 
     #[test]
@@ -659,8 +661,8 @@ mod tests {
 
         // Contains invalid characters
         assert!(!is_valid_session_name("test@project"));
-        assert!(!is_valid_session_name("test.name"));
         assert!(!is_valid_session_name("test/name"));
         assert!(!is_valid_session_name("test:name"));
+        assert!(!is_valid_session_name("test name")); // space not allowed
     }
 }
