@@ -126,6 +126,8 @@ async fn fetch_sessions(access_token: &str) -> Result<Vec<Session>> {
 
 /// Shows interactive session selection and returns the selected session ID.
 fn select_session(sessions: &[Session]) -> Result<SessionsResult> {
+    use crossterm::{cursor, ExecutableCommand};
+
     if sessions.is_empty() {
         return Ok(SessionsResult::Cancelled);
     }
@@ -138,6 +140,12 @@ fn select_session(sessions: &[Session]) -> Result<SessionsResult> {
 
     let mut selected_index: usize = 0;
     let mut stdout = io::stdout();
+
+    // Hide cursor during selection
+    let _ = stdout.execute(cursor::Hide);
+
+    // Save cursor position before drawing
+    let _ = stdout.execute(cursor::SavePosition);
 
     // Draw initial menu
     draw_sessions_menu(&mut stdout, sessions, selected_index, false);
@@ -181,6 +189,9 @@ fn select_session(sessions: &[Session]) -> Result<SessionsResult> {
         }
     };
 
+    // Show cursor again
+    let _ = stdout.execute(cursor::Show);
+
     // Exit raw mode and clear menu
     let _ = terminal::disable_raw_mode();
     clear_sessions_menu(&mut stdout, sessions.len());
@@ -197,17 +208,11 @@ fn draw_sessions_menu(
 ) {
     use crossterm::{cursor, terminal as ct, QueueableCommand};
 
-    // Calculate total lines: header + blank + sessions (2 lines each) + dividers
-    // + blank + footer
-    let session_lines = sessions.len() * 2 + sessions.len().saturating_sub(1); // 2 per session + dividers
-    let total_lines = 1 + 1 + 2 + session_lines + 2 + 1 + 1; // header, blank, box top, sessions, box bottom, blank, footer
-
-    // If redrawing, move cursor up to overwrite previous menu
+    // If redrawing, restore cursor to saved position
     if is_redraw {
-        for _ in 0..total_lines {
-            let _ = stdout.queue(cursor::MoveUp(1));
-            let _ = stdout.queue(ct::Clear(ct::ClearType::CurrentLine));
-        }
+        let _ = stdout.queue(cursor::RestorePosition);
+        // Clear from cursor to end of screen
+        let _ = stdout.queue(ct::Clear(ct::ClearType::FromCursorDown));
     }
 
     let _ = stdout.queue(cursor::MoveToColumn(0));
@@ -275,7 +280,7 @@ fn draw_sessions_menu(
 /// Column widths for 74-char content (no trailing padding):
 /// Line 1: indicator(3) + name(20) + space(1) + cwd(33) + space(1)
 ///         + datetime(16, right-aligned) = 74
-/// Line 2: padding(3) + session_id(26) + status(45, right-aligned) = 74
+/// Line 2: padding(3) + session_id(26) + space(1) + device(20) + status(24) = 74
 fn draw_session_row(_stdout: &mut io::Stdout, session: &Session, is_selected: bool) {
     let is_attached = session.status == "attached";
 
@@ -350,11 +355,21 @@ fn draw_session_row(_stdout: &mut io::Stdout, session: &Session, is_selected: bo
         RESET
     );
 
-    // Status (45 chars, right-aligned to match datetime column)
+    print!(" "); // 1 char
+
+    // Device name (20 chars)
+    print!(
+        "{}{:<20}{}",
+        fg_color(colors::TEXT_MUTED),
+        truncate_str(&session.device_name, 20),
+        RESET
+    );
+
+    // Status (24 chars, right-aligned)
     if is_attached {
-        print!("{}{:>45}{}", fg_color(colors::GREEN), "attached", RESET);
+        print!("{}{:>24}{}", fg_color(colors::GREEN), "attached", RESET);
     } else {
-        print!("{}{:>45}{}", fg_color(colors::TEXT_DIM), "detached", RESET);
+        print!("{}{:>24}{}", fg_color(colors::TEXT_DIM), "detached", RESET);
     }
 
     print!("{}│{}", fg_color(colors::TEXT_DIM), RESET);
@@ -362,18 +377,12 @@ fn draw_session_row(_stdout: &mut io::Stdout, session: &Session, is_selected: bo
 }
 
 /// Clears the session selection menu from the terminal.
-fn clear_sessions_menu(stdout: &mut io::Stdout, session_count: usize) {
+fn clear_sessions_menu(stdout: &mut io::Stdout, _session_count: usize) {
     use crossterm::{cursor, terminal as ct, QueueableCommand};
 
-    // Calculate lines to clear
-    let session_lines = session_count * 2 + session_count.saturating_sub(1);
-    let total_lines = 1 + 1 + 2 + session_lines + 2 + 1 + 1;
-
-    for _ in 0..total_lines {
-        let _ = stdout.queue(cursor::MoveUp(1));
-        let _ = stdout.queue(ct::Clear(ct::ClearType::CurrentLine));
-    }
-
+    // Restore to saved position and clear from there
+    let _ = stdout.queue(cursor::RestorePosition);
+    let _ = stdout.queue(ct::Clear(ct::ClearType::FromCursorDown));
     let _ = stdout.flush();
 }
 
