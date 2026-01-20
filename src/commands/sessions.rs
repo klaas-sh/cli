@@ -320,7 +320,7 @@ fn draw_session_row(_stdout: &mut io::Stdout, session: &Session, is_selected: bo
     // === Line 1: indicator + name ... datetime ===
     // Layout: ` ● ` (3) + name (20) + fill + datetime (16) + ` ` (1) = 72
     // Fill = 72 - 3 - 20 - 16 - 1 = 32
-    print!(" {}│{}{}", fg_color(border_color), RESET, bg);
+    print!("  {}│{}{}", fg_color(border_color), RESET, bg);
     print!(" {} ", status_indicator); // 3 chars
 
     // Name with color (20 chars, left-aligned)
@@ -355,14 +355,15 @@ fn draw_session_row(_stdout: &mut io::Stdout, session: &Session, is_selected: bo
         print!("{}{:<20}{}", fg_color(colors::TEXT_DIM), "(unnamed)", RESET);
     }
 
-    // Fill (32 chars) + datetime (16 chars) + space (1 char)
+    // Fill (32 chars) + datetime (16 chars) + space (1 char) + border
     print!(
-        "{}{:>32}{} {}│{}\r\n",
+        "{}{:>32}{} {}{}│{}\r\n",
         fg_color(colors::TEXT_MUTED),
         "",
         datetime,
         RESET,
-        fg_color(border_color)
+        fg_color(border_color),
+        RESET
     );
 
     // === Line 2: session_id ... device_name ===
@@ -372,7 +373,7 @@ fn draw_session_row(_stdout: &mut io::Stdout, session: &Session, is_selected: bo
     let device_len = device_display.chars().count();
     let fill_2 = 42 - device_len;
 
-    print!(" {}│{}{}", fg_color(border_color), RESET, bg);
+    print!("  {}│{}{}", fg_color(border_color), RESET, bg);
     print!("   "); // 3 chars padding
 
     // Session ID (26 chars - ULID length)
@@ -384,14 +385,15 @@ fn draw_session_row(_stdout: &mut io::Stdout, session: &Session, is_selected: bo
         bg
     );
 
-    // Fill + device_name + space
+    // Fill + device_name + space + border
     print!(
-        "{:>width$}{}{} {}│{}\r\n",
+        "{:>width$}{}{} {}{}│{}\r\n",
         "",
         fg_color(colors::TEXT_MUTED),
         device_display,
         RESET,
         fg_color(border_color),
+        RESET,
         width = fill_2
     );
 
@@ -402,7 +404,7 @@ fn draw_session_row(_stdout: &mut io::Stdout, session: &Session, is_selected: bo
     let cwd_len = cwd_display.chars().count();
     let fill_3 = 60 - cwd_len;
 
-    print!(" {}│{}{}", fg_color(border_color), RESET, bg);
+    print!("  {}│{}{}", fg_color(border_color), RESET, bg);
     print!("   "); // 3 chars padding
 
     // CWD (left-aligned)
@@ -415,19 +417,20 @@ fn draw_session_row(_stdout: &mut io::Stdout, session: &Session, is_selected: bo
         width = cwd_len
     );
 
-    // Fill + status + space
+    // Fill + status + space + border
     let status_color = if is_attached {
         colors::GREEN
     } else {
         colors::TEXT_DIM
     };
     print!(
-        "{:>width$}{}{} {}│{}\r\n",
+        "{:>width$}{}{} {}{}│{}\r\n",
         "",
         fg_color(status_color),
         status_text,
         RESET,
         fg_color(border_color),
+        RESET,
         width = fill_3
     );
 }
