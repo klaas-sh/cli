@@ -316,14 +316,21 @@ pub async fn run(
                     }
                 }
                 Some(Ok(None)) => {
-                    // Connection closed gracefully
+                    // Connection closed gracefully - clear client to stop recv loop
                     info!("WebSocket connection closed");
-                    *connection_state_for_recv.lock().await = ConnectionState::Detached;
+                    *connection_state_for_recv.lock().await = ConnectionState::Reconnecting;
+                    // Clear the client so we don't keep calling recv() on closed connection
+                    *ws_client_for_recv.lock().await = None;
+                    // Wait before next reconnection attempt to avoid tight loop
+                    tokio::time::sleep(Duration::from_secs(1)).await;
                 }
                 Some(Err(e)) => {
-                    // Connection error - mark as disconnected
+                    // Connection error - clear client and mark for reconnection
                     debug!(error = %e, "WebSocket receive error");
                     *connection_state_for_recv.lock().await = ConnectionState::Reconnecting;
+                    // Clear the client to avoid tight loop
+                    *ws_client_for_recv.lock().await = None;
+                    tokio::time::sleep(Duration::from_secs(1)).await;
                 }
                 None => {
                     // Timeout - continue polling
