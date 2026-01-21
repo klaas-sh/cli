@@ -75,6 +75,8 @@ pub enum OutgoingMessage {
     },
     /// Terminal output data (E2EE encrypted).
     /// This is the only output format used - E2EE is always enabled.
+    /// Serializes as "output" to match server expectations.
+    #[serde(rename = "output")]
     EncryptedOutput {
         session_id: String,
         encrypted: EncryptedContent,
@@ -90,15 +92,9 @@ pub enum OutgoingMessage {
 #[derive(Debug, Clone, Deserialize)]
 #[serde(tag = "type", rename_all = "snake_case")]
 pub enum IncomingMessage {
-    /// Prompt text from a web client (plaintext).
-    Prompt {
-        session_id: String,
-        text: String,
-        source: String,
-        timestamp: String,
-    },
     /// Prompt from a web client (E2EE encrypted).
-    EncryptedPrompt {
+    /// All prompts are encrypted - E2EE is always enabled.
+    Prompt {
         session_id: String,
         encrypted: EncryptedContent,
         source: String,
@@ -741,10 +737,16 @@ mod tests {
 
     #[test]
     fn test_incoming_prompt_deserialization() {
+        // All prompts are encrypted - server sends type "prompt" with encrypted field
         let json = r#"{
             "type": "prompt",
             "session_id": "01HQXK7V8G3N5M2R4P6T1W9Y0Z",
-            "text": "Please review the code",
+            "encrypted": {
+                "v": 1,
+                "nonce": "dGVzdG5vbmNlMTIz",
+                "ciphertext": "ZW5jcnlwdGVkZGF0YQ==",
+                "tag": "dGFnMTIzNDU2Nzg5MDEy"
+            },
             "source": "web",
             "timestamp": "2025-01-13T10:00:00Z"
         }"#;
@@ -753,12 +755,13 @@ mod tests {
         match msg {
             IncomingMessage::Prompt {
                 session_id,
-                text,
+                encrypted,
                 source,
                 ..
             } => {
                 assert_eq!(session_id, "01HQXK7V8G3N5M2R4P6T1W9Y0Z");
-                assert_eq!(text, "Please review the code");
+                assert_eq!(encrypted.v, 1);
+                assert_eq!(encrypted.nonce, "dGVzdG5vbmNlMTIz");
                 assert_eq!(source, "web");
             }
             _ => panic!("Expected Prompt message"),
@@ -835,44 +838,13 @@ mod tests {
         };
 
         let json = serde_json::to_string(&msg).unwrap();
-        assert!(json.contains(r#""type":"encrypted_output""#));
+        // EncryptedOutput serializes as "output" to match server expectations
+        assert!(json.contains(r#""type":"output""#));
         assert!(json.contains(r#""encrypted""#));
         assert!(json.contains(r#""v":1"#));
         assert!(json.contains(r#""nonce""#));
         assert!(json.contains(r#""ciphertext""#));
         assert!(json.contains(r#""tag""#));
-    }
-
-    #[test]
-    fn test_incoming_encrypted_prompt_deserialization() {
-        let json = r#"{
-            "type": "encrypted_prompt",
-            "session_id": "01HQXK7V8G3N5M2R4P6T1W9Y0Z",
-            "encrypted": {
-                "v": 1,
-                "nonce": "dGVzdG5vbmNlMTIz",
-                "ciphertext": "ZW5jcnlwdGVkZGF0YQ==",
-                "tag": "dGFnMTIzNDU2Nzg5MDEy"
-            },
-            "source": "web",
-            "timestamp": "2025-01-13T10:00:00Z"
-        }"#;
-
-        let msg: IncomingMessage = serde_json::from_str(json).unwrap();
-        match msg {
-            IncomingMessage::EncryptedPrompt {
-                session_id,
-                encrypted,
-                source,
-                ..
-            } => {
-                assert_eq!(session_id, "01HQXK7V8G3N5M2R4P6T1W9Y0Z");
-                assert_eq!(encrypted.v, 1);
-                assert_eq!(encrypted.nonce, "dGVzdG5vbmNlMTIz");
-                assert_eq!(source, "web");
-            }
-            _ => panic!("Expected EncryptedPrompt message"),
-        }
     }
 
     #[test]
@@ -902,6 +874,6 @@ mod tests {
         };
 
         let json = serde_json::to_string(&msg).unwrap();
-        assert!(json.contains(r#""type":"encrypted_output""#));
+        assert!(json.contains(r#""type":"output""#));
     }
 }

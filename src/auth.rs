@@ -309,7 +309,10 @@ pub async fn start_device_flow_with_ecdh(
     device_name: &str,
 ) -> AuthResult<(DeviceFlowResponse, p256::ecdh::EphemeralSecret)> {
     let url = format!("{}/auth/device", api_url.trim_end_matches('/'));
-    debug!("Starting unified device flow at {} for {}", url, device_name);
+    debug!(
+        "Starting unified device flow at {} for {}",
+        url, device_name
+    );
 
     // Generate ECDH keypair for E2EE key exchange
     let keypair = generate_ecdh_keypair();
@@ -604,9 +607,10 @@ pub async fn poll_for_token_with_mek(
             info!("Successfully obtained tokens");
 
             // Decrypt MEK if available
-            if let (Some(dash_public_key), Some(encrypted_mek)) =
-                (&token_response.dash_public_key, &token_response.encrypted_mek)
-            {
+            if let (Some(dash_public_key), Some(encrypted_mek)) = (
+                &token_response.dash_public_key,
+                &token_response.encrypted_mek,
+            ) {
                 debug!("Decrypting MEK from response");
                 let dash_public_bytes = decode_base64(dash_public_key)
                     .map_err(|e| AuthError::CryptoError(format!("Invalid public key: {}", e)))?;

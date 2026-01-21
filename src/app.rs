@@ -73,27 +73,27 @@ pub async fn run(
     // Try to authenticate with unified device flow (handles E2EE key exchange)
     let (access_token, mek) =
         match try_authenticate_with_mek(&config, &cred_store, &device_name).await {
-        AuthAttemptResultWithMek::Success(token, mek) => {
-            debug!("E2EE enabled with MEK from unified device flow");
-            (Some(token), mek)
-        }
-        AuthAttemptResultWithMek::Cancelled => {
-            // User pressed CTRL+C - exit gracefully
-            return Ok(0);
-        }
-        AuthAttemptResultWithMek::Offline(mek_opt) => {
-            // Offline mode: use existing MEK or generate new one
-            let mek = mek_opt.unwrap_or_else(|| {
-                let new_mek = SecretKey::random();
-                if let Err(e) = cred_store.store_mek(new_mek.as_bytes()) {
-                    warn!(error = %e, "Failed to store auto-generated MEK");
-                }
-                info!("Generated new MEK for local E2EE (offline mode)");
-                new_mek
-            });
-            (None, mek)
-        }
-    };
+            AuthAttemptResultWithMek::Success(token, mek) => {
+                debug!("E2EE enabled with MEK from unified device flow");
+                (Some(token), mek)
+            }
+            AuthAttemptResultWithMek::Cancelled => {
+                // User pressed CTRL+C - exit gracefully
+                return Ok(0);
+            }
+            AuthAttemptResultWithMek::Offline(mek_opt) => {
+                // Offline mode: use existing MEK or generate new one
+                let mek = mek_opt.unwrap_or_else(|| {
+                    let new_mek = SecretKey::random();
+                    if let Err(e) = cred_store.store_mek(new_mek.as_bytes()) {
+                        warn!(error = %e, "Failed to store auto-generated MEK");
+                    }
+                    info!("Generated new MEK for local E2EE (offline mode)");
+                    new_mek
+                });
+                (None, mek)
+            }
+        };
 
     // Get or create session ID (persisted for reconnection)
     let session_id = get_or_create_session_id(&cred_store, resume)?;
@@ -371,12 +371,7 @@ pub async fn run(
             // Handle WebSocket incoming messages
             Some(msg) = ws_msg_rx.recv() => {
                 match msg {
-                    IncomingMessage::Prompt { text, .. } => {
-                        // Inject prompt text into PTY
-                        debug!(text = %text, "Received prompt from web client");
-                        let _ = pty_input_tx.send(text.into_bytes()).await;
-                    }
-                    IncomingMessage::EncryptedPrompt { encrypted, .. } => {
+                    IncomingMessage::Prompt { encrypted, .. } => {
                         // Decrypt and inject prompt text into PTY
                         let client_guard = ws_client_for_loop.lock().await;
                         if let Some(ref client) = *client_guard {
@@ -392,12 +387,12 @@ pub async fn run(
                                 Err(e) => {
                                     error!(
                                         error = %e,
-                                        "Failed to decrypt prompt (E2EE may not be enabled)"
+                                        "Failed to decrypt prompt"
                                     );
                                 }
                             }
                         } else {
-                            debug!("Received encrypted prompt but WebSocket client not available");
+                            debug!("Received prompt but WebSocket client not available");
                         }
                     }
                     IncomingMessage::Resize { cols, rows, .. } => {
@@ -792,15 +787,11 @@ async fn try_authenticate_with_mek(
             let error_str = e.to_string();
 
             // Get existing MEK from keychain for offline use
-            let mek_from_keychain = cred_store
-                .get_mek()
-                .ok()
-                .flatten()
-                .map(|mek_bytes| {
-                    let mut arr = [0u8; 32];
-                    arr.copy_from_slice(&mek_bytes);
-                    SecretKey::from_bytes(arr)
-                });
+            let mek_from_keychain = cred_store.get_mek().ok().flatten().map(|mek_bytes| {
+                let mut arr = [0u8; 32];
+                arr.copy_from_slice(&mek_bytes);
+                SecretKey::from_bytes(arr)
+            });
 
             // Check if this was a user-initiated skip (ESC)
             if error_str.contains("skipped") {
