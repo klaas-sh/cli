@@ -66,18 +66,34 @@ impl CredentialStore {
     ///
     /// Automatically detects whether the keychain is available and sets up
     /// the fallback path if needed.
+    ///
+    /// Set `KLAAS_NO_KEYCHAIN=1` to force file-based storage.
     pub fn new() -> Self {
         let fallback_path = get_fallback_path();
-        let use_keychain = check_keychain_available();
 
-        if !use_keychain {
+        // Check if user wants to force file-based storage
+        let force_fallback = std::env::var("KLAAS_NO_KEYCHAIN")
+            .map(|v| v == "1")
+            .unwrap_or(false);
+
+        let use_keychain = if force_fallback {
             warn!(
-                "Keychain unavailable, using file-based storage at {:?}",
+                "KLAAS_NO_KEYCHAIN=1 set, using file-based storage at {:?}",
                 fallback_path
             );
+            false
         } else {
-            debug!("Using OS keychain for credential storage");
-        }
+            let available = check_keychain_available();
+            if !available {
+                warn!(
+                    "Keychain unavailable, using file-based storage at {:?}",
+                    fallback_path
+                );
+            } else {
+                debug!("Using OS keychain for credential storage");
+            }
+            available
+        };
 
         Self {
             use_keychain,
@@ -374,25 +390,72 @@ impl CredentialStore {
 
     /// Stores a value in the keychain.
     fn store_keychain_value(&self, key: &str, value: &str) -> Result<()> {
+        debug!(
+            service = KEYCHAIN_SERVICE,
+            key = key,
+            "Attempting to store value in keychain"
+        );
+
         let entry = Entry::new(KEYCHAIN_SERVICE, key)
-            .map_err(|e| CliError::KeychainError(e.to_string()))?;
+            .map_err(|e| {
+                warn!(error = %e, "Failed to create keychain entry");
+                CliError::KeychainError(e.to_string())
+            })?;
 
         entry
             .set_password(value)
-            .map_err(|e| CliError::KeychainError(e.to_string()))?;
+            .map_err(|e| {
+                warn!(error = %e, "Failed to set keychain password");
+                CliError::KeychainError(e.to_string())
+            })?;
+
+        // Verify the storage worked by reading it back
+        match entry.get_password() {
+            Ok(stored) if stored == value => {
+                debug!(key = key, "Keychain storage verified successfully");
+            }
+            Ok(_) => {
+                warn!(key = key, "Keychain storage mismatch - stored value differs");
+            }
+            Err(e) => {
+                warn!(
+                    key = key,
+                    error = %e,
+                    "Keychain verification failed - couldn't read back stored value"
+                );
+            }
+        }
 
         Ok(())
     }
 
     /// Retrieves a value from the keychain.
     fn get_keychain_value(&self, key: &str) -> Result<Option<String>> {
+        debug!(
+            service = KEYCHAIN_SERVICE,
+            key = key,
+            "Attempting to retrieve value from keychain"
+        );
+
         let entry = Entry::new(KEYCHAIN_SERVICE, key)
-            .map_err(|e| CliError::KeychainError(e.to_string()))?;
+            .map_err(|e| {
+                warn!(error = %e, "Failed to create keychain entry for retrieval");
+                CliError::KeychainError(e.to_string())
+            })?;
 
         match entry.get_password() {
-            Ok(value) => Ok(Some(value)),
-            Err(keyring::Error::NoEntry) => Ok(None),
-            Err(e) => Err(CliError::KeychainError(e.to_string())),
+            Ok(value) => {
+                debug!(key = key, "Successfully retrieved value from keychain");
+                Ok(Some(value))
+            }
+            Err(keyring::Error::NoEntry) => {
+                debug!(key = key, "No entry found in keychain");
+                Ok(None)
+            }
+            Err(e) => {
+                warn!(key = key, error = %e, "Failed to retrieve from keychain");
+                Err(CliError::KeychainError(e.to_string()))
+            }
         }
     }
 
@@ -479,24 +542,56 @@ fn get_fallback_path() -> PathBuf {
 
 /// Checks whether the keychain is available.
 ///
-/// Attempts to create and delete a test entry to verify keychain access.
+/// Attempts to create, store, retrieve, and delete a test entry to verify
+/// keychain access is fully functional.
 fn check_keychain_available() -> bool {
     let test_key = "__klaas_keychain_test__";
+    let test_value = "klaas_keychain_test_value";
+
+    debug!(
+        service = KEYCHAIN_SERVICE,
+        "Checking keychain availability"
+    );
 
     // Try to create an entry
     let entry = match Entry::new(KEYCHAIN_SERVICE, test_key) {
         Ok(e) => e,
-        Err(_) => return false,
+        Err(e) => {
+            debug!(error = %e, "Failed to create keychain entry");
+            return false;
+        }
     };
 
-    // Try to set and then delete a test value
-    if entry.set_password("test").is_err() {
+    // Try to set a test value
+    if let Err(e) = entry.set_password(test_value) {
+        debug!(error = %e, "Failed to set test password in keychain");
         return false;
     }
 
-    // Clean up test entry
-    let _ = entry.delete_credential();
+    // Verify the value can be retrieved
+    match entry.get_password() {
+        Ok(retrieved) if retrieved == test_value => {
+            debug!("Keychain test: storage and retrieval verified");
+        }
+        Ok(_) => {
+            debug!("Keychain test: retrieved value doesn't match");
+            let _ = entry.delete_credential();
+            return false;
+        }
+        Err(e) => {
+            debug!(error = %e, "Keychain test: failed to retrieve stored value");
+            let _ = entry.delete_credential();
+            return false;
+        }
+    }
 
+    // Clean up test entry
+    if let Err(e) = entry.delete_credential() {
+        debug!(error = %e, "Keychain test: failed to delete test entry");
+        // Still return true - storage works even if delete fails
+    }
+
+    debug!("Keychain is available and functional");
     true
 }
 

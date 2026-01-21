@@ -89,6 +89,27 @@ impl AsRef<[u8]> for SecretKey {
     }
 }
 
+/// Development test MEK (32 bytes).
+/// Only used when KLAAS_DEV_MEK=1 environment variable is set.
+/// This allows CLI and dashboard to share the same key for testing.
+const DEV_MEK_BYTES: [u8; KEY_SIZE] = [
+    0x01, 0x23, 0x45, 0x67, 0x89, 0xab, 0xcd, 0xef, 0x01, 0x23, 0x45, 0x67, 0x89, 0xab, 0xcd, 0xef,
+    0xfe, 0xdc, 0xba, 0x98, 0x76, 0x54, 0x32, 0x10, 0xfe, 0xdc, 0xba, 0x98, 0x76, 0x54, 0x32, 0x10,
+];
+
+/// Returns the development test MEK if KLAAS_DEV_MEK=1 is set.
+/// Returns None if the environment variable is not set.
+pub fn get_dev_mek() -> Option<SecretKey> {
+    if std::env::var("KLAAS_DEV_MEK")
+        .map(|v| v == "1")
+        .unwrap_or(false)
+    {
+        Some(SecretKey::from_bytes(DEV_MEK_BYTES))
+    } else {
+        None
+    }
+}
+
 /// Encrypted content format for session data.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct EncryptedContent {

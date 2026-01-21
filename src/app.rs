@@ -15,7 +15,7 @@ use crate::agents::Agent;
 use crate::auth::{authenticate_with_mek, refresh_token, AuthError};
 use crate::config::{get_api_config, ApiConfig};
 use crate::credentials::CredentialStore;
-use crate::crypto::SecretKey;
+use crate::crypto::{get_dev_mek, SecretKey};
 use crate::error::{CliError, Result};
 use crate::hook::{ENV_API_URL, ENV_HOOK_TOKEN, ENV_SESSION_ID};
 use crate::pty::PtyManager;
@@ -781,6 +781,17 @@ async fn try_authenticate_with_mek(
     cred_store: &CredentialStore,
     device_name: &str,
 ) -> AuthAttemptResultWithMek {
+    // Check for development test MEK (bypasses authentication for E2EE testing)
+    if let Some(dev_mek) = get_dev_mek() {
+        warn!("Using development test MEK (KLAAS_DEV_MEK=1)");
+        // Still try to get tokens for API access, but use dev MEK for encryption
+        if let Ok(Some((access_token, _refresh))) = cred_store.get_tokens() {
+            return AuthAttemptResultWithMek::Success(access_token, dev_mek);
+        }
+        // No tokens - still use dev MEK but in offline mode
+        return AuthAttemptResultWithMek::Offline(Some(dev_mek));
+    }
+
     match ensure_authenticated_with_mek(config, cred_store, device_name).await {
         Ok((token, mek)) => AuthAttemptResultWithMek::Success(token, mek),
         Err(e) => {
