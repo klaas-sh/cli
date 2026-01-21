@@ -67,7 +67,12 @@ impl CredentialStore {
     /// Automatically detects whether the keychain is available and sets up
     /// the fallback path if needed.
     ///
-    /// Set `KLAAS_NO_KEYCHAIN=1` to force file-based storage.
+    /// Environment variables:
+    /// - `KLAAS_NO_KEYCHAIN=1` - Force file-based storage
+    /// - `KLAAS_USE_KEYCHAIN=1` - Force keychain even in debug builds
+    ///
+    /// Note: Debug builds use file storage by default because unsigned
+    /// binaries on macOS can't reliably access keychain items across rebuilds.
     pub fn new() -> Self {
         let fallback_path = get_fallback_path();
 
@@ -76,9 +81,30 @@ impl CredentialStore {
             .map(|v| v == "1")
             .unwrap_or(false);
 
+        // Check if user wants to force keychain (overrides debug default)
+        let force_keychain = std::env::var("KLAAS_USE_KEYCHAIN")
+            .map(|v| v == "1")
+            .unwrap_or(false);
+
+        // Debug builds default to file storage due to macOS code signing issues
+        // (unsigned binaries can't access keychain items across rebuilds)
+        #[cfg(debug_assertions)]
+        let is_debug_build = true;
+        #[cfg(not(debug_assertions))]
+        let is_debug_build = false;
+
         let use_keychain = if force_fallback {
             warn!(
                 "KLAAS_NO_KEYCHAIN=1 set, using file-based storage at {:?}",
+                fallback_path
+            );
+            false
+        } else if force_keychain {
+            debug!("KLAAS_USE_KEYCHAIN=1 set, forcing keychain storage");
+            true
+        } else if is_debug_build {
+            debug!(
+                "Debug build detected, using file-based storage at {:?}",
                 fallback_path
             );
             false
