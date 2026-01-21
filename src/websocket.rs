@@ -197,15 +197,16 @@ impl WebSocketClient {
         let mut parsed_url = Url::parse(url)
             .map_err(|e| CliError::WebSocketError(format!("Invalid WebSocket URL: {}", e)))?;
 
-        // Add session_id, device_id, device_name, cwd and client=cli query parameters
+        // Add session_id, device_id, device_name, cwd and client=host query parameters
         // These are used by the API to create session/device records in D1
+        // client=host indicates this CLI owns the PTY (vs guest which is a viewer)
         parsed_url
             .query_pairs_mut()
             .append_pair("session_id", session_id)
             .append_pair("device_id", device_id)
             .append_pair("device_name", device_name)
             .append_pair("cwd", cwd)
-            .append_pair("client", "cli");
+            .append_pair("client", "host");
 
         let client = Self {
             sender: Arc::new(Mutex::new(None)),
