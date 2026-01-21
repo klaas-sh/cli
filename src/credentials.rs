@@ -422,18 +422,15 @@ impl CredentialStore {
             "Attempting to store value in keychain"
         );
 
-        let entry = Entry::new(KEYCHAIN_SERVICE, key)
-            .map_err(|e| {
-                warn!(error = %e, "Failed to create keychain entry");
-                CliError::KeychainError(e.to_string())
-            })?;
+        let entry = Entry::new(KEYCHAIN_SERVICE, key).map_err(|e| {
+            warn!(error = %e, "Failed to create keychain entry");
+            CliError::KeychainError(e.to_string())
+        })?;
 
-        entry
-            .set_password(value)
-            .map_err(|e| {
-                warn!(error = %e, "Failed to set keychain password");
-                CliError::KeychainError(e.to_string())
-            })?;
+        entry.set_password(value).map_err(|e| {
+            warn!(error = %e, "Failed to set keychain password");
+            CliError::KeychainError(e.to_string())
+        })?;
 
         // Verify the storage worked by reading it back
         match entry.get_password() {
@@ -441,7 +438,10 @@ impl CredentialStore {
                 debug!(key = key, "Keychain storage verified successfully");
             }
             Ok(_) => {
-                warn!(key = key, "Keychain storage mismatch - stored value differs");
+                warn!(
+                    key = key,
+                    "Keychain storage mismatch - stored value differs"
+                );
             }
             Err(e) => {
                 warn!(
@@ -463,11 +463,10 @@ impl CredentialStore {
             "Attempting to retrieve value from keychain"
         );
 
-        let entry = Entry::new(KEYCHAIN_SERVICE, key)
-            .map_err(|e| {
-                warn!(error = %e, "Failed to create keychain entry for retrieval");
-                CliError::KeychainError(e.to_string())
-            })?;
+        let entry = Entry::new(KEYCHAIN_SERVICE, key).map_err(|e| {
+            warn!(error = %e, "Failed to create keychain entry for retrieval");
+            CliError::KeychainError(e.to_string())
+        })?;
 
         match entry.get_password() {
             Ok(value) => {
@@ -574,10 +573,7 @@ fn check_keychain_available() -> bool {
     let test_key = "__klaas_keychain_test__";
     let test_value = "klaas_keychain_test_value";
 
-    debug!(
-        service = KEYCHAIN_SERVICE,
-        "Checking keychain availability"
-    );
+    debug!(service = KEYCHAIN_SERVICE, "Checking keychain availability");
 
     // Try to create an entry
     let entry = match Entry::new(KEYCHAIN_SERVICE, test_key) {
