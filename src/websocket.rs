@@ -374,7 +374,7 @@ impl WebSocketClient {
         match receiver.next().await {
             Some(Ok(msg)) => self.handle_raw_message(msg).await,
             Some(Err(e)) => {
-                warn!(error = %e, "WebSocket receive error");
+                debug!(error = %e, "WebSocket receive error");
                 *self.is_connected.lock().await = false;
                 drop(receiver_guard);
                 Err(CliError::WebSocketError(format!("Receive error: {}", e)))
@@ -511,7 +511,7 @@ impl WebSocketClient {
             let mut sender_guard = self.sender.lock().await;
             if let Some(sender) = sender_guard.as_mut() {
                 if let Err(e) = sender.send(Message::Text(json)).await {
-                    warn!(error = %e, "Failed to send queued message");
+                    debug!(error = %e, "Failed to send queued message");
                     // Re-queue and abort drain
                     drop(sender_guard);
                     queue.push_front(queued);
@@ -537,7 +537,7 @@ impl WebSocketClient {
         let mut attempt = self.reconnect_attempt.lock().await;
 
         if *attempt >= MAX_RECONNECT_ATTEMPTS {
-            warn!(
+            debug!(
                 attempts = MAX_RECONNECT_ATTEMPTS,
                 "Max reconnection attempts reached"
             );
@@ -573,7 +573,7 @@ impl WebSocketClient {
                 Ok(true)
             }
             Err(e) => {
-                warn!(error = %e, "Reconnection attempt failed");
+                debug!(error = %e, "Reconnection attempt failed");
                 // Try again (will be called in a loop by the caller)
                 Err(e)
             }

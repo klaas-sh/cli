@@ -13,7 +13,7 @@ use crossterm::event::{self, Event, KeyCode, KeyModifiers};
 use crossterm::terminal;
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
-use tracing::{debug, info, warn};
+use tracing::{debug, info};
 
 use crate::crypto::{
     decode_base64, decrypt_mek_from_pairing, encode_base64, generate_ecdh_keypair, EncryptedMEK,
@@ -468,7 +468,7 @@ pub async fn poll_for_token(
             "slow_down" => {
                 // Increase polling interval by 5 seconds
                 current_interval_secs += 5;
-                warn!(
+                debug!(
                     "Server requested slow down, new interval: {}s",
                     current_interval_secs
                 );
@@ -619,7 +619,7 @@ pub async fn poll_for_token_with_mek(
             } else {
                 // No E2EE data - this shouldn't happen with the unified flow
                 // but we handle it gracefully
-                warn!("No E2EE data in token response, MEK not available");
+                debug!("No E2EE data in token response, MEK not available");
                 ui::display_auth_success();
                 return Err(AuthError::CryptoError(
                     "No encryption key received from server".to_string(),
@@ -640,7 +640,7 @@ pub async fn poll_for_token_with_mek(
             }
             "slow_down" => {
                 current_interval_secs += 5;
-                warn!(
+                debug!(
                     "Server requested slow down, new interval: {}s",
                     current_interval_secs
                 );

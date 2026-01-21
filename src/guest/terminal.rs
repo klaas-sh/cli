@@ -219,7 +219,7 @@ impl GuestClient {
         match receiver.next().await {
             Some(Ok(msg)) => self.handle_raw_message(msg).await,
             Some(Err(e)) => {
-                warn!(error = %e, "WebSocket receive error");
+                debug!(error = %e, "WebSocket receive error");
                 Err(CliError::WebSocketError(format!("Receive error: {}", e)))
             }
             None => {

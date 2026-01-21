@@ -322,7 +322,7 @@ pub async fn run(
                 }
                 Some(Err(e)) => {
                     // Connection error - mark as disconnected
-                    warn!(error = %e, "WebSocket receive error");
+                    debug!(error = %e, "WebSocket receive error");
                     *connection_state_for_recv.lock().await = ConnectionState::Reconnecting;
                 }
                 None => {
@@ -397,7 +397,7 @@ pub async fn run(
                                 }
                             }
                         } else {
-                            warn!("Received encrypted prompt but WebSocket client not available");
+                            debug!("Received encrypted prompt but WebSocket client not available");
                         }
                     }
                     IncomingMessage::Resize { cols, rows, .. } => {
@@ -856,7 +856,7 @@ async fn connect_websocket(
             Some(client)
         }
         Err(e) => {
-            warn!(
+            debug!(
                 error = %e,
                 "Failed to connect to remote session, continuing locally"
             );
