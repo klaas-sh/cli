@@ -150,6 +150,124 @@ show_banner() {
   echo ""
 }
 
+# Configure PATH in user's shell configuration
+configure_path() {
+  local install_dir="$1"
+
+  # Already in PATH? Nothing to do
+  if echo "$PATH" | tr ':' '\n' | grep -qx "$install_dir"; then
+    return 0
+  fi
+
+  # Detect user's shell
+  local shell_name
+  shell_name=$(basename "${SHELL:-/bin/bash}")
+
+  # Determine the appropriate rc file
+  local shell_rc=""
+  local path_line=""
+  local path_comment="# Added by klaas installer (https://klaas.sh)"
+
+  case "$shell_name" in
+    zsh)
+      shell_rc="$HOME/.zshrc"
+      path_line="export PATH=\"\$PATH:$install_dir\""
+      ;;
+    bash)
+      # On macOS, bash uses .bash_profile for login shells
+      if [ "$(uname -s)" = "Darwin" ]; then
+        # Prefer .bash_profile on macOS, create if needed
+        if [ -f "$HOME/.bash_profile" ]; then
+          shell_rc="$HOME/.bash_profile"
+        elif [ -f "$HOME/.bashrc" ]; then
+          shell_rc="$HOME/.bashrc"
+        else
+          shell_rc="$HOME/.bash_profile"
+        fi
+      else
+        # On Linux, prefer .bashrc
+        if [ -f "$HOME/.bashrc" ]; then
+          shell_rc="$HOME/.bashrc"
+        elif [ -f "$HOME/.bash_profile" ]; then
+          shell_rc="$HOME/.bash_profile"
+        else
+          shell_rc="$HOME/.bashrc"
+        fi
+      fi
+      path_line="export PATH=\"\$PATH:$install_dir\""
+      ;;
+    fish)
+      shell_rc="$HOME/.config/fish/config.fish"
+      path_line="fish_add_path $install_dir"
+      path_comment="# Added by klaas installer (https://klaas.sh)"
+      ;;
+    *)
+      # Unknown shell, try common files
+      if [ -f "$HOME/.profile" ]; then
+        shell_rc="$HOME/.profile"
+        path_line="export PATH=\"\$PATH:$install_dir\""
+      fi
+      ;;
+  esac
+
+  # No rc file found or determined
+  if [ -z "$shell_rc" ]; then
+    warn "$install_dir is not in your PATH"
+    echo ""
+    echo "  Add the following to your shell configuration:"
+    echo ""
+    echo "    export PATH=\"\$PATH:$install_dir\""
+    echo ""
+    return 1
+  fi
+
+  # Check if we already added klaas to this file
+  if [ -f "$shell_rc" ] && grep -q "Added by klaas installer" "$shell_rc"; then
+    # Already configured, but maybe with a different path?
+    if grep -q "$install_dir" "$shell_rc"; then
+      return 0  # Already properly configured
+    fi
+  fi
+
+  # Check if the path is already exported (maybe manually added)
+  if [ -f "$shell_rc" ] && grep -qE "(^|:)${install_dir}(:|\"|\$)" "$shell_rc"; then
+    return 0  # Path already in rc file
+  fi
+
+  # Create parent directory for fish config if needed
+  if [ "$shell_name" = "fish" ]; then
+    mkdir -p "$(dirname "$shell_rc")"
+  fi
+
+  # Append PATH configuration
+  {
+    echo ""
+    echo "$path_comment"
+    echo "$path_line"
+  } >> "$shell_rc"
+
+  success "Added $install_dir to PATH in $shell_rc"
+
+  # Provide instruction to reload
+  echo ""
+  case "$shell_name" in
+    fish)
+      echo "  To use klaas now, run:"
+      echo ""
+      echo "    source $shell_rc"
+      ;;
+    *)
+      echo "  To use klaas now, either:"
+      echo ""
+      echo "    • Open a new terminal window, or"
+      echo "    • Run: source $shell_rc"
+      ;;
+  esac
+  echo ""
+
+  return 0
+}
+
 # Main installation
 main() {
   # Detect platform first (before banner, in case of errors)
@@ -261,17 +379,12 @@ main() {
 
   success "klaas ${version} installed successfully!"
   echo ""
+
+  # Configure PATH if needed
+  configure_path "$INSTALL_DIR"
+
   echo "Run 'klaas' to get started."
   echo ""
-
-  # Check if install dir is in PATH
-  if ! echo "$PATH" | grep -q "$INSTALL_DIR"; then
-    warn "$INSTALL_DIR is not in your PATH"
-    echo "Add the following to your shell configuration:"
-    echo ""
-    echo "  export PATH=\"\$PATH:$INSTALL_DIR\""
-    echo ""
-  fi
 }
 
 main "$@"
