@@ -13,6 +13,7 @@
 //! - Debug builds: read from .env file if present, otherwise localhost:8787
 
 use crate::agents::Agent;
+use crate::types::InputConfig;
 use serde::Deserialize;
 use std::collections::HashMap;
 use std::env;
@@ -95,6 +96,10 @@ pub struct KlaasConfig {
     #[serde(default)]
     pub notifications: NotificationConfig,
 
+    /// Session configuration.
+    #[serde(default)]
+    pub session: SessionConfig,
+
     /// Whether anonymous analytics are enabled.
     /// Tracks install/upgrade/uninstall events with version and platform info.
     /// No personal information is collected.
@@ -115,6 +120,7 @@ impl Default for KlaasConfig {
             also: Vec::new(),
             agents: HashMap::new(),
             notifications: NotificationConfig::default(),
+            session: SessionConfig::default(),
             analytics: true,
         }
     }
@@ -183,6 +189,14 @@ pub struct NotificationConfig {
     /// Events to notify on.
     #[serde(default)]
     pub events: Vec<String>,
+}
+
+/// Session-related configuration.
+#[derive(Debug, Default, Deserialize)]
+pub struct SessionConfig {
+    /// Input handling configuration for multi-connection.
+    #[serde(default)]
+    pub input: InputConfig,
 }
 
 /// Loads configuration from TOML files.
@@ -276,6 +290,11 @@ pub fn get_api_config() -> ApiConfig {
     ApiConfig::default()
 }
 
+/// Get the input configuration from loaded config.
+pub fn get_input_config() -> InputConfig {
+    load_config().session.input
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -354,5 +373,58 @@ mod tests {
         assert_eq!(agent.detect.len(), 2);
         assert_eq!(agent.hooks_type, crate::agents::HooksType::Claude);
         assert_eq!(agent.shortcut, Some('X'));
+    }
+
+    #[test]
+    fn test_session_config_defaults() {
+        let config: KlaasConfig = toml::from_str("").unwrap();
+
+        assert_eq!(config.session.input.mode, crate::types::InputMode::AutoLock);
+        assert_eq!(config.session.input.idle_timeout_ms, 1500);
+    }
+
+    #[test]
+    fn test_parse_session_input_config() {
+        let toml_str = r#"
+            [session.input]
+            mode = "host-only"
+            idle_timeout_ms = 2000
+        "#;
+
+        let config: KlaasConfig = toml::from_str(toml_str).unwrap();
+
+        assert_eq!(config.session.input.mode, crate::types::InputMode::HostOnly);
+        assert_eq!(config.session.input.idle_timeout_ms, 2000);
+    }
+
+    #[test]
+    fn test_parse_session_input_config_partial() {
+        // Only mode specified, idle_timeout_ms should use default
+        let toml_str = r#"
+            [session.input]
+            mode = "free-for-all"
+        "#;
+
+        let config: KlaasConfig = toml::from_str(toml_str).unwrap();
+
+        assert_eq!(
+            config.session.input.mode,
+            crate::types::InputMode::FreeForAll
+        );
+        assert_eq!(config.session.input.idle_timeout_ms, 1500);
+    }
+
+    #[test]
+    fn test_parse_session_input_config_only_timeout() {
+        // Only timeout specified, mode should use default
+        let toml_str = r#"
+            [session.input]
+            idle_timeout_ms = 3000
+        "#;
+
+        let config: KlaasConfig = toml::from_str(toml_str).unwrap();
+
+        assert_eq!(config.session.input.mode, crate::types::InputMode::AutoLock);
+        assert_eq!(config.session.input.idle_timeout_ms, 3000);
     }
 }

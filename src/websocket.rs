@@ -26,10 +26,12 @@ use tokio_tungstenite::{connect_async, MaybeTlsStream, WebSocketStream};
 use tracing::{debug, error, info, warn};
 use url::Url;
 
+use crate::config::get_input_config;
 use crate::crypto::{
     decrypt_content, derive_session_key, encrypt_content, EncryptedContent, SecretKey,
 };
 use crate::error::{CliError, Result};
+use crate::types::InputConfig;
 
 /// Maximum number of reconnection attempts before giving up.
 const MAX_RECONNECT_ATTEMPTS: u32 = 10;
@@ -45,6 +47,28 @@ const MAX_QUEUE_SIZE: usize = 100;
 
 /// Maximum age of queued messages (5 minutes).
 const MAX_QUEUE_AGE: Duration = Duration::from_secs(5 * 60);
+
+// ============================================================================
+// Wire Types
+// ============================================================================
+
+/// Wire format for input config (matches API types).
+#[derive(Debug, Clone, Serialize)]
+pub struct InputConfigWire {
+    /// Input mode as a string (e.g., "auto-lock").
+    pub mode: String,
+    /// Lock idle timeout in milliseconds.
+    pub idle_timeout_ms: u64,
+}
+
+impl From<&InputConfig> for InputConfigWire {
+    fn from(config: &InputConfig) -> Self {
+        Self {
+            mode: config.mode.to_wire().to_string(),
+            idle_timeout_ms: config.idle_timeout_ms,
+        }
+    }
+}
 
 // ============================================================================
 // Message Types
@@ -63,6 +87,9 @@ pub enum OutgoingMessage {
         /// Optional human-readable session name (max 20 chars).
         #[serde(skip_serializing_if = "Option::is_none")]
         name: Option<String>,
+        /// Input configuration for multi-connection.
+        #[serde(skip_serializing_if = "Option::is_none")]
+        input_config: Option<InputConfigWire>,
     },
     /// Terminal output data (base64 encoded plaintext).
     /// Kept for backward compatibility but no longer used - all output is now
@@ -110,6 +137,21 @@ pub enum IncomingMessage {
     Ping,
     /// Error message from server.
     Error { code: String, message: String },
+    /// Lock acquired notification (for guest mode).
+    LockAcquired {
+        session_id: String,
+        holder_id: String,
+        holder_name: String,
+    },
+    /// Lock released notification (for guest mode).
+    LockReleased { session_id: String },
+    /// Input rejected notification (for guest mode).
+    InputRejected {
+        session_id: String,
+        reason: String,
+        #[serde(default)]
+        holder_name: Option<String>,
+    },
 }
 
 /// Queued message with timestamp for expiration.
@@ -279,13 +321,22 @@ impl WebSocketClient {
 
     /// Sends the session_attach message to the server.
     async fn send_session_attach(&self) -> Result<()> {
+        let input_config = get_input_config();
+
         let msg = OutgoingMessage::SessionAttach {
             session_id: self.session_id.clone(),
             device_id: self.device_id.clone(),
             device_name: self.device_name.clone(),
             cwd: self.cwd.clone(),
             name: self.session_name.clone(),
+            input_config: Some(InputConfigWire::from(&input_config)),
         };
+
+        debug!(
+            "Sending session_attach with input_config: mode={}, timeout={}ms",
+            input_config.mode.to_wire(),
+            input_config.idle_timeout_ms
+        );
 
         self.send_message(&msg).await
     }
@@ -682,13 +733,15 @@ mod tests {
             device_name: "MacBook Pro".to_string(),
             cwd: "/Users/test/projects".to_string(),
             name: None,
+            input_config: None,
         };
 
         let json = serde_json::to_string(&msg).unwrap();
         assert!(json.contains(r#""type":"session_attach""#));
         assert!(json.contains(r#""session_id":"01HQXK7V8G3N5M2R4P6T1W9Y0Z""#));
-        // name should be omitted when None
+        // name and input_config should be omitted when None
         assert!(!json.contains(r#""name""#));
+        assert!(!json.contains(r#""input_config""#));
     }
 
     #[test]
@@ -699,11 +752,47 @@ mod tests {
             device_name: "MacBook Pro".to_string(),
             cwd: "/Users/test/projects".to_string(),
             name: Some("my-session".to_string()),
+            input_config: None,
         };
 
         let json = serde_json::to_string(&msg).unwrap();
         assert!(json.contains(r#""type":"session_attach""#));
         assert!(json.contains(r#""name":"my-session""#));
+    }
+
+    #[test]
+    fn test_outgoing_session_attach_with_input_config() {
+        let msg = OutgoingMessage::SessionAttach {
+            session_id: "01HQXK7V8G3N5M2R4P6T1W9Y0Z".to_string(),
+            device_id: "01HQXK7V8G3N5M2R4P6T1W9Y0A".to_string(),
+            device_name: "MacBook Pro".to_string(),
+            cwd: "/Users/test/projects".to_string(),
+            name: None,
+            input_config: Some(InputConfigWire {
+                mode: "auto-lock".to_string(),
+                idle_timeout_ms: 1500,
+            }),
+        };
+
+        let json = serde_json::to_string(&msg).unwrap();
+        assert!(json.contains(r#""type":"session_attach""#));
+        assert!(json.contains(r#""input_config""#));
+        assert!(json.contains(r#""mode":"auto-lock""#));
+        assert!(json.contains(r#""idle_timeout_ms":1500"#));
+    }
+
+    #[test]
+    fn test_input_config_wire_from_input_config() {
+        use crate::types::{InputConfig, InputMode};
+
+        let config = InputConfig {
+            mode: InputMode::HostOnly,
+            idle_timeout_ms: 2000,
+        };
+
+        let wire = InputConfigWire::from(&config);
+        assert_eq!(wire.mode, "host-only");
+        assert_eq!(wire.idle_timeout_ms, 2000);
     }
 
     #[test]
@@ -876,5 +965,92 @@ mod tests {
 
         let json = serde_json::to_string(&msg).unwrap();
         assert!(json.contains(r#""type":"output""#));
+    }
+
+    #[test]
+    fn test_incoming_lock_acquired_deserialization() {
+        let json = r#"{
+            "type": "lock_acquired",
+            "session_id": "01HQXK7V8G3N5M2R4P6T1W9Y0Z",
+            "holder_id": "01HQXK7V8G3N5M2R4P6T1W9Y0A",
+            "holder_name": "Alice"
+        }"#;
+
+        let msg: IncomingMessage = serde_json::from_str(json).unwrap();
+        match msg {
+            IncomingMessage::LockAcquired {
+                session_id,
+                holder_id,
+                holder_name,
+            } => {
+                assert_eq!(session_id, "01HQXK7V8G3N5M2R4P6T1W9Y0Z");
+                assert_eq!(holder_id, "01HQXK7V8G3N5M2R4P6T1W9Y0A");
+                assert_eq!(holder_name, "Alice");
+            }
+            _ => panic!("Expected LockAcquired message"),
+        }
+    }
+
+    #[test]
+    fn test_incoming_lock_released_deserialization() {
+        let json = r#"{
+            "type": "lock_released",
+            "session_id": "01HQXK7V8G3N5M2R4P6T1W9Y0Z"
+        }"#;
+
+        let msg: IncomingMessage = serde_json::from_str(json).unwrap();
+        match msg {
+            IncomingMessage::LockReleased { session_id } => {
+                assert_eq!(session_id, "01HQXK7V8G3N5M2R4P6T1W9Y0Z");
+            }
+            _ => panic!("Expected LockReleased message"),
+        }
+    }
+
+    #[test]
+    fn test_incoming_input_rejected_deserialization() {
+        let json = r#"{
+            "type": "input_rejected",
+            "session_id": "01HQXK7V8G3N5M2R4P6T1W9Y0Z",
+            "reason": "locked",
+            "holder_name": "Bob"
+        }"#;
+
+        let msg: IncomingMessage = serde_json::from_str(json).unwrap();
+        match msg {
+            IncomingMessage::InputRejected {
+                session_id,
+                reason,
+                holder_name,
+            } => {
+                assert_eq!(session_id, "01HQXK7V8G3N5M2R4P6T1W9Y0Z");
+                assert_eq!(reason, "locked");
+                assert_eq!(holder_name, Some("Bob".to_string()));
+            }
+            _ => panic!("Expected InputRejected message"),
+        }
+    }
+
+    #[test]
+    fn test_incoming_input_rejected_without_holder_name() {
+        let json = r#"{
+            "type": "input_rejected",
+            "session_id": "01HQXK7V8G3N5M2R4P6T1W9Y0Z",
+            "reason": "host_only"
+        }"#;
+
+        let msg: IncomingMessage = serde_json::from_str(json).unwrap();
+        match msg {
+            IncomingMessage::InputRejected {
+                session_id,
+                reason,
+                holder_name,
+            } => {
+                assert_eq!(session_id, "01HQXK7V8G3N5M2R4P6T1W9Y0Z");
+                assert_eq!(reason, "host_only");
+                assert_eq!(holder_name, None);
+            }
+            _ => panic!("Expected InputRejected message"),
+        }
     }
 }

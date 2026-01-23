@@ -423,6 +423,34 @@ pub async fn run(
                         // Log error from server
                         error!(code = %code, message = %message, "Server error");
                     }
+                    IncomingMessage::LockAcquired {
+                        holder_id,
+                        holder_name,
+                        ..
+                    } => {
+                        // Lock acquired notification (for future guest mode)
+                        debug!(
+                            holder_id = %holder_id,
+                            holder_name = %holder_name,
+                            "Lock acquired by another client"
+                        );
+                    }
+                    IncomingMessage::LockReleased { .. } => {
+                        // Lock released notification (for future guest mode)
+                        debug!("Lock released");
+                    }
+                    IncomingMessage::InputRejected {
+                        reason,
+                        holder_name,
+                        ..
+                    } => {
+                        // Input rejected notification (for future guest mode)
+                        debug!(
+                            reason = %reason,
+                            holder_name = ?holder_name,
+                            "Input rejected"
+                        );
+                    }
                 }
             }
 
