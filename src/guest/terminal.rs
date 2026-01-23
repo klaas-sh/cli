@@ -84,6 +84,47 @@ pub struct ModeChange {
     pub message: Option<String>,
 }
 
+/// Lock acquired notification.
+#[derive(Debug, Clone, Deserialize)]
+pub struct LockAcquired {
+    /// Session identifier.
+    pub session_id: String,
+    /// ID of the client holding the lock.
+    pub holder_id: String,
+    /// Name of the client holding the lock.
+    pub holder_name: String,
+}
+
+/// Lock released notification.
+#[derive(Debug, Clone, Deserialize)]
+pub struct LockReleased {
+    /// Session identifier.
+    pub session_id: String,
+}
+
+/// Input rejection reason.
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum InputRejectionReason {
+    /// Lock is held by another client.
+    LockHeld,
+    /// Session is in host-only mode.
+    HostOnly,
+    /// Host is disconnected.
+    HostDetached,
+}
+
+/// Input rejected notification.
+#[derive(Debug, Clone, Deserialize)]
+pub struct InputRejected {
+    /// Session identifier.
+    pub session_id: String,
+    /// Reason for rejection.
+    pub reason: InputRejectionReason,
+    /// Name of the lock holder (for lock_held reason).
+    pub holder_name: Option<String>,
+}
+
 /// Messages received from server in guest mode.
 #[derive(Debug, Clone, Deserialize)]
 #[serde(tag = "type", rename_all = "snake_case")]
@@ -93,7 +134,7 @@ pub enum GuestIncomingMessage {
     /// History batch on connect.
     History(HistoryBatch),
     /// Encrypted output from host.
-    EncryptedOutput {
+    Output {
         session_id: String,
         encrypted: EncryptedContent,
         timestamp: String,
@@ -105,6 +146,12 @@ pub enum GuestIncomingMessage {
         session_id: String,
         reason: Option<String>,
     },
+    /// Lock acquired by a client.
+    LockAcquired(LockAcquired),
+    /// Lock released.
+    LockReleased(LockReleased),
+    /// Input was rejected.
+    InputRejected(InputRejected),
     /// Heartbeat ping from server.
     Ping,
     /// Error message from server.
@@ -115,11 +162,11 @@ pub enum GuestIncomingMessage {
 #[derive(Debug, Clone, Serialize)]
 #[serde(tag = "type", rename_all = "snake_case")]
 pub enum GuestOutgoingMessage {
-    /// Encrypted prompt to send to host.
-    EncryptedPrompt {
+    /// Encrypted prompt to send to host (serializes as "prompt" to match API).
+    #[serde(rename = "prompt")]
+    Prompt {
         session_id: String,
         encrypted: EncryptedContent,
-        timestamp: String,
     },
     /// Heartbeat response.
     Pong,
@@ -280,12 +327,10 @@ impl GuestClient {
     /// Sends an encrypted prompt to the host.
     async fn send_prompt(&self, text: &str) -> Result<()> {
         let encrypted = encrypt_content(&self.session_key, text.as_bytes());
-        let timestamp = chrono::Utc::now().to_rfc3339();
 
-        let msg = GuestOutgoingMessage::EncryptedPrompt {
+        let msg = GuestOutgoingMessage::Prompt {
             session_id: self.session_id.clone(),
             encrypted,
-            timestamp,
         };
 
         self.send_message(&msg).await
@@ -628,7 +673,7 @@ fn handle_incoming_message(client: &GuestClient, msg: GuestIncomingMessage) -> R
             }
         }
 
-        GuestIncomingMessage::EncryptedOutput { encrypted, .. } => {
+        GuestIncomingMessage::Output { encrypted, .. } => {
             // Decrypt and display output
             match client.decrypt(&encrypted) {
                 Ok(data) => {
@@ -638,6 +683,49 @@ fn handle_incoming_message(client: &GuestClient, msg: GuestIncomingMessage) -> R
                     warn!(error = %e, "Failed to decrypt output");
                 }
             }
+        }
+
+        GuestIncomingMessage::LockAcquired(lock) => {
+            debug!(
+                session_id = %lock.session_id,
+                holder_id = %lock.holder_id,
+                holder_name = %lock.holder_name,
+                "Lock acquired"
+            );
+            display_notification(&format!(
+                "{} is now typing",
+                lock.holder_name
+            ))?;
+        }
+
+        GuestIncomingMessage::LockReleased(lock) => {
+            debug!(session_id = %lock.session_id, "Lock released");
+            display_notification("Input lock released - ready for input")?;
+        }
+
+        GuestIncomingMessage::InputRejected(rejection) => {
+            debug!(
+                session_id = %rejection.session_id,
+                reason = ?rejection.reason,
+                "Input rejected"
+            );
+
+            let message = match rejection.reason {
+                InputRejectionReason::LockHeld => {
+                    let holder = rejection
+                        .holder_name
+                        .as_deref()
+                        .unwrap_or("Someone");
+                    format!("Input blocked: {} is typing", holder)
+                }
+                InputRejectionReason::HostOnly => {
+                    "Input blocked: view-only mode".to_string()
+                }
+                InputRejectionReason::HostDetached => {
+                    "Input blocked: host disconnected".to_string()
+                }
+            };
+            display_notification(&message)?;
         }
 
         GuestIncomingMessage::ModeChange(mode_change) => {
@@ -789,9 +877,9 @@ mod tests {
     }
 
     #[test]
-    fn test_encrypted_output_deserialization() {
+    fn test_output_deserialization() {
         let json = r#"{
-            "type": "encrypted_output",
+            "type": "output",
             "session_id": "01HQXK7V8G3N5M2R4P6T1W9Y0Z",
             "encrypted": {
                 "v": 1,
@@ -804,7 +892,7 @@ mod tests {
 
         let msg: GuestIncomingMessage = serde_json::from_str(json).unwrap();
         match msg {
-            GuestIncomingMessage::EncryptedOutput {
+            GuestIncomingMessage::Output {
                 session_id,
                 encrypted,
                 ..
@@ -812,7 +900,7 @@ mod tests {
                 assert_eq!(session_id, "01HQXK7V8G3N5M2R4P6T1W9Y0Z");
                 assert_eq!(encrypted.v, 1);
             }
-            _ => panic!("Expected EncryptedOutput message"),
+            _ => panic!("Expected Output message"),
         }
     }
 
@@ -825,15 +913,106 @@ mod tests {
             tag: "dGFnMTIzNDU2Nzg5MDEy".to_string(),
         };
 
-        let msg = GuestOutgoingMessage::EncryptedPrompt {
+        let msg = GuestOutgoingMessage::Prompt {
             session_id: "01HQXK7V8G3N5M2R4P6T1W9Y0Z".to_string(),
             encrypted,
-            timestamp: "2025-01-13T10:00:00Z".to_string(),
         };
 
         let json = serde_json::to_string(&msg).unwrap();
-        assert!(json.contains(r#""type":"encrypted_prompt""#));
+        // Should serialize as "prompt" not "encrypted_prompt"
+        assert!(json.contains(r#""type":"prompt""#));
         assert!(json.contains(r#""session_id":"01HQXK7V8G3N5M2R4P6T1W9Y0Z""#));
+    }
+
+    #[test]
+    fn test_lock_acquired_deserialization() {
+        let json = r#"{
+            "type": "lock_acquired",
+            "session_id": "01HQXK7V8G3N5M2R4P6T1W9Y0Z",
+            "holder_id": "01HQXK8V8G3N5M2R4P6T1W9Y0Z",
+            "holder_name": "Alice"
+        }"#;
+
+        let msg: GuestIncomingMessage = serde_json::from_str(json).unwrap();
+        match msg {
+            GuestIncomingMessage::LockAcquired(lock) => {
+                assert_eq!(lock.session_id, "01HQXK7V8G3N5M2R4P6T1W9Y0Z");
+                assert_eq!(lock.holder_id, "01HQXK8V8G3N5M2R4P6T1W9Y0Z");
+                assert_eq!(lock.holder_name, "Alice");
+            }
+            _ => panic!("Expected LockAcquired message"),
+        }
+    }
+
+    #[test]
+    fn test_lock_released_deserialization() {
+        let json = r#"{
+            "type": "lock_released",
+            "session_id": "01HQXK7V8G3N5M2R4P6T1W9Y0Z"
+        }"#;
+
+        let msg: GuestIncomingMessage = serde_json::from_str(json).unwrap();
+        match msg {
+            GuestIncomingMessage::LockReleased(lock) => {
+                assert_eq!(lock.session_id, "01HQXK7V8G3N5M2R4P6T1W9Y0Z");
+            }
+            _ => panic!("Expected LockReleased message"),
+        }
+    }
+
+    #[test]
+    fn test_input_rejected_lock_held_deserialization() {
+        let json = r#"{
+            "type": "input_rejected",
+            "session_id": "01HQXK7V8G3N5M2R4P6T1W9Y0Z",
+            "reason": "lock_held",
+            "holder_name": "Bob"
+        }"#;
+
+        let msg: GuestIncomingMessage = serde_json::from_str(json).unwrap();
+        match msg {
+            GuestIncomingMessage::InputRejected(rejection) => {
+                assert_eq!(rejection.session_id, "01HQXK7V8G3N5M2R4P6T1W9Y0Z");
+                assert!(matches!(rejection.reason, InputRejectionReason::LockHeld));
+                assert_eq!(rejection.holder_name, Some("Bob".to_string()));
+            }
+            _ => panic!("Expected InputRejected message"),
+        }
+    }
+
+    #[test]
+    fn test_input_rejected_host_only_deserialization() {
+        let json = r#"{
+            "type": "input_rejected",
+            "session_id": "01HQXK7V8G3N5M2R4P6T1W9Y0Z",
+            "reason": "host_only"
+        }"#;
+
+        let msg: GuestIncomingMessage = serde_json::from_str(json).unwrap();
+        match msg {
+            GuestIncomingMessage::InputRejected(rejection) => {
+                assert!(matches!(rejection.reason, InputRejectionReason::HostOnly));
+                assert_eq!(rejection.holder_name, None);
+            }
+            _ => panic!("Expected InputRejected message"),
+        }
+    }
+
+    #[test]
+    fn test_input_rejected_host_detached_deserialization() {
+        let json = r#"{
+            "type": "input_rejected",
+            "session_id": "01HQXK7V8G3N5M2R4P6T1W9Y0Z",
+            "reason": "host_detached"
+        }"#;
+
+        let msg: GuestIncomingMessage = serde_json::from_str(json).unwrap();
+        match msg {
+            GuestIncomingMessage::InputRejected(rejection) => {
+                assert!(matches!(rejection.reason, InputRejectionReason::HostDetached));
+            }
+            _ => panic!("Expected InputRejected message"),
+        }
     }
 
     #[test]
