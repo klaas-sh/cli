@@ -240,6 +240,45 @@ shortcut = "X"
 # Disable anonymous analytics (tracks install/upgrade/uninstall
 # events with version and platform only, no personal data)
 analytics = false
+
+# Multi-connection input configuration
+[session.input]
+mode = "auto-lock"     # "host-only", "auto-lock", or "free-for-all"
+idle_timeout_ms = 1500 # Lock timeout for auto-lock mode
+```
+
+### Multi-Connection Input Modes
+
+When multiple clients connect to your session (e.g., from different devices or
+browsers), klaas controls who can send terminal input:
+
+| Mode | Description |
+|------|-------------|
+| `host-only` | Only the host CLI can send input. Dashboard users can view only. |
+| `auto-lock` | First keystroke acquires a lock. Others see "X is typing". Lock auto-releases after idle timeout. **(default)** |
+| `free-for-all` | Anyone can send input anytime. Use with caution. |
+
+**auto-lock mode** (default) provides the best experience for most use cases:
+- Start typing from any device to acquire the input lock
+- Other connected clients see who is typing
+- Lock automatically releases after 1.5 seconds of inactivity
+- No explicit "take control" action needed
+
+Example configurations:
+
+```toml
+# View-only for dashboard users (most restrictive)
+[session.input]
+mode = "host-only"
+
+# Auto-lock with longer timeout (default mode, custom timeout)
+[session.input]
+mode = "auto-lock"
+idle_timeout_ms = 3000  # 3 seconds
+
+# Open input from any client (least restrictive)
+[session.input]
+mode = "free-for-all"
 ```
 
 ## Building from Source
