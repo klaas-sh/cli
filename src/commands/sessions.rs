@@ -189,11 +189,11 @@ fn select_session(sessions: &[Session], access_token: String) -> Result<Sessions
                 KeyCode::Esc => {
                     break SessionsResult::Cancelled;
                 }
-                KeyCode::Char(c) => {
-                    // Ctrl+C to cancel
-                    if c == 'c' && key_event.modifiers.contains(KeyModifiers::CONTROL) {
-                        break SessionsResult::Cancelled;
-                    }
+                // Ctrl+C to cancel
+                KeyCode::Char(c)
+                    if c == 'c' && key_event.modifiers.contains(KeyModifiers::CONTROL) =>
+                {
+                    break SessionsResult::Cancelled;
                 }
                 _ => {}
             }

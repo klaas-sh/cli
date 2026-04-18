@@ -314,10 +314,10 @@ pub async fn run(
 
             match recv_result {
                 Some(Ok(Some(msg))) => {
-                    // Forward message to main loop
-                    if ws_msg_tx.send(msg).await.is_err() {
-                        break; // Channel closed, exit
-                    }
+                    // Forward message to main loop; exit if the channel is closed.
+                    let Ok(()) = ws_msg_tx.send(msg).await else {
+                        break;
+                    };
                 }
                 Some(Ok(None)) => {
                     // Connection closed gracefully - clear client to stop recv loop
