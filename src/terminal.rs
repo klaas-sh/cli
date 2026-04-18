@@ -42,11 +42,60 @@ impl TerminalManager {
     /// Exits raw mode, restoring normal terminal behavior.
     pub fn exit_raw_mode(&mut self) -> Result<()> {
         if self.was_raw {
+            // Release the status-bar scroll region and wipe the reserved row
+            // so nothing is left behind in the shell the user returns to.
+            let _ = self.clear_status_bar();
             // Disable bracketed paste mode first
             let _ = io::stdout().execute(DisableBracketedPaste);
             disable_raw_mode()?;
             self.was_raw = false;
         }
+        Ok(())
+    }
+
+    /// Reserves the bottom row of the terminal for the klaas status bar.
+    ///
+    /// Uses DECSTBM (`ESC[top;bottom r`) to shrink the scrolling region to
+    /// rows 1..rows-1 (1-based). Combined with sizing the PTY to rows-1, this
+    /// prevents the wrapped program from writing to the reserved row and
+    /// stops the shell prompt from colliding with the status line.
+    ///
+    /// Must be re-applied after terminal resize. DECSTBM homes the cursor, so
+    /// this wraps the call in save/restore to preserve the wrapped program's
+    /// cursor position.
+    pub fn set_status_bar(&self) -> Result<()> {
+        let (_cols, rows) = self.size()?;
+        if rows < 2 {
+            // Nothing useful we can do in a 1-row terminal.
+            return Ok(());
+        }
+        let mut stdout = io::stdout();
+        stdout.execute(SavePosition)?;
+        // DECSTBM: scroll region spans rows 1..(rows-1), 1-based, inclusive.
+        write!(stdout, "\x1b[1;{}r", rows - 1)?;
+        // Clear the reserved row so pre-existing content doesn't linger.
+        stdout.execute(MoveTo(0, rows - 1))?;
+        stdout.execute(Clear(ClearType::CurrentLine))?;
+        stdout.execute(RestorePosition)?;
+        stdout.flush()?;
+        Ok(())
+    }
+
+    /// Restores the full scrolling region and clears the status-bar row.
+    /// Inverse of `set_status_bar`. Safe to call even if the status bar was
+    /// never installed.
+    pub fn clear_status_bar(&self) -> Result<()> {
+        let (_cols, rows) = self.size()?;
+        let mut stdout = io::stdout();
+        stdout.execute(SavePosition)?;
+        // Reset scrolling region to full screen.
+        write!(stdout, "\x1b[r")?;
+        if rows >= 1 {
+            stdout.execute(MoveTo(0, rows - 1))?;
+            stdout.execute(Clear(ClearType::CurrentLine))?;
+        }
+        stdout.execute(RestorePosition)?;
+        stdout.flush()?;
         Ok(())
     }
 

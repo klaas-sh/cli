@@ -117,6 +117,9 @@ pub async fn run(
     // Set up terminal (raw mode)
     let mut terminal = TerminalManager::new()?;
     terminal.enter_raw_mode()?;
+    // Reserve the bottom row for the status bar so the shell prompt and the
+    // status line never compete for the same row.
+    let _ = terminal.set_status_bar();
 
     // Log agent info
     info!(
@@ -131,6 +134,7 @@ pub async fn run(
         terminal.exit_raw_mode()?;
         ui::display_hooks_available_notice(&agent);
         terminal.enter_raw_mode()?;
+        let _ = terminal.set_status_bar();
     }
 
     // Build environment variables for session correlation
@@ -485,7 +489,13 @@ pub async fn run(
                             let _ = pty_input_tx.send(bytes).await;
                         }
                         Event::Resize(cols, rows) => {
-                            let _ = pty.resize(cols, rows).await;
+                            // Keep the wrapped program one row shy of the real
+                            // terminal so the status-bar row stays ours.
+                            let pty_rows = rows.saturating_sub(1).max(1);
+                            let _ = pty.resize(cols, pty_rows).await;
+                            // Re-apply the scroll region: some terminals keep
+                            // DECSTBM across resize, some don't. Cheap to repeat.
+                            let _ = terminal.set_status_bar();
                         }
                         _ => {}
                     }

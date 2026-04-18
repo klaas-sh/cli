@@ -1,6 +1,6 @@
 [package]
 name = "klaas"
-version = "0.4.2"
+version = "0.4.4"
 edition = "2021"
 description = "Remote access wrapper for Claude Code"
 license = "UNLICENSED"
@@ -75,6 +75,9 @@ dotenvy = "0.15.7"
 
 # Temp files for update functionality
 tempfile = "3"
+
+# QR code generation for auth screens
+qrcode = { version = "0.14", default-features = false }
 
 [dev-dependencies]
 tokio-test = "0.4"

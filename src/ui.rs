@@ -4,7 +4,24 @@
 //! brand colors (amber palette).
 
 use std::io::{self, Write};
+use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use std::time::{Duration, Instant};
+
+/// Tracks terminal lines printed by the most recent auth display
+/// (instructions + any subsequent "code expired" message) so that
+/// `clear_auth_display_for_retry` can erase exactly that many lines
+/// regardless of QR code height.
+static AUTH_DISPLAY_LINES: AtomicUsize = AtomicUsize::new(0);
+
+/// Whether to render a QR code next to auth URLs. Off by default; the
+/// CLI enables it via the `--qr` flag in `main`.
+static QR_ENABLED: AtomicBool = AtomicBool::new(false);
+
+/// Enables or disables QR rendering for auth screens. Called from
+/// `main` based on the `--qr` CLI flag.
+pub fn set_qr_enabled(on: bool) {
+    QR_ENABLED.store(on, Ordering::Relaxed);
+}
 
 /// Amber color palette from klaas brand (matching landing page design).
 pub mod colors {
@@ -302,7 +319,68 @@ pub fn display_startup_banner() {
     println!();
 }
 
+/// Renders `data` as a QR code using Unicode half-block characters.
+///
+/// Uses the `Dense1x2` renderer which packs two vertical modules per
+/// character row, producing a compact QR that scans reliably on
+/// dark-background terminals (modules appear as spaces, quiet zones as
+/// solid blocks — the inversion most phone cameras expect).
+///
+/// Returns an empty vector when `TERM=dumb` or when the input is too
+/// long for any QR version to encode.
+pub fn render_qr_block(data: &str) -> Vec<String> {
+    if !QR_ENABLED.load(Ordering::Relaxed) {
+        return Vec::new();
+    }
+    if std::env::var("TERM").as_deref() == Ok("dumb") {
+        return Vec::new();
+    }
+
+    use qrcode::render::unicode::Dense1x2;
+    use qrcode::{EcLevel, QrCode};
+
+    // Error level L keeps short URLs at QR version 2 (25×25) instead
+    // of version 3 (29×29). The URL is shown beside the QR, so a lower
+    // EC level is fine — users can fall back to typing.
+    let Ok(code) = QrCode::with_error_correction_level(data, EcLevel::L) else {
+        return Vec::new();
+    };
+
+    let rendered = code
+        .render::<Dense1x2>()
+        .dark_color(Dense1x2::Light)
+        .light_color(Dense1x2::Dark)
+        .quiet_zone(false)
+        .build();
+
+    rendered.lines().map(String::from).collect()
+}
+
+/// Prints a block of text beside a QR code, aligning the text row at
+/// `text_row_offset` with the vertical middle of the QR. Returns the
+/// total number of terminal lines printed.
+fn print_qr_beside_text(qr_lines: &[String], rows: &[(usize, String)]) -> usize {
+    let qr_width = qr_lines.first().map(|l| l.chars().count()).unwrap_or(0);
+
+    for (idx, qr_line) in qr_lines.iter().enumerate() {
+        let qr_w = qr_line.chars().count();
+        let pad = qr_width.saturating_sub(qr_w);
+        let text = rows
+            .iter()
+            .find(|(row, _)| *row == idx)
+            .map(|(_, s)| s.as_str())
+            .unwrap_or("");
+        println!("  {}{}  {}", qr_line, " ".repeat(pad), text);
+    }
+
+    qr_lines.len()
+}
+
 /// Displays auth instructions with branded styling.
+///
+/// When a QR code can be rendered for the current terminal, the QR is
+/// shown alongside the verification URL so the user can scan to open
+/// the device page instead of typing the URL.
 pub fn display_auth_instructions(
     _verification_uri: &str,
     _user_code: &str,
@@ -310,18 +388,53 @@ pub fn display_auth_instructions(
 ) {
     let (al, alg, alb) = colors::AMBER_LIGHT;
     let (tr, tg, tb) = colors::TEXT_SECONDARY;
-
-    println!(
-        "  {}To connect this device, visit:{}",
-        fg_color(tr, tg, tb),
-        RESET
-    );
-    println!();
+    let (mr, mg, mb) = colors::TEXT_MUTED;
 
     // Prefer the complete URL (with code embedded)
     let url = verification_uri_complete.unwrap_or(_verification_uri);
-    println!("    {}{}{}{}", BOLD, fg_color(al, alg, alb), url, RESET);
-    println!();
+    let qr_lines = render_qr_block(url);
+
+    let mut lines_printed: usize = 0;
+
+    if qr_lines.is_empty() {
+        println!(
+            "  {}To connect this device, visit:{}",
+            fg_color(tr, tg, tb),
+            RESET
+        );
+        println!();
+        println!("    {}{}{}{}", BOLD, fg_color(al, alg, alb), url, RESET);
+        println!();
+        lines_printed = 4;
+    } else {
+        println!("  {}To connect this device:{}", fg_color(tr, tg, tb), RESET);
+        println!();
+        lines_printed += 2;
+
+        let url_row = qr_lines.len() / 2;
+        let hint_row = (url_row + 2).min(qr_lines.len().saturating_sub(1));
+
+        let rows = vec![
+            (
+                url_row,
+                format!("{}{}{}{}", BOLD, fg_color(al, alg, alb), url, RESET),
+            ),
+            (
+                hint_row,
+                format!(
+                    "{}Scan the QR code or open the URL.{}",
+                    fg_color(mr, mg, mb),
+                    RESET
+                ),
+            ),
+        ];
+
+        lines_printed += print_qr_beside_text(&qr_lines, &rows);
+        println!();
+        lines_printed += 1;
+    }
+
+    AUTH_DISPLAY_LINES.store(lines_printed, Ordering::Relaxed);
 }
 
 /// Displays a success message when authentication completes.
@@ -371,31 +484,44 @@ pub fn display_code_expired() {
         RESET
     );
     println!();
+
+    AUTH_DISPLAY_LINES.fetch_add(3, Ordering::Relaxed);
 }
 
 /// Clears the previous auth display (instructions + expired message) for retry.
 ///
 /// Call this after displaying the "code expired" message to prepare for
-/// showing new auth instructions. Clears 7 lines total:
-/// - 4 lines from display_auth_instructions()
-/// - 3 lines from display_code_expired()
+/// showing new auth instructions. Clears exactly the number of lines
+/// printed by the most recent `display_auth_instructions` plus any
+/// subsequent `display_code_expired`, which depends on QR height.
 pub fn clear_auth_display_for_retry() {
-    // Move cursor up 7 lines
-    print!("\x1b[7A");
+    let total = AUTH_DISPLAY_LINES.swap(0, Ordering::Relaxed);
+    if total == 0 {
+        return;
+    }
+    // Move cursor up
+    print!("\x1b[{}A", total);
     // Clear each line and move down
-    for _ in 0..7 {
+    for _ in 0..total {
         println!("\x1b[2K");
     }
-    // Move cursor back up 7 lines to start position
-    print!("\x1b[7A");
+    // Move cursor back up to start position
+    print!("\x1b[{}A", total);
     let _ = io::stdout().flush();
 }
 
 /// Displays pairing instructions for the ECDH key exchange flow.
+///
+/// When a QR code can be rendered, it is shown beside the URL so the
+/// user can scan to open the dashboard device page. The pairing code
+/// is still shown separately since the pairing URL does not embed it.
 pub fn display_pairing_instructions(verification_uri: &str, pairing_code: &str) {
     let (ar, ag, ab) = colors::AMBER;
     let (al, alg, alb) = colors::AMBER_LIGHT;
     let (cr, cg, cb) = colors::CYAN;
+    let (mr, mg, mb) = colors::TEXT_MUTED;
+
+    let qr_lines = render_qr_block(verification_uri);
 
     println!();
     println!(
@@ -406,24 +532,62 @@ pub fn display_pairing_instructions(verification_uri: &str, pairing_code: &str) 
     );
     println!();
 
-    // Display the pairing code prominently
-    println!(
-        "    Open the Dashboard and enter code: {}{}{}{}",
-        BOLD,
-        fg_color(cr, cg, cb),
-        pairing_code,
-        RESET
-    );
-    println!();
+    if qr_lines.is_empty() {
+        println!(
+            "    Open the Dashboard and enter code: {}{}{}{}",
+            BOLD,
+            fg_color(cr, cg, cb),
+            pairing_code,
+            RESET
+        );
+        println!();
+        println!(
+            "    Or visit: {}{}{}{}",
+            BOLD,
+            fg_color(al, alg, alb),
+            verification_uri,
+            RESET
+        );
+        println!();
+        return;
+    }
 
-    // Display the URL
-    println!(
-        "    Or visit: {}{}{}{}",
-        BOLD,
-        fg_color(al, alg, alb),
-        verification_uri,
-        RESET
-    );
+    let url_row = qr_lines.len() / 2;
+    let code_row = url_row.saturating_sub(2);
+    let hint_row = (url_row + 2).min(qr_lines.len().saturating_sub(1));
+
+    let rows = vec![
+        (
+            code_row,
+            format!(
+                "Enter code: {}{}{}{}",
+                BOLD,
+                fg_color(cr, cg, cb),
+                pairing_code,
+                RESET
+            ),
+        ),
+        (
+            url_row,
+            format!(
+                "{}{}{}{}",
+                BOLD,
+                fg_color(al, alg, alb),
+                verification_uri,
+                RESET
+            ),
+        ),
+        (
+            hint_row,
+            format!(
+                "{}Scan the QR or open the URL.{}",
+                fg_color(mr, mg, mb),
+                RESET
+            ),
+        ),
+    ];
+
+    print_qr_beside_text(&qr_lines, &rows);
     println!();
 }
 
@@ -756,6 +920,37 @@ mod tests {
         let to = (255, 255, 255);
         let mid = lerp_color(from, to, 0.5);
         assert_eq!(mid, (127, 127, 127));
+    }
+
+    // `render_qr_block` reads two pieces of process-wide state
+    // (`QR_ENABLED` and the `TERM` env var). Exercise all three cases
+    // in a single test so cargo's parallel runner can't race on them.
+    #[test]
+    fn test_render_qr_block_behavior() {
+        let url = "https://klaas.sh/device/ABCD-1234";
+        std::env::set_var("TERM", "xterm-256color");
+
+        // Disabled by default.
+        set_qr_enabled(false);
+        assert!(render_qr_block(url).is_empty());
+
+        // Enabled: rectangular, non-empty output.
+        set_qr_enabled(true);
+        let lines = render_qr_block(url);
+        assert!(!lines.is_empty());
+        let width = lines[0].chars().count();
+        assert!(width > 0);
+        for line in &lines {
+            assert_eq!(line.chars().count(), width);
+        }
+
+        // Dumb terminal: suppressed even when enabled.
+        std::env::set_var("TERM", "dumb");
+        assert!(render_qr_block(url).is_empty());
+
+        // Reset global state.
+        std::env::set_var("TERM", "xterm-256color");
+        set_qr_enabled(false);
     }
 
     #[test]

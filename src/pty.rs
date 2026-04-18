@@ -157,12 +157,16 @@ impl PtyManager {
 }
 
 /// Gets the current terminal size, falling back to defaults.
+///
+/// The reported row count is one less than the real terminal height so that
+/// the wrapped program never draws on the bottom row, which klaas reserves
+/// for its status bar via DECSTBM (see `TerminalManager::set_status_bar`).
 fn get_terminal_size() -> PtySize {
     let (cols, rows) =
         crossterm::terminal::size().unwrap_or((DEFAULT_TERMINAL_COLS, DEFAULT_TERMINAL_ROWS));
 
     PtySize {
-        rows,
+        rows: rows.saturating_sub(1).max(1),
         cols,
         pixel_width: 0,
         pixel_height: 0,

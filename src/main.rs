@@ -78,6 +78,11 @@ struct Cli {
     #[arg(short = 'n', long = "name", value_name = "NAME")]
     name: Option<String>,
 
+    /// Show a scannable QR code next to authentication URLs.
+    /// Off by default because the QR occupies ~25×13 terminal cells.
+    #[arg(short = 'q', long = "qr")]
+    qr: bool,
+
     /// Arguments to pass through to the agent.
     /// All unrecognized arguments are forwarded.
     #[arg(trailing_var_arg = true, allow_hyphen_values = true)]
@@ -155,6 +160,10 @@ async fn main() {
 /// Runs the main CLI logic and returns an exit code.
 async fn run_cli() -> i32 {
     let cli = Cli::parse();
+
+    // Propagate the `--qr` flag to the UI module before anything that
+    // might render auth screens runs.
+    ui::set_qr_enabled(cli.qr);
 
     // Handle --version flag
     if cli.version {

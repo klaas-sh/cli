@@ -187,6 +187,7 @@ klaas uninstall
 |-------|------|-------------|
 | `-a` | `--agent <AGENT>` | Start with specific agent |
 | `-n` | `--name <NAME>` | Set a name for this session (must be unique) |
+| `-q` | `--qr` | Show a scannable QR code next to auth URLs (off by default) |
 | `-r` | `--resume` | Resume previous session |
 | `-v` | `--version` | Show version |
 | `-h` | `--help` | Show help |

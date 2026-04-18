@@ -692,10 +692,7 @@ fn handle_incoming_message(client: &GuestClient, msg: GuestIncomingMessage) -> R
                 holder_name = %lock.holder_name,
                 "Lock acquired"
             );
-            display_notification(&format!(
-                "{} is now typing",
-                lock.holder_name
-            ))?;
+            display_notification(&format!("{} is now typing", lock.holder_name))?;
         }
 
         GuestIncomingMessage::LockReleased(lock) => {
@@ -712,15 +709,10 @@ fn handle_incoming_message(client: &GuestClient, msg: GuestIncomingMessage) -> R
 
             let message = match rejection.reason {
                 InputRejectionReason::LockHeld => {
-                    let holder = rejection
-                        .holder_name
-                        .as_deref()
-                        .unwrap_or("Someone");
+                    let holder = rejection.holder_name.as_deref().unwrap_or("Someone");
                     format!("Input blocked: {} is typing", holder)
                 }
-                InputRejectionReason::HostOnly => {
-                    "Input blocked: view-only mode".to_string()
-                }
+                InputRejectionReason::HostOnly => "Input blocked: view-only mode".to_string(),
                 InputRejectionReason::HostDetached => {
                     "Input blocked: host disconnected".to_string()
                 }
@@ -1009,7 +1001,10 @@ mod tests {
         let msg: GuestIncomingMessage = serde_json::from_str(json).unwrap();
         match msg {
             GuestIncomingMessage::InputRejected(rejection) => {
-                assert!(matches!(rejection.reason, InputRejectionReason::HostDetached));
+                assert!(matches!(
+                    rejection.reason,
+                    InputRejectionReason::HostDetached
+                ));
             }
             _ => panic!("Expected InputRejected message"),
         }
