@@ -2,7 +2,7 @@
 name = "klaas"
 version = "0.4.5"
 edition = "2021"
-description = "Remote access wrapper for Claude Code"
+description = "Remote terminal access"
 license = "UNLICENSED"
 repository = "https://github.com/klaas-sh/cli"
 homepage = "https://klaas.sh"
