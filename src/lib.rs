@@ -6,6 +6,7 @@ pub mod agents;
 pub mod api_client;
 pub mod app;
 pub mod auth;
+pub mod billing_error;
 pub mod commands;
 pub mod config;
 pub mod credentials;

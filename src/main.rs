@@ -29,6 +29,7 @@ mod analytics;
 mod api_client;
 mod app;
 mod auth;
+mod billing_error;
 mod commands;
 mod config;
 mod credentials;

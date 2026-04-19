@@ -2,6 +2,8 @@
 
 use thiserror::Error;
 
+use crate::billing_error::BillingError;
+
 /// Primary error type for CLI operations.
 #[derive(Error, Debug)]
 pub enum CliError {
@@ -37,9 +39,21 @@ pub enum CliError {
     #[error("Crypto error: {0}")]
     CryptoError(String),
 
+    /// Billing-related denial (feature gate or trial expired). The
+    /// embedded [`BillingError`] carries the structured details and
+    /// renders itself with an upgrade-friendly message.
+    #[error("{0}")]
+    Billing(BillingError),
+
     /// Generic error.
     #[error("{0}")]
     Other(String),
+}
+
+impl From<BillingError> for CliError {
+    fn from(err: BillingError) -> Self {
+        CliError::Billing(err)
+    }
 }
 
 /// Convenience type alias for Results using CliError.
