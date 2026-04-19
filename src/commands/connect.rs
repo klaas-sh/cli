@@ -97,6 +97,13 @@ async fn connect_to_session(session_id: &str, access_token: &str) -> Result<()> 
             Ok(())
         }
         Err(e) => {
+            // Billing errors carry their own amber-coloured upgrade
+            // prompt; propagate without the generic "Failed to
+            // connect:" banner so the dedicated renderer at main.rs
+            // can show the structured message.
+            if matches!(e, CliError::Billing(_)) {
+                return Err(e);
+            }
             println!();
             println!(
                 "  {}{}!{} Failed to connect: {}{}",

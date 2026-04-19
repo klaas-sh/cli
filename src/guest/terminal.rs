@@ -21,6 +21,7 @@ use tokio_tungstenite::{connect_async, MaybeTlsStream, WebSocketStream};
 use tracing::{debug, error, info, warn};
 use url::Url;
 
+use crate::billing_error;
 use crate::config::get_api_config;
 use crate::credentials::CredentialStore;
 use crate::crypto::{
@@ -231,10 +232,21 @@ impl GuestClient {
             .map_err(|e| CliError::WebSocketError(format!("Invalid auth header: {}", e)))?;
         request.headers_mut().insert(AUTHORIZATION, auth_value);
 
-        // Connect to server
-        let (ws_stream, response) = connect_async(request)
-            .await
-            .map_err(|e| CliError::WebSocketError(format!("Failed to connect: {}", e)))?;
+        // Connect to server. A 402/403 billing denial surfaces here
+        // as `tungstenite::Error::Http`; convert it into
+        // `CliError::Billing` so the upgrade prompt is rendered.
+        let (ws_stream, response) = connect_async(request).await.map_err(|e| {
+            if let Some(billing) =
+                billing_error::from_tungstenite_error(&e, get_api_config().api_url)
+            {
+                debug!(
+                    code = %billing.code,
+                    "Detected billing error in guest WebSocket handshake"
+                );
+                return CliError::Billing(billing);
+            }
+            CliError::WebSocketError(format!("Failed to connect: {}", e))
+        })?;
 
         debug!(
             status = %response.status(),

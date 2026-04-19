@@ -140,6 +140,39 @@ pub fn normalize_upgrade_url(upgrade_url: &str, api_base_url: &str) -> String {
     upgrade_url.to_string()
 }
 
+/// Attempts to extract a [`BillingError`] from a tungstenite WebSocket
+/// error.
+///
+/// When the WebSocket upgrade fails with 402 or 403 and the response
+/// body carries a billing-gate payload, tungstenite surfaces the full
+/// `http::Response<Option<Vec<u8>>>` via its [`Error::Http`] variant.
+/// This helper unwraps that response, decodes the UTF-8 body, and
+/// delegates to [`BillingError::from_json`].
+///
+/// Returns `None` for any other error variant or non-matching status.
+///
+/// [`Error::Http`]: tokio_tungstenite::tungstenite::Error::Http
+pub fn from_tungstenite_error(
+    error: &tokio_tungstenite::tungstenite::Error,
+    api_base_url: &str,
+) -> Option<BillingError> {
+    use tokio_tungstenite::tungstenite::http::StatusCode;
+    use tokio_tungstenite::tungstenite::Error as WsError;
+
+    let WsError::Http(response) = error else {
+        return None;
+    };
+
+    let status = response.status();
+    if status != StatusCode::PAYMENT_REQUIRED && status != StatusCode::FORBIDDEN {
+        return None;
+    }
+
+    let body_bytes = response.body().as_ref()?;
+    let body_str = std::str::from_utf8(body_bytes).ok()?;
+    BillingError::from_json(body_str, api_base_url)
+}
+
 /// Extracts the `scheme://host[:port]` origin from `url`, discarding any
 /// path, query, or fragment. Returns `None` if parsing fails.
 fn origin_of(url: &str) -> Option<String> {
@@ -343,6 +376,71 @@ mod tests {
         assert!(rendered.contains("https://klaas.sh/settings/billing"));
         // ANSI escape sequences are present.
         assert!(rendered.contains("\x1b["));
+    }
+
+    /// Builds a fake tungstenite `Error::Http` with the given status and
+    /// body, for exercising [`from_tungstenite_error`] without a live
+    /// WebSocket server.
+    fn make_ws_http_error(
+        status: u16,
+        body: Option<&[u8]>,
+    ) -> tokio_tungstenite::tungstenite::Error {
+        use tokio_tungstenite::tungstenite::http::Response;
+        use tokio_tungstenite::tungstenite::Error as WsError;
+
+        let resp = Response::builder()
+            .status(status)
+            .body(body.map(|b| b.to_vec()))
+            .expect("build response");
+        WsError::Http(resp)
+    }
+
+    #[test]
+    fn test_from_tungstenite_error_detects_403_feature_gate() {
+        let body = br#"{
+            "code": "feature_gate",
+            "feature_id": "sessions.concurrent_connections",
+            "upgrade_url": "/settings/billing",
+            "message": "Concurrent connection limit reached."
+        }"#;
+        let err = make_ws_http_error(403, Some(body));
+        let billing = from_tungstenite_error(&err, "https://api.klaas.sh").unwrap();
+
+        assert_eq!(billing.code, "feature_gate");
+        // Relative upgrade_url has been normalised against the API host.
+        assert_eq!(
+            billing.upgrade_url.as_deref(),
+            Some("https://api.klaas.sh/settings/billing")
+        );
+    }
+
+    #[test]
+    fn test_from_tungstenite_error_detects_402_trial_expired() {
+        let body = br#"{"code":"trial_expired","message":"done"}"#;
+        let err = make_ws_http_error(402, Some(body));
+        assert!(from_tungstenite_error(&err, "https://api.klaas.sh").is_some());
+    }
+
+    #[test]
+    fn test_from_tungstenite_error_ignores_non_gate_status() {
+        let body = br#"{"code":"feature_gate","message":"x"}"#;
+        let err = make_ws_http_error(500, Some(body));
+        assert!(from_tungstenite_error(&err, "https://api.klaas.sh").is_none());
+    }
+
+    #[test]
+    fn test_from_tungstenite_error_ignores_empty_body() {
+        let err = make_ws_http_error(403, None);
+        assert!(from_tungstenite_error(&err, "https://api.klaas.sh").is_none());
+    }
+
+    #[test]
+    fn test_from_tungstenite_error_ignores_non_http_variants() {
+        // A URL error is never a billing error.
+        let err = tokio_tungstenite::tungstenite::Error::Url(
+            tokio_tungstenite::tungstenite::error::UrlError::NoHostName,
+        );
+        assert!(from_tungstenite_error(&err, "https://api.klaas.sh").is_none());
     }
 
     #[test]
