@@ -112,6 +112,7 @@ async fn ensure_authenticated() -> Result<String> {
         }
         Err(auth::AuthError::Cancelled) => Err(CliError::AuthError("Cancelled".to_string())),
         Err(auth::AuthError::Skipped) => Err(CliError::AuthError("Skipped".to_string())),
+        Err(auth::AuthError::Billing(b)) => Err(CliError::Billing(b)),
         Err(e) => Err(CliError::AuthError(e.to_string())),
     }
 }

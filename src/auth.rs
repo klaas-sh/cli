@@ -15,6 +15,7 @@ use serde::{Deserialize, Serialize};
 use thiserror::Error;
 use tracing::{debug, info};
 
+use crate::billing_error::BillingError;
 use crate::crypto::{
     decode_base64, decrypt_mek_from_pairing, encode_base64, generate_ecdh_keypair, EncryptedMEK,
     SecretKey,
@@ -79,6 +80,12 @@ pub enum AuthError {
     /// Crypto error during pairing.
     #[error("Crypto error: {0}")]
     CryptoError(String),
+
+    /// Billing-related denial (feature gate / trial expired) received
+    /// from the API during device pairing. Surfaces the structured
+    /// upgrade prompt to the caller.
+    #[error("{0}")]
+    Billing(BillingError),
 }
 
 /// Result type for authentication operations.
@@ -276,8 +283,7 @@ pub async fn start_device_flow(api_url: &str) -> AuthResult<DeviceFlowResponse> 
         );
         Ok(device_response)
     } else {
-        let error_text = response.text().await.unwrap_or_default();
-        Err(AuthError::ServerError(error_text))
+        Err(auth_error_from_response(response, api_url).await)
     }
 }
 
@@ -334,8 +340,7 @@ pub async fn start_device_flow_with_ecdh(
         );
         Ok((device_response, keypair.private_key))
     } else {
-        let error_text = response.text().await.unwrap_or_default();
-        Err(AuthError::ServerError(error_text))
+        Err(auth_error_from_response(response, api_url).await)
     }
 }
 
@@ -906,8 +911,7 @@ pub async fn start_pairing(
         );
         Ok((pairing_response.data, keypair.private_key))
     } else {
-        let error_text = response.text().await.unwrap_or_default();
-        Err(AuthError::ServerError(error_text))
+        Err(auth_error_from_response(response, api_url).await)
     }
 }
 
@@ -1105,9 +1109,77 @@ pub async fn pair_device(api_url: &str, device_name: &str) -> AuthResult<SecretK
     .await
 }
 
+/// Converts a non-success HTTP response into an [`AuthError`].
+///
+/// Mirrors the `api_client` helper of the same name: when the status is
+/// 402 or 403 and the body parses as a feature-gate payload, returns
+/// [`AuthError::Billing`]. Otherwise falls back to
+/// [`AuthError::ServerError`] with the raw body.
+async fn auth_error_from_response(response: reqwest::Response, api_base_url: &str) -> AuthError {
+    let status = response.status();
+    let body = response.text().await.unwrap_or_default();
+    classify_auth_http_error(status, &body, api_base_url)
+}
+
+/// Pure status/body classifier. Separated from
+/// [`auth_error_from_response`] so it can be unit-tested.
+fn classify_auth_http_error(
+    status: reqwest::StatusCode,
+    body: &str,
+    api_base_url: &str,
+) -> AuthError {
+    if matches!(
+        status,
+        reqwest::StatusCode::PAYMENT_REQUIRED | reqwest::StatusCode::FORBIDDEN
+    ) {
+        if let Some(billing) = BillingError::from_json(body, api_base_url) {
+            debug!(
+                status = %status,
+                code = %billing.code,
+                "Detected billing error in auth response"
+            );
+            return AuthError::Billing(billing);
+        }
+    }
+
+    AuthError::ServerError(body.to_string())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn test_classify_auth_http_error_detects_feature_gate() {
+        let body = r#"{
+            "code": "feature_gate",
+            "feature_id": "devices.limit",
+            "upgrade_url": "/settings/billing",
+            "message": "Device limit reached."
+        }"#;
+        let err =
+            classify_auth_http_error(reqwest::StatusCode::FORBIDDEN, body, "https://api.klaas.sh");
+        match err {
+            AuthError::Billing(b) => {
+                assert_eq!(b.code, "feature_gate");
+                assert_eq!(
+                    b.upgrade_url.as_deref(),
+                    Some("https://api.klaas.sh/settings/billing")
+                );
+            }
+            other => panic!("expected Billing, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn test_classify_auth_http_error_non_billing_falls_back() {
+        let err = classify_auth_http_error(
+            reqwest::StatusCode::FORBIDDEN,
+            "plain text error",
+            "https://api.klaas.sh",
+        );
+        assert!(matches!(err, AuthError::ServerError(_)));
+    }
 
     #[test]
     fn test_device_flow_response_deserialize() {

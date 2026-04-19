@@ -158,6 +158,19 @@ async fn main() {
     std::process::exit(exit_code);
 }
 
+/// Renders an error message to stderr.
+///
+/// Billing errors ([`error::CliError::Billing`]) are printed via the
+/// dedicated [`billing_error::BillingError::render`] helper so the
+/// upgrade prompt uses its own formatting. All other errors get the
+/// conventional `Error: <message>` prefix.
+fn print_error(err: &error::CliError) {
+    match err {
+        error::CliError::Billing(b) => b.render(),
+        other => eprintln!("Error: {}", other),
+    }
+}
+
 /// Runs the main CLI logic and returns an exit code.
 async fn run_cli() -> i32 {
     let cli = Cli::parse();
@@ -182,7 +195,7 @@ async fn run_cli() -> i32 {
             Commands::Connect { session } => match commands::connect::run(session.clone()).await {
                 Ok(()) => 0,
                 Err(e) => {
-                    eprintln!("Error: {}", e);
+                    print_error(&e);
                     1
                 }
             },
@@ -199,7 +212,7 @@ async fn run_cli() -> i32 {
                     match commands::connect::run_direct(&session_id, &access_token).await {
                         Ok(()) => 0,
                         Err(e) => {
-                            eprintln!("Error: {}", e);
+                            print_error(&e);
                             1
                         }
                     }
@@ -210,7 +223,7 @@ async fn run_cli() -> i32 {
                 }
                 Ok(commands::sessions::SessionsResult::Cancelled) => 0,
                 Err(e) => {
-                    eprintln!("Error: {}", e);
+                    print_error(&e);
                     1
                 }
             },
@@ -294,7 +307,7 @@ async fn run_main_flow(cli: &Cli) -> i32 {
     {
         Ok(code) => code,
         Err(e) => {
-            eprintln!("Error: {}", e);
+            print_error(&e);
             1
         }
     }

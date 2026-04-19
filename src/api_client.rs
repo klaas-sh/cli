@@ -14,11 +14,49 @@
 //! let sessions = client.get_sessions().await?;
 //! ```
 
-use reqwest::Client;
+use reqwest::{Client, Response, StatusCode};
 use serde::Deserialize;
 use tracing::debug;
 
+use crate::billing_error::BillingError;
 use crate::error::{CliError, Result};
+
+/// Converts a non-success HTTP response into a [`CliError`].
+///
+/// Thin async wrapper around [`classify_http_error`] that consumes the
+/// body. When the status is 402 or 403 and the body parses as a
+/// billing-gate payload (`code: 'feature_gate' | 'trial_expired'`),
+/// returns [`CliError::Billing`]. Otherwise falls back to
+/// [`CliError::NetworkError`] with the raw body so the caller still gets
+/// actionable diagnostics.
+pub(crate) async fn error_from_response(response: Response, api_base_url: &str) -> CliError {
+    let status = response.status();
+    let body = response
+        .text()
+        .await
+        .unwrap_or_else(|_| "Unknown error".to_string());
+    classify_http_error(status, &body, api_base_url)
+}
+
+/// Pure status/body classifier. Separated from [`error_from_response`]
+/// so it can be unit-tested without building a `reqwest::Response`.
+///
+/// `api_base_url` is forwarded to [`BillingError::from_json`] so relative
+/// `upgrade_url` values are normalised against the API host.
+fn classify_http_error(status: StatusCode, body: &str, api_base_url: &str) -> CliError {
+    if matches!(status, StatusCode::PAYMENT_REQUIRED | StatusCode::FORBIDDEN) {
+        if let Some(billing) = BillingError::from_json(body, api_base_url) {
+            debug!(
+                status = %status,
+                code = %billing.code,
+                "Detected billing error in HTTP response"
+            );
+            return CliError::Billing(billing);
+        }
+    }
+
+    CliError::NetworkError(format!("API request failed ({}): {}", status, body))
+}
 
 /// Session data returned by the API.
 ///
@@ -134,15 +172,7 @@ impl ApiClient {
             .map_err(|e| CliError::NetworkError(format!("Failed to fetch sessions: {}", e)))?;
 
         if !response.status().is_success() {
-            let status = response.status();
-            let body = response
-                .text()
-                .await
-                .unwrap_or_else(|_| "Unknown error".to_string());
-            return Err(CliError::NetworkError(format!(
-                "API request failed ({}): {}",
-                status, body
-            )));
+            return Err(error_from_response(response, &self.base_url).await);
         }
 
         let data: SessionsResponse = response.json().await.map_err(|e| {
@@ -192,15 +222,7 @@ impl ApiClient {
         }
 
         if !response.status().is_success() {
-            let status = response.status();
-            let body = response
-                .text()
-                .await
-                .unwrap_or_else(|_| "Unknown error".to_string());
-            return Err(CliError::NetworkError(format!(
-                "API request failed ({}): {}",
-                status, body
-            )));
+            return Err(error_from_response(response, &self.base_url).await);
         }
 
         let data: SessionResponse = response.json().await.map_err(|e| {
@@ -306,6 +328,85 @@ mod tests {
             response.sessions[0].session_id,
             "01HQXK7V8G3N5M2R4P6T1W9Y0Z"
         );
+    }
+
+    #[test]
+    fn test_classify_http_error_detects_feature_gate_403() {
+        let body = r#"{
+            "code": "feature_gate",
+            "feature_id": "sessions.limit",
+            "upgrade_url": "https://klaas.sh/settings/billing",
+            "message": "Session limit reached."
+        }"#;
+        let err = classify_http_error(StatusCode::FORBIDDEN, body, "https://api.klaas.sh");
+
+        match err {
+            CliError::Billing(b) => {
+                assert_eq!(b.code, "feature_gate");
+                assert_eq!(b.message, "Session limit reached.");
+                assert_eq!(
+                    b.upgrade_url.as_deref(),
+                    Some("https://klaas.sh/settings/billing")
+                );
+            }
+            other => panic!("expected Billing, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn test_classify_http_error_detects_trial_expired_402() {
+        let body = r#"{"code":"trial_expired","message":"trial ended"}"#;
+        let err = classify_http_error(StatusCode::PAYMENT_REQUIRED, body, "https://api.klaas.sh");
+        assert!(matches!(err, CliError::Billing(_)));
+    }
+
+    #[test]
+    fn test_classify_http_error_normalises_relative_upgrade_url() {
+        // When the 403 body carries `/settings/billing`, it must be
+        // prepended with the configured API host so the CLI prints a
+        // working link.
+        let body = r#"{
+            "code": "feature_gate",
+            "upgrade_url": "/settings/billing",
+            "message": "gated"
+        }"#;
+        let err = classify_http_error(StatusCode::FORBIDDEN, body, "https://api.klaas.sh");
+        match err {
+            CliError::Billing(b) => assert_eq!(
+                b.upgrade_url.as_deref(),
+                Some("https://api.klaas.sh/settings/billing")
+            ),
+            other => panic!("expected Billing, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn test_classify_http_error_falls_back_on_non_billing_403() {
+        let body = r#"{"code":"forbidden","message":"no"}"#;
+        let err = classify_http_error(StatusCode::FORBIDDEN, body, "https://api.klaas.sh");
+        assert!(matches!(err, CliError::NetworkError(_)));
+    }
+
+    #[test]
+    fn test_classify_http_error_non_402_or_403_never_billing() {
+        // Even with a billing-shaped body, 500 is not a gate response.
+        let body = r#"{"code":"feature_gate","message":"x"}"#;
+        let err = classify_http_error(
+            StatusCode::INTERNAL_SERVER_ERROR,
+            body,
+            "https://api.klaas.sh",
+        );
+        assert!(matches!(err, CliError::NetworkError(_)));
+    }
+
+    #[test]
+    fn test_classify_http_error_handles_plain_text_body() {
+        let err = classify_http_error(
+            StatusCode::FORBIDDEN,
+            "Not authorised",
+            "https://api.klaas.sh",
+        );
+        assert!(matches!(err, CliError::NetworkError(_)));
     }
 
     #[test]

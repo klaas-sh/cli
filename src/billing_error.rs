@@ -80,10 +80,12 @@ impl BillingError {
             .as_deref()
             .map(|u| normalize_upgrade_url(u, api_base_url));
 
-        let message = parsed.message.unwrap_or_else(|| match parsed.code.as_str() {
-            "trial_expired" => "Your trial has expired.".to_string(),
-            _ => "This feature is not available on your current plan.".to_string(),
-        });
+        let message = parsed
+            .message
+            .unwrap_or_else(|| match parsed.code.as_str() {
+                "trial_expired" => "Your trial has expired.".to_string(),
+                _ => "This feature is not available on your current plan.".to_string(),
+            });
 
         Some(Self {
             code: parsed.code,
@@ -142,9 +144,7 @@ pub fn normalize_upgrade_url(upgrade_url: &str, api_base_url: &str) -> String {
 /// path, query, or fragment. Returns `None` if parsing fails.
 fn origin_of(url: &str) -> Option<String> {
     let (scheme, rest) = url.split_once("://")?;
-    let authority_end = rest
-        .find(|c: char| c == '/' || c == '?' || c == '#')
-        .unwrap_or(rest.len());
+    let authority_end = rest.find(['/', '?', '#']).unwrap_or(rest.len());
     let authority = &rest[..authority_end];
     if authority.is_empty() {
         return None;
