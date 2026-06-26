@@ -85,7 +85,7 @@ pub enum OutgoingMessage {
         device_id: String,
         device_name: String,
         cwd: String,
-        /// Optional human-readable session name (max 20 chars).
+        /// Optional human-readable session name (max 48 chars).
         #[serde(skip_serializing_if = "Option::is_none")]
         name: Option<String>,
         /// Input configuration for multi-connection.

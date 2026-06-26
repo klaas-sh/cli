@@ -74,7 +74,7 @@ struct Cli {
     #[arg(short = 'r', long)]
     resume: bool,
 
-    /// Name for this session (max 20 chars, alphanumeric/hyphen/underscore/dot).
+    /// Name for this session (max 48 chars, alphanumeric/hyphen/underscore/dot).
     /// Makes it easier to reconnect: `klaas connect my-session`
     #[arg(short = 'n', long = "name", value_name = "NAME")]
     name: Option<String>,
@@ -102,6 +102,10 @@ enum Commands {
         #[arg(value_name = "SESSION")]
         session: Option<String>,
     },
+
+    /// List the Maestro fleet and attach to a session.
+    /// Shows all sessions whose name starts with `maestro-`.
+    Fleet,
 
     /// Handle hook events from agents (internal use).
     /// Called by agent CLIs when hooks fire, not by users directly.
@@ -199,6 +203,13 @@ async fn run_cli() -> i32 {
                     1
                 }
             },
+            Commands::Fleet => match commands::fleet::run().await {
+                Ok(()) => 0,
+                Err(e) => {
+                    print_error(&e);
+                    1
+                }
+            },
             Commands::Hook { event } => match hook::handle_hook(event).await {
                 Ok(()) => 0,
                 Err(e) => {
@@ -289,7 +300,7 @@ async fn run_main_flow(cli: &Cli) -> i32 {
         if !is_valid_session_name(name) {
             eprintln!(
                 "Error: Invalid session name '{}'. \
-                 Must be 1-20 chars, alphanumeric/hyphen/underscore/dot only.",
+                 Must be 1-48 chars, alphanumeric/hyphen/underscore/dot only.",
                 name
             );
             return 1;
@@ -314,9 +325,9 @@ async fn run_main_flow(cli: &Cli) -> i32 {
 }
 
 /// Validates a session name.
-/// Must be 1-20 characters, alphanumeric/hyphen/underscore/dot only.
+/// Must be 1-48 characters, alphanumeric/hyphen/underscore/dot only.
 fn is_valid_session_name(name: &str) -> bool {
-    if name.is_empty() || name.len() > 20 {
+    if name.is_empty() || name.len() > 48 {
         return false;
     }
     name.chars()
@@ -669,6 +680,13 @@ mod tests {
         assert!(is_valid_session_name("12345678901234567890")); // 20 chars
         assert!(is_valid_session_name("tests.package1")); // dot allowed
         assert!(is_valid_session_name("v1.2.3")); // multiple dots
+
+        // Maestro session names (longer than the old 20-char cap).
+        assert!(is_valid_session_name("maestro-agent-PRO-1233")); // 22 chars
+        assert!(is_valid_session_name("maestro-orchestrator")); // 20 chars
+
+        // Exactly 48 chars is the upper bound and still valid.
+        assert!(is_valid_session_name(&"a".repeat(48)));
     }
 
     #[test]
@@ -676,8 +694,8 @@ mod tests {
         // Empty
         assert!(!is_valid_session_name(""));
 
-        // Too long (21 chars)
-        assert!(!is_valid_session_name("123456789012345678901"));
+        // Too long (49 chars, one over the cap)
+        assert!(!is_valid_session_name(&"a".repeat(49)));
 
         // Contains space
         assert!(!is_valid_session_name("my session"));

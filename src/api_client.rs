@@ -184,6 +184,52 @@ impl ApiClient {
         Ok(data.sessions)
     }
 
+    /// Fetches sessions whose name starts with the given prefix.
+    ///
+    /// Calls `GET /sessions?prefix=<prefix>`. A prefix-aware API returns
+    /// only the matching sessions, which keeps the payload small for the
+    /// `fleet` command. Callers should still filter client-side because an
+    /// older API may ignore the query parameter and return every session.
+    ///
+    /// # Arguments
+    ///
+    /// * `prefix` - Session-name prefix to match (e.g., "maestro-")
+    ///
+    /// # Returns
+    ///
+    /// A vector of `Session` objects on success.
+    ///
+    /// # Errors
+    ///
+    /// Returns `CliError::NetworkError` if the request fails or
+    /// the response cannot be parsed.
+    pub async fn get_sessions_with_prefix(&self, prefix: &str) -> Result<Vec<Session>> {
+        let url = format!("{}/sessions", self.base_url);
+
+        debug!(url = %url, prefix = %prefix, "Fetching sessions with prefix");
+
+        let response = self
+            .client
+            .get(&url)
+            .query(&[("prefix", prefix)])
+            .bearer_auth(&self.access_token)
+            .send()
+            .await
+            .map_err(|e| CliError::NetworkError(format!("Failed to fetch sessions: {}", e)))?;
+
+        if !response.status().is_success() {
+            return Err(error_from_response(response, &self.base_url).await);
+        }
+
+        let data: SessionsResponse = response.json().await.map_err(|e| {
+            CliError::NetworkError(format!("Failed to parse sessions response: {}", e))
+        })?;
+
+        debug!(count = data.sessions.len(), "Fetched sessions with prefix");
+
+        Ok(data.sessions)
+    }
+
     /// Fetches a single session by its identifier.
     ///
     /// Calls `GET /sessions/:identifier` where the identifier can be
