@@ -408,7 +408,7 @@ fn draw_session_row(_stdout: &mut io::Stdout, session: &Session, is_selected: bo
     print!(
         "{}{:<26}{}{}",
         fg_color(colors::TEXT_DIM),
-        &session.session_id,
+        session.session_id,
         RESET,
         bg
     );
